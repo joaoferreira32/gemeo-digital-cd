@@ -1,4 +1,4 @@
-import type { WarehouseLayout } from '../sim/layout';
+import type { Rect, WarehouseLayout } from '../sim/layout';
 
 /**
  * Render-side placement of things the simulation only counts: where the
@@ -49,16 +49,17 @@ export function pileSlot(a: PileArea, i: number, out: { x: number; y: number; z:
 
 const CELL = 0.56;
 
-/** Backlog pile beside each inbound induction point, on the outer side of the line. */
+/** Backlog pile beside each inbound induction point, growing away from the line. */
 export function inboundPile(layout: WarehouseLayout, inboundIndex: number): PileArea {
   const node = layout.graph.node(layout.inboundNodes[inboundIndex] as number);
+  const r = layout.inboundAreas[inboundIndex] as Rect;
   const zDir = node.pos.z < 0 ? -1 : 1;
   return {
-    x0: layout.bounds.minX + 0.6,
-    z0: node.pos.z + zDir * 1.1,
+    x0: r.minX,
+    z0: zDir < 0 ? r.maxZ : r.minZ,
     zDir,
-    cols: 12,
-    rows: 10,
+    cols: Math.round((r.maxX - r.minX) / CELL),
+    rows: Math.round((r.maxZ - r.minZ) / CELL),
     layers: 7,
     cell: CELL,
     layerHeight: 0.44,
@@ -68,13 +69,13 @@ export function inboundPile(layout: WarehouseLayout, inboundIndex: number): Pile
 
 /** Staging area between the end of a dock conveyor and the dock door. */
 export function stagingPile(layout: WarehouseLayout, dockIndex: number): PileArea {
-  const node = layout.graph.node(layout.dockNodes[dockIndex] as number);
+  const r = layout.stagingAreas[dockIndex] as Rect;
   return {
-    x0: node.pos.x + 1.4,
-    z0: node.pos.z - 2.24,
+    x0: r.minX,
+    z0: r.minZ,
     zDir: 1,
-    cols: 10,
-    rows: 8,
+    cols: Math.round((r.maxX - r.minX) / CELL),
+    rows: Math.round((r.maxZ - r.minZ) / CELL),
     layers: 4,
     cell: CELL,
     layerHeight: 0.44,

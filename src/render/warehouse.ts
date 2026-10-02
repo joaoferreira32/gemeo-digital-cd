@@ -169,7 +169,7 @@ export class WarehouseView {
     const xs: number[] = [];
     for (let x = minX; x <= maxX + 0.01; x += 12) xs.push(x);
     if ((xs[xs.length - 1] as number) < maxX) xs.push(maxX);
-    const rowZ = [minZ, -9.8, 9.8, maxZ];
+    const rowZ = [minZ, -9.5, 9.5, maxZ];
     for (const x of xs) {
       for (const z of rowZ) {
         const interior = z !== minZ && z !== maxZ;
@@ -346,11 +346,11 @@ export class WarehouseView {
       cylinderInstances(
         this.tracker,
         frameMat,
-        stations.map((n) => ({ x: n.pos.x, y: BELT_TOP - 0.11, z: n.pos.z, r: 0.72, h: 0.2 })),
+        stations.map((n) => ({ x: n.pos.x, y: BELT_TOP - 0.11, z: n.pos.z, r: 0.48, h: 0.2 })),
         32,
       ),
     );
-    const ringGeo = this.tracker.track(new RingGeometry(0.62, 0.72, 40));
+    const ringGeo = this.tracker.track(new RingGeometry(0.38, 0.48, 40));
     ringGeo.rotateX(-Math.PI / 2);
     const rings = new InstancedMesh(ringGeo, glowMat, stations.length);
     const m = new Matrix4();
@@ -466,7 +466,7 @@ export class WarehouseView {
     });
   }
 
-  /** Decorative pallet racking in the storage zones (AGVs will serve them in phase 2). */
+  /** Pallet racking from the layout rows; the robots pick at their faces. */
   private buildRacks() {
     const uprightMat = this.std(mix('steel', 'cyan', 0.06).getHex(), {
       metalness: 0.6,
@@ -478,25 +478,19 @@ export class WarehouseView {
     const beams = new BoxBatch();
     const totes = new BoxBatch();
     const levels = [0.15, 1.7, 3.25, 4.8];
-    const X0 = -26;
-    const X1 = 2;
     const BAY = 2.8;
     let seed = 7;
     const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
-    for (const zSign of [-1, 1]) {
-      // Back-to-back rows with aisles between them.
-      for (const zRow of [9.2, 10.4, 13.6, 14.8, 18.0]) {
-        const z = zSign * zRow;
-        for (let x = X0; x <= X1 + 0.01; x += BAY) {
-          uprights.add(x, 3, z, 0.1, 6, 1.0);
-          if (x + BAY > X1 + 0.01) continue;
-          for (const y of levels.slice(1)) beams.add(x + BAY / 2, y, z, BAY, 0.12, 1.02);
-          for (const y of levels) {
-            for (let k = 0; k < 3; k++) {
-              if (rand() < 0.28) continue;
-              const h = 0.6 + rand() * 0.55;
-              totes.add(x + 0.5 + k * 0.9, y + 0.07 + h / 2, z, 0.78, h, 0.9);
-            }
+    for (const row of this.layout.racks) {
+      for (let x = row.x0; x <= row.x1 + 0.01; x += BAY) {
+        uprights.add(x, 3, row.z, 0.1, 6, 0.96);
+        if (x + BAY > row.x1 + 0.01) continue;
+        for (const y of levels.slice(1)) beams.add(x + BAY / 2, y, row.z, BAY, 0.12, 0.98);
+        for (const y of levels) {
+          for (let k = 0; k < 3; k++) {
+            if (rand() < 0.28) continue;
+            const h = 0.6 + rand() * 0.55;
+            totes.add(x + 0.5 + k * 0.9, y + 0.07 + h / 2, row.z, 0.78, h, 0.86);
           }
         }
       }
