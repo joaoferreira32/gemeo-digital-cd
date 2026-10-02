@@ -444,3 +444,198 @@ button#btn-stress[aria-pressed='true'] {
     transition: none;
   }
 }
+
+/* ---------- Phase 2: fleet, failures, heat map, events ---------- */
+
+.fleet-line {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 7px 14px 8px;
+  background: var(--panel);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.group--failures button {
+  border-color: rgb(255 77 94 / 0.35);
+}
+
+.group--failures button:hover {
+  border-color: var(--alert);
+}
+
+/* Event captions: what just happened, in words (the demo video is silent). */
+.hud--events {
+  position: fixed;
+  z-index: 2;
+  top: var(--gutter);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  width: min(520px, calc(100vw - 2 * var(--gutter)));
+  pointer-events: none;
+}
+
+.hud--events li {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid var(--cyan);
+  border-radius: 3px;
+  padding: 6px 12px;
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  animation: event-in 0.25s ease-out;
+}
+
+.hud--events li[data-kind='failure-start'] {
+  border-left-color: var(--alert);
+}
+
+.hud--events li[data-failure='surge'][data-kind='failure-start'] {
+  border-left-color: var(--amber);
+}
+
+@keyframes event-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* Heat map legend. */
+.hud--heat {
+  right: var(--gutter);
+  bottom: calc(var(--gutter) + 118px);
+  padding: 8px 12px;
+  width: 210px;
+}
+
+.heat__title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin: 0 0 6px !important;
+}
+
+.heat__bar {
+  height: 8px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgb(61 204 107), var(--amber), var(--alert));
+}
+
+.heat__scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 2px !important;
+}
+
+/* Followed robot panel. */
+.hud--robot {
+  top: calc(var(--gutter) + 230px);
+  right: var(--gutter);
+  width: min(300px, calc(100vw - 2 * var(--gutter)));
+  padding: 10px 14px 12px;
+  border-top: 3px solid var(--cyan);
+}
+
+.robot__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.robot__title span:first-child {
+  margin-right: auto;
+}
+
+.robot__state {
+  font-size: 1rem;
+  color: var(--cyan);
+  margin: 2px 0 8px !important;
+}
+
+.robot__state[data-stage='defect'] {
+  color: var(--alert);
+}
+
+.robot__state[data-stage='charging'],
+.robot__state[data-stage='toCharger'] {
+  color: var(--amber);
+}
+
+.robot__battery {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.robot__battery .bar {
+  height: 8px;
+  background: rgb(230 237 243 / 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.robot__battery .bar span {
+  display: block;
+  height: 100%;
+  background: var(--cyan);
+}
+
+.robot__battery .bar span[data-low='true'] {
+  background: var(--amber);
+}
+
+.hud--robot dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 10px 0 0;
+  font-size: 0.92rem;
+}
+
+.hud--robot dt {
+  color: var(--muted);
+}
+
+.hud--robot dd {
+  margin: 0;
+}
+
+.swatch[data-color='amber-dim'] {
+  --c: rgb(242 165 65 / 0.55);
+}
+
+@media (max-width: 720px) {
+  .fleet-line {
+    display: none;
+  }
+  .hud--robot,
+  .hud--heat {
+    display: none;
+  }
+  .hud--events {
+    top: calc(var(--gutter) + 150px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud--events li {
+    animation: none;
+  }
+}

@@ -12,6 +12,7 @@ import {
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import type { WarehouseLayout } from '../sim/layout';
 import type { Vec2 } from '../sim/graph';
+import type { FloorGrid } from '../sim/floor';
 import { BoxBatch, cylinderInstances, textPlane } from './builders';
 import { BELT_TOP, ROOF_Y, WALL_HEIGHT, inboundPile, stagingPile } from './floorplan';
 import { PALETTE, mix } from './palette';
@@ -46,6 +47,7 @@ export class WarehouseView {
 
   constructor(
     private readonly layout: WarehouseLayout,
+    private readonly grid: FloorGrid,
     private readonly tracker: ResourceTracker,
   ) {
     const t = tracker;
@@ -202,7 +204,6 @@ export class WarehouseView {
   }
 
   private buildMarkings() {
-    const { minX, maxX } = this.layout.bounds;
     const amber = this.std(PALETTE.amber, {
       roughness: 0.6,
       emissive: PALETTE.amber,
@@ -211,9 +212,17 @@ export class WarehouseView {
     const lines = new BoxBatch();
     const y = 0.012;
     const h = 0.01;
-    // Pedestrian walkways along the racks.
-    for (const z of [-7.6, 7.6]) lines.addSpan(minX + 9, z, maxX - 22, z, 0.12, y, y + h);
-    for (const z of [-6.8, 6.8]) lines.addSpan(minX + 9, z, maxX - 22, z, 0.12, y, y + h);
+    // Robot passages under the conveyors: hazard bars across the way through.
+    for (const g of this.layout.gates) {
+      const cell = this.grid.cellOf(g.x, g.z);
+      // The passage runs across the conveyor: along z if the cells beside it in x are walls.
+      const alongZ = !this.grid.passable(this.grid.neighbor(cell, 0));
+      for (let k = -2; k <= 2; k++) {
+        const off = k * 0.42;
+        if (alongZ) lines.add(g.x, y + h / 2, g.z + off, 0.9, h, 0.18, 0);
+        else lines.add(g.x + off, y + h / 2, g.z, 0.18, h, 0.9, 0);
+      }
+    }
     // Outline every pile area so empty staging and backlog zones still read on the floor.
     const outline = (x0: number, z0: number, x1: number, z1: number) => {
       lines.addSpan(x0, z0, x1, z0, 0.1, y, y + h);
@@ -231,6 +240,60 @@ export class WarehouseView {
       outline(a.x0 - 0.15, a.z0 - a.zDir * 0.15, x1 + 0.15, z1 + a.zDir * 0.15);
     }
     this.add(lines.build(this.tracker, amber, { receive: true }));
+
+    // Robot stations: parking slot outlines, charger pads, bypass points.
+    const slotLines = new BoxBatch();
+    const pads = new BoxBatch();
+    const posts = new BoxBatch();
+    const bypass = new BoxBatch();
+    for (const st of this.grid.stations) {
+      if (st.kind === 'parking') {
+        const r = 0.45;
+        slotLines.addSpan(st.x - r, st.z - r, st.x + r, st.z - r, 0.04, y, y + h);
+        slotLines.addSpan(st.x - r, st.z + r, st.x + r, st.z + r, 0.04, y, y + h);
+        slotLines.addSpan(st.x - r, st.z - r, st.x - r, st.z + r, 0.04, y, y + h);
+        slotLines.addSpan(st.x + r, st.z - r, st.x + r, st.z + r, 0.04, y, y + h);
+      } else if (st.kind === 'charger') {
+        pads.add(st.x, y + 0.005, st.z, 0.8, 0.02, 0.8);
+        // Charging post against the wall the station faces.
+        const dz = st.face === 1 ? 0.6 : -0.6;
+        posts.add(st.x, 0.45, st.z + dz, 0.5, 0.9, 0.16);
+      } else if (st.kind === 'bypass') {
+        const r = 0.42;
+        bypass.addSpan(st.x - r, st.z - r, st.x + r, st.z - r, 0.06, y, y + h);
+        bypass.addSpan(st.x - r, st.z + r, st.x + r, st.z + r, 0.06, y, y + h);
+        bypass.addSpan(st.x - r, st.z - r, st.x - r, st.z + r, 0.06, y, y + h);
+        bypass.addSpan(st.x + r, st.z - r, st.x + r, st.z + r, 0.06, y, y + h);
+      }
+    }
+    this.add(
+      slotLines.build(
+        this.tracker,
+        this.std(mix('steel', 'ice', 0.35).getHex(), { roughness: 0.6 }),
+      ),
+    );
+    this.add(
+      pads.build(
+        this.tracker,
+        this.std(PALETTE.amber, {
+          emissive: PALETTE.amber,
+          emissiveIntensity: 0.35,
+          roughness: 0.5,
+        }),
+        { receive: true },
+      ),
+    );
+    this.add(
+      posts.build(this.tracker, this.std(PALETTE.steel, { metalness: 0.5, roughness: 0.4 }), {
+        cast: true,
+      }),
+    );
+    this.add(
+      bypass.build(
+        this.tracker,
+        this.std(PALETTE.cyan, { emissive: PALETTE.cyan, emissiveIntensity: 0.6, roughness: 0.5 }),
+      ),
+    );
 
     // Conveyor numbers stenciled on the floor, next to each belt's midpoint.
     for (const e of this.layout.graph.edges) {
@@ -260,7 +323,7 @@ export class WarehouseView {
     });
     const glowMat = this.std(PALETTE.cyan, {
       emissive: PALETTE.cyan,
-      emissiveIntensity: 1.2,
+      emissiveIntensity: 0.55,
       roughness: 0.4,
     });
     const frames = new BoxBatch();
@@ -306,6 +369,8 @@ export class WarehouseView {
           const t = (k + 0.5) / legCount;
           const x = a.x + (b.x - a.x) * t;
           const z = a.z + (b.z - a.z) * t;
+          // No legs inside a robot passage: the belt is raised over it.
+          if (this.layout.gates.some((g) => Math.hypot(g.x - x, g.z - z) < 0.7)) continue;
           for (const side of [-1, 1]) {
             legs.add(
               x + nx * side * 0.38,

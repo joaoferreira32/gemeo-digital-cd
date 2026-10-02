@@ -8,7 +8,9 @@ import {
   type BufferGeometry,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { World } from '../sim/world';
+import type { WarehouseLayout } from '../sim/layout';
+import { DOCK_STRIDE, TRUCK_STATES } from '../sim/snapshot';
+import type { SimFrame } from '../link/frames';
 import { PALETTE, mix } from './palette';
 import type { ResourceTracker } from './resources';
 
@@ -29,7 +31,9 @@ export class TruckView {
   private readonly loadLights: MeshStandardMaterial[] = [];
 
   constructor(
-    private readonly world: World,
+    private readonly layout: WarehouseLayout,
+    /** Seconds a full truck stays away (SimConfig.truckAwayTime). */
+    private readonly awayTime: number,
     tracker: ResourceTracker,
   ) {
     const parts = buildTruckGeometries(tracker);
@@ -69,14 +73,14 @@ export class TruckView {
       return g;
     };
 
-    const { graph, bounds } = world.layout;
-    for (const nodeId of world.layout.dockNodes) {
+    const { graph, bounds } = layout;
+    for (const nodeId of layout.dockNodes) {
       const truck = makeTruck(true);
       truck.position.set(bounds.maxX + 0.4, 0, graph.node(nodeId).pos.z);
       this.group.add(truck);
       this.outbound.push(truck);
     }
-    for (const nodeId of world.layout.inboundNodes) {
+    for (const nodeId of layout.inboundNodes) {
       const truck = makeTruck(false);
       truck.rotation.y = Math.PI;
       truck.position.set(bounds.minX - 0.4, 0, graph.node(nodeId).pos.z);
@@ -84,16 +88,16 @@ export class TruckView {
     }
   }
 
-  update(time: number, reducedMotion: boolean): void {
-    const away = this.world.config.truckAwayTime;
-    const homeX = this.world.layout.bounds.maxX + 0.4;
-    this.world.docks.forEach((dock, i) => {
-      const g = this.outbound[i] as Group;
-      const truck = dock.truck;
+  update(frame: SimFrame, time: number, reducedMotion: boolean): void {
+    const homeX = this.layout.bounds.maxX + 0.4;
+    const docks = frame.s.docks;
+    this.outbound.forEach((g, i) => {
+      const state = TRUCK_STATES[docks[i * DOCK_STRIDE + 1] as number];
+      const awayLeft = docks[i * DOCK_STRIDE + 2] as number;
       let d = 0;
-      if (truck.state === 'away') {
-        const out = Math.min(1, (away - truck.awayLeft) / DRIVE_TIME);
-        const back = Math.min(1, truck.awayLeft / DRIVE_TIME);
+      if (state === 'away') {
+        const out = Math.min(1, (this.awayTime - awayLeft) / DRIVE_TIME);
+        const back = Math.min(1, awayLeft / DRIVE_TIME);
         // Ease out of the door, stay away, ease back in.
         d = DRIVE_DISTANCE * Math.min(out * out, back * back);
       }
@@ -101,7 +105,7 @@ export class TruckView {
       g.visible = d < DRIVE_DISTANCE - 0.5;
       const pulse = reducedMotion ? 1 : 0.6 + 0.4 * Math.sin(time * 6);
       (this.loadLights[i] as MeshStandardMaterial).emissiveIntensity =
-        truck.state === 'loading' ? 2.2 * pulse : 0;
+        state === 'loading' ? 2.2 * pulse : 0;
     });
   }
 }
