@@ -10,13 +10,39 @@ export interface QualitySettings {
   reflection: boolean;
   shadows: boolean;
   shadowMapSize: number;
+  /** PCF filter radius in texels: larger = softer shadow edges. */
+  shadowRadius: number;
   maxPixelRatio: number;
+  /** Light trails behind the robots. */
+  trails: boolean;
 }
 
+/** Bloom: full resolution with MSAA on alta, half resolution on média, off on baixa (see post.ts). */
 export const QUALITY_SETTINGS: Record<QualityLevel, QualitySettings> = {
-  alta: { reflection: true, shadows: true, shadowMapSize: 2048, maxPixelRatio: 2 },
-  media: { reflection: false, shadows: true, shadowMapSize: 1024, maxPixelRatio: 1.5 },
-  baixa: { reflection: false, shadows: false, shadowMapSize: 512, maxPixelRatio: 1 },
+  alta: {
+    reflection: true,
+    shadows: true,
+    shadowMapSize: 2048,
+    shadowRadius: 4,
+    maxPixelRatio: 2,
+    trails: true,
+  },
+  media: {
+    reflection: false,
+    shadows: true,
+    shadowMapSize: 1024,
+    shadowRadius: 2.5,
+    maxPixelRatio: 1.5,
+    trails: true,
+  },
+  baixa: {
+    reflection: false,
+    shadows: false,
+    shadowMapSize: 512,
+    shadowRadius: 1,
+    maxPixelRatio: 1,
+    trails: false,
+  },
 };
 
 const ORDER: QualityLevel[] = ['alta', 'media', 'baixa'];

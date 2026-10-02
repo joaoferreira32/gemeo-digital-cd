@@ -8,6 +8,15 @@ import {
   type Conveyor,
   type ConveyorStatus,
 } from './conveyor';
+import {
+  FailureInjector,
+  type FailureHost,
+  type FailureKind,
+  type SimEvent,
+  type SimEventKind,
+} from './failures';
+import { DEFAULT_FLEET, Fleet, type BypassLane, type FleetConfig, type FleetHost } from './fleet';
+import type { Station } from './floor';
 import { createDefaultLayout, type WarehouseLayout } from './layout';
 import { Metrics } from './metrics';
 import { createPacket, type Packet } from './packet';
@@ -35,6 +44,14 @@ export interface SimConfig {
   readonly truckAwayTime: number;
   /** Window of the "recent" metrics, in simulation seconds. */
   readonly metricsWindow: number;
+  /** Robots (AGVs) on the floor; 0 turns the fleet off. */
+  readonly robots: number;
+  /** Stock orders per second picked from the racks by robots. */
+  readonly rackOrderRate: number;
+  /** Fleet tuning (motion, battery, capacity); defaults in fleet.ts. */
+  readonly fleet?: Partial<FleetConfig>;
+  /** Robots bridge broken conveyors without alternative (off = packets just wait). */
+  readonly robotBypass: boolean;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -49,7 +66,20 @@ export const DEFAULT_CONFIG: SimConfig = {
   truckLoadRate: 4,
   truckAwayTime: 25,
   metricsWindow: 120,
+  robots: 40,
+  rackOrderRate: 0.25,
+  robotBypass: true,
 };
+
+/** Events kept for the UI (captions, history). */
+const MAX_EVENTS = 300;
+
+/** Conveyors without a conveyor alternative, bridged by robots when broken. */
+const BYPASSES: readonly [string, string][] = [
+  ['A4', 'S1'],
+  ['B3', 'B4'],
+  ['B4', 'S2'],
+];
 
 export interface Inbound {
   readonly nodeId: number;
@@ -75,6 +105,8 @@ export interface Dock {
   readonly staged: Packet[];
   serviceProgress: number;
   readonly truck: Truck;
+  /** Dock out of service until this time (failure), seconds. */
+  blockedUntil: number;
 }
 
 /** Aggregates recomputed at the end of every step (the HUD and tests read these). */
@@ -82,8 +114,14 @@ export interface WorldStats {
   backlog: number;
   onConveyors: number;
   staged: number;
-  /** Packets queuing: everything in the backlog plus packets blocked on a belt. */
+  /** Packets queuing: backlog, packets blocked on a belt and packets waiting for a bypass robot. */
   waiting: number;
+  /** Packets in bypass buffers (both ends). */
+  inBypass: number;
+  /** Packets carried by robots. */
+  onRobots: number;
+  /** Stock-order packets still on their rack shelf. */
+  rackPending: number;
 }
 
 /**
@@ -91,7 +129,7 @@ export interface WorldStats {
  * No rendering, no wall clock, no Math.random: `step()` advances exactly `dt`
  * seconds and the same config always produces the same sequence of states.
  */
-export class World {
+export class World implements FleetHost, FailureHost {
   readonly config: SimConfig;
   readonly layout: WarehouseLayout;
   /** One conveyor per graph edge, indexed by edge id. */
@@ -99,7 +137,26 @@ export class World {
   readonly inbounds: Inbound[];
   readonly docks: Dock[];
   readonly metrics: Metrics;
-  readonly stats: WorldStats = { backlog: 0, onConveyors: 0, staged: 0, waiting: 0 };
+  readonly stats: WorldStats = {
+    backlog: 0,
+    onConveyors: 0,
+    staged: 0,
+    waiting: 0,
+    inBypass: 0,
+    onRobots: 0,
+    rackPending: 0,
+  };
+  readonly lanes: BypassLane[] = [];
+  /** null when the world runs without robots. */
+  readonly fleet: Fleet | null;
+  /** Lane by conveyor edge id. */
+  private readonly laneByEdge = new Map<number, BypassLane>();
+  readonly failures: FailureInjector;
+  /** Latest events, oldest first (bounded). */
+  readonly events: SimEvent[] = [];
+  private nextEventId = 1;
+  private baseArrivalRate: number;
+  private surgeFactor = 1;
   tick = 0;
 
   private router: Router;
@@ -120,6 +177,7 @@ export class World {
     );
     this.orderRng = new Rng(deriveSeed(this.config.seed, 'orders'));
     this.arrivalRate = this.config.arrivalRate;
+    this.baseArrivalRate = this.config.arrivalRate;
     this.destinationWeights = this.config.destinationWeights ?? layout.dockNodes.map(() => 1);
     if (this.destinationWeights.length !== layout.dockNodes.length) {
       throw new Error('destinationWeights must have one entry per dock');
@@ -135,10 +193,110 @@ export class World {
       staged: [],
       serviceProgress: 0,
       truck: { state: 'docked', load: 0, awayLeft: 0, loadProgress: 0 },
+      blockedUntil: 0,
     }));
     this.roundRobin = new Int32Array(graph.nodes.length);
     this.metrics = new Metrics(this.config.metricsWindow);
     this.router = new ShortestPathRouter(graph, layout.dockNodes);
+    if (this.config.robots > 0) {
+      const fleetConfig: FleetConfig = {
+        ...DEFAULT_FLEET,
+        ...this.config.fleet,
+        robots: this.config.robots,
+        rackOrderRate: this.config.rackOrderRate,
+      };
+      this.fleet = new Fleet(layout, this, fleetConfig, this.config.seed, this.config.dt);
+      this.createLanes(this.fleet);
+    } else {
+      this.fleet = null;
+    }
+    this.failures = new FailureInjector(this, this.config.seed);
+  }
+
+  private createLanes(fleet: Fleet): void {
+    const { graph } = this.layout;
+    const byName = (name: string) => {
+      const n = graph.nodes.find((x) => x.name === name);
+      if (!n) throw new Error(`Node ${name} missing`);
+      return n;
+    };
+    const station = (nodeId: number): Station => {
+      const st = fleet.grid.stations.find((x) => x.kind === 'bypass' && x.ref === nodeId);
+      if (!st) throw new Error(`No bypass station at node ${nodeId}`);
+      return st;
+    };
+    BYPASSES.forEach(([from, to], id) => {
+      const a = byName(from);
+      const b = byName(to);
+      const edge = graph.edges.find((e) => e.from === a.id && e.to === b.id);
+      if (!edge) throw new Error(`No conveyor ${from} to ${to}`);
+      const lane: BypassLane = {
+        id,
+        edgeId: edge.id,
+        label: `${from}→${to}`,
+        pickupNode: a.id,
+        dropNode: b.id,
+        pickupStation: station(a.id),
+        dropStation: station(b.id),
+        pickup: [],
+        drop: [],
+        capacity: 18,
+        active: false,
+        carried: 0,
+      };
+      this.lanes.push(lane);
+      this.laneByEdge.set(edge.id, lane);
+    });
+  }
+
+  // ---------------------------------------------------------------- FleetHost
+
+  createRackPacket(dockIndex: number, createdAt: number): Packet {
+    const p = createPacket(
+      this.nextPacketId++,
+      -1,
+      this.layout.dockNodes[dockIndex] as number,
+      createdAt,
+    );
+    p.state = 'rack';
+    this.metrics.created++;
+    return p;
+  }
+
+  deliverToDock(dockIndex: number, packets: Packet[], now: number): boolean {
+    const dock = this.docks[dockIndex] as Dock;
+    if (dock.blockedUntil > now) return false;
+    if (dock.staged.length + packets.length > this.config.stagingCapacity) return false;
+    for (const p of packets) {
+      if (p.destination !== dock.nodeId) this.metrics.misrouted++;
+      p.state = 'staged';
+      p.blocked = false;
+      p.deliveredAt = now;
+      dock.staged.push(p);
+      this.metrics.recordDelivery(now, now - p.createdAt);
+      this.metrics.deliveredByRobots++;
+    }
+    return true;
+  }
+
+  takeFromLane(lane: BypassLane, max: number): Packet[] {
+    return lane.pickup.splice(0, Math.min(max, lane.pickup.length));
+  }
+
+  dropIntoLane(lane: BypassLane, packets: Packet[]): boolean {
+    if (lane.drop.length + packets.length > lane.capacity) return false;
+    for (const p of packets) {
+      p.state = 'bypass';
+      lane.drop.push(p);
+    }
+    return true;
+  }
+
+  /** Blocks a dock (no sorting, no robot drops) until `until` seconds. */
+  setDockBlocked(dockIndex: number, until: number): void {
+    const dock = this.docks[dockIndex];
+    if (!dock) throw new Error(`Unknown dock ${dockIndex}`);
+    dock.blockedUntil = until;
   }
 
   /** Simulation time in seconds (derived from the integer tick, so it never drifts). */
@@ -160,21 +318,86 @@ export class World {
     c.status = status;
   }
 
-  /** Changes the order rate from now on; already scheduled arrivals are kept. */
+  /** Changes the base order rate from now on; already scheduled arrivals are kept. */
   setArrivalRate(rate: number): void {
     if (!(rate > 0)) throw new Error('arrival rate must be positive');
-    this.arrivalRate = rate;
+    this.baseArrivalRate = rate;
+    this.arrivalRate = rate * this.surgeFactor;
+  }
+
+  // ---------------------------------------------------------------- FailureHost
+
+  get conveyorCount(): number {
+    return this.conveyors.length;
+  }
+
+  conveyorLabel(edgeId: number): string {
+    const { graph } = this.layout;
+    const e = graph.edge(edgeId);
+    return `${e.name} (${graph.node(e.from).name}→${graph.node(e.to).name})`;
+  }
+
+  isConveyorBroken(edgeId: number): boolean {
+    return this.conveyors[edgeId]?.status !== 'ok';
+  }
+
+  get bypassEdges(): number[] {
+    return this.lanes.map((l) => l.edgeId);
+  }
+
+  setConveyorBroken(edgeId: number, broken: boolean): void {
+    this.setConveyorStatus(edgeId, broken ? 'broken' : 'ok');
+  }
+
+  /** Multiplies the order rates (inbound and racks) while a surge lasts. */
+  setSurge(factor: number): void {
+    this.surgeFactor = factor;
+    this.arrivalRate = this.baseArrivalRate * factor;
+    this.fleet?.setRackOrderRate(this.config.rackOrderRate * (factor > 1 ? 2 : 1));
+  }
+
+  get robotCount(): number {
+    return this.fleet?.robots.length ?? 0;
+  }
+
+  canBreakRobot(robotId: number): boolean {
+    const r = this.fleet?.robots[robotId];
+    return !!r && r.stage !== 'defect' && r.stage !== 'charging';
+  }
+
+  setRobotDefect(robotId: number, until: number): void {
+    this.fleet?.setDefect(robotId, until);
+  }
+
+  get dockCount(): number {
+    return this.docks.length;
+  }
+
+  emit(kind: SimEventKind, text: string, failure?: FailureKind, target?: number): void {
+    const e: SimEvent = {
+      id: this.nextEventId++,
+      time: this.time,
+      kind,
+      text,
+      ...(failure !== undefined ? { failure } : {}),
+      ...(target !== undefined ? { target } : {}),
+    };
+    this.events.push(e);
+    if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
   }
 
   step(): void {
     this.tick++;
     const now = this.time;
     const dt = this.config.dt;
+    this.failures.update(now);
     this.generateOrders(now);
+    this.updateLanes();
     for (const c of this.conveyors) advanceConveyor(c, dt);
     this.serveDocks(now, dt);
     this.transferAtJunctions();
     this.induct();
+    this.fleet?.update(this.tick, now, dt);
     this.updateTrucks(dt);
     this.metrics.evict(now);
     this.updateStats();
@@ -182,6 +405,24 @@ export class World {
 
   stepMany(steps: number): void {
     for (let i = 0; i < steps; i++) this.step();
+  }
+
+  private updateLanes(): void {
+    for (const lane of this.lanes) {
+      const active = this.conveyors[lane.edgeId]?.status !== 'ok';
+      if (active === lane.active) continue;
+      lane.active = active;
+      if (!this.fleet || !this.config.robotBypass) continue;
+      if (active) {
+        lane.carried = 0;
+        this.emit('bypass-start', `Robôs assumem o desvio ${lane.label}`);
+      } else {
+        this.emit(
+          'bypass-end',
+          `Desvio ${lane.label} encerrado: ${lane.carried} pacotes levados por robôs`,
+        );
+      }
+    }
   }
 
   private nextInterval(): number {
@@ -208,6 +449,7 @@ export class World {
   private serveDocks(now: number, dt: number): void {
     const { graph } = this.layout;
     for (const dock of this.docks) {
+      if (dock.blockedUntil > now) continue;
       dock.serviceProgress = Math.min(1, dock.serviceProgress + dt * this.config.dockServiceRate);
       if (dock.serviceProgress < 1 || dock.staged.length >= this.config.stagingCapacity) continue;
       const inEdges = graph.node(dock.nodeId).inEdges;
@@ -230,7 +472,12 @@ export class World {
     }
   }
 
-  /** Moves packets waiting at the end of a belt onto the next belt chosen by the router. */
+  /**
+   * Moves packets waiting at the end of a belt onto the next belt chosen by
+   * the router. A packet whose next belt is a broken single point of failure
+   * goes into that conveyor's robot bypass instead; packets that robots
+   * dropped at a node join it like one more input.
+   */
   private transferAtJunctions(): void {
     const { graph } = this.layout;
     for (const node of graph.nodes) {
@@ -243,15 +490,47 @@ export class World {
         const from = this.conveyors[inEdges[idx] as number] as Conveyor;
         const head = readyHead(from);
         if (!head) continue;
-        const outEdge = this.router.nextEdge(node.id, head);
-        const to = outEdge >= 0 ? this.conveyors[outEdge] : undefined;
-        if (!to || !canAccept(to)) continue;
-        pushPacket(to, popHead(from));
+        if (!this.forward(node.id, head, from)) continue;
         // The next round starts after the last edge served, so no input starves.
         nextStart = (idx + 1) % inEdges.length;
       }
       this.roundRobin[node.id] = nextStart;
+      for (const lane of this.lanes) {
+        if (lane.dropNode !== node.id) continue;
+        const head = lane.drop[0];
+        if (head && this.forward(node.id, head, null)) lane.drop.shift();
+      }
     }
+  }
+
+  /**
+   * Sends `p` (head of belt `from`, or of a bypass drop buffer when `from` is
+   * null) from `nodeId` onto its next belt or into a bypass. False: it waits.
+   */
+  private forward(nodeId: number, p: Packet, from: Conveyor | null): boolean {
+    const outEdge = this.router.nextEdge(nodeId, p);
+    const to = outEdge >= 0 ? this.conveyors[outEdge] : undefined;
+    if (!to) return false;
+    if (canAccept(to)) {
+      if (from) popHead(from);
+      pushPacket(to, p);
+      return true;
+    }
+    const lane = this.laneByEdge.get(outEdge);
+    if (
+      this.fleet &&
+      this.config.robotBypass &&
+      lane?.active &&
+      lane.pickup.length < lane.capacity
+    ) {
+      if (from) popHead(from);
+      p.edge = -1;
+      p.state = 'bypass';
+      p.blocked = true;
+      lane.pickup.push(p);
+      return true;
+    }
+    return false;
   }
 
   /** Moves the oldest backlog packet of each inbound onto its first conveyor. */
@@ -305,16 +584,35 @@ export class World {
     let onConveyors = 0;
     let blocked = 0;
     let staged = 0;
+    let inBypass = 0;
+    let waitingBypass = 0;
     for (const inbound of this.inbounds) backlog += inbound.backlog.length;
     for (const c of this.conveyors) {
       onConveyors += c.packets.length;
       for (const p of c.packets) if (p.blocked) blocked++;
     }
     for (const dock of this.docks) staged += dock.staged.length;
+    for (const lane of this.lanes) {
+      inBypass += lane.pickup.length + lane.drop.length;
+      waitingBypass += lane.pickup.length;
+    }
+    let onRobots = 0;
+    let rackPending = 0;
+    if (this.fleet) {
+      for (const r of this.fleet.robots) {
+        onRobots += r.load.length;
+        if (r.job?.kind === 'rack' && r.load.length === 0)
+          rackPending += r.job.order.packets.length;
+      }
+      for (const o of this.fleet.orders) rackPending += o.packets.length;
+    }
     this.stats.backlog = backlog;
     this.stats.onConveyors = onConveyors;
     this.stats.staged = staged;
-    this.stats.waiting = backlog + blocked;
+    this.stats.inBypass = inBypass;
+    this.stats.onRobots = onRobots;
+    this.stats.rackPending = rackPending;
+    this.stats.waiting = backlog + blocked + waitingBypass;
   }
 }
 
@@ -331,6 +629,9 @@ function validateConfig(c: SimConfig): void {
     'truckAwayTime',
     'metricsWindow',
   ];
+  if (!(c.robots >= 0) || !Number.isInteger(c.robots))
+    throw new Error('robots must be a whole number');
+  if (!(c.rackOrderRate >= 0)) throw new Error('rackOrderRate cannot be negative');
   for (const key of positive) {
     const v = c[key];
     if (typeof v !== 'number' || !(v > 0)) throw new Error(`${key} must be positive`);

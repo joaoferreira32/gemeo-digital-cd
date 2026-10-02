@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark" />
     <meta
       name="description"
-      content="Gêmeo digital de um centro de distribuição: simulação 3D em tempo real de esteiras, pacotes e docas, no navegador."
+      content="Gêmeo digital de um centro de distribuição: simulação 3D em tempo real de esteiras, pacotes, robôs e falhas, no navegador."
     />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>Gêmeo Digital · CD</title>
@@ -14,7 +14,7 @@
   <body>
     <canvas
       id="scene"
-      aria-label="Vista 3D do centro de distribuição: esteiras levando pacotes das entradas até as docas"
+      aria-label="Vista 3D do centro de distribuição: esteiras levando pacotes das entradas até as docas e robôs circulando entre racks, docas e estações"
       role="img"
     ></canvas>
 
@@ -30,9 +30,12 @@
       <p class="brand__clock">
         <span id="sim-state" class="state-dot" data-state="running">Rodando</span>
         <span class="mono" id="sim-clock">T+ 00:00:00</span>
+        <span class="mono muted" id="sim-speed">1×</span>
         <span class="mono muted" id="sim-seed"></span>
       </p>
     </header>
+
+    <ol id="events" class="hud--events" aria-live="polite" aria-label="Eventos da simulação"></ol>
 
     <section class="hud hud--metrics" aria-label="Métricas da simulação">
       <article class="metric" data-tone="alert">
@@ -55,6 +58,7 @@
         <p class="metric__value mono" id="m-throughput">0</p>
         <p class="metric__sub">pacotes por minuto</p>
       </article>
+      <p class="fleet-line" id="m-fleet">Robôs: —</p>
     </section>
 
     <nav class="hud hud--controls" aria-label="Controles">
@@ -66,12 +70,15 @@
           <kbd>2</kbd> Chão
         </button>
         <button type="button" data-camera="follow" aria-keyshortcuts="3" aria-pressed="false">
-          <kbd>3</kbd> Seguir pacote
+          <kbd>3</kbd> Seguir robô
         </button>
       </div>
       <div class="group" role="group" aria-label="Simulação">
         <button type="button" id="btn-pause" aria-keyshortcuts="Space" aria-pressed="false">
-          <kbd>Espaço</kbd> Pausar
+          <kbd>Espaço</kbd> <span class="label">Pausar</span>
+        </button>
+        <button type="button" id="btn-speed" aria-keyshortcuts="Period">
+          <kbd>.</kbd> Velocidade <span class="mono" id="speed-label">1×</span>
         </button>
         <button type="button" id="btn-stress" aria-keyshortcuts="T" aria-pressed="false">
           <kbd>T</kbd> Teste de carga
@@ -80,7 +87,21 @@
           <kbd>⇧R</kbd> Reiniciar
         </button>
       </div>
+      <div class="group group--failures" role="group" aria-label="Falhas">
+        <button type="button" data-failure="conveyor" aria-keyshortcuts="5">
+          <kbd>5</kbd> Esteira
+        </button>
+        <button type="button" data-failure="surge" aria-keyshortcuts="6"><kbd>6</kbd> Pico</button>
+        <button type="button" data-failure="robot" aria-keyshortcuts="7"><kbd>7</kbd> Robô</button>
+        <button type="button" data-failure="dock" aria-keyshortcuts="8"><kbd>8</kbd> Doca</button>
+        <button type="button" id="btn-auto" aria-keyshortcuts="9" aria-pressed="false">
+          <kbd>9</kbd> Automático
+        </button>
+      </div>
       <div class="group" role="group" aria-label="Exibição">
+        <button type="button" id="btn-heat" aria-keyshortcuts="M" aria-pressed="false">
+          <kbd>M</kbd> Mapa de calor: <span id="heat-label">Desligado</span>
+        </button>
         <button type="button" id="btn-quality" aria-keyshortcuts="G"><kbd>G</kbd> Qualidade</button>
         <button
           type="button"
@@ -104,9 +125,38 @@
       <p id="p-hidden-row" hidden>
         <span class="muted">Além da pilha visível</span> <span class="mono" id="p-hidden">0</span>
       </p>
-      <p id="p-follow" hidden>
-        <span class="muted">Seguindo</span> <span class="mono" id="p-follow-id"></span>
+      <p><span class="muted">Simulação</span> <span id="p-sim">—</span></p>
+    </aside>
+
+    <aside id="heat-legend" class="hud hud--heat" aria-label="Legenda do mapa de calor" hidden>
+      <p class="heat__title" id="heat-title">Ocupação</p>
+      <div class="heat__bar" aria-hidden="true"></div>
+      <p class="heat__scale"><span>baixa</span><span>alta</span></p>
+    </aside>
+
+    <aside id="robot-panel" class="hud hud--robot" aria-label="Robô seguido" hidden>
+      <p class="robot__title">
+        <span id="r-name">Robô 1</span>
+        <kbd>N</kbd> <span class="muted">próximo</span>
       </p>
+      <p class="robot__state" id="r-state">—</p>
+      <div class="robot__battery">
+        <span class="muted">Bateria</span>
+        <div class="bar" role="meter" aria-valuemin="0" aria-valuemax="100" id="r-battery-meter">
+          <span id="r-battery-fill"></span>
+        </div>
+        <span class="mono" id="r-battery">—</span>
+      </div>
+      <dl>
+        <dt>Carga</dt>
+        <dd id="r-load">—</dd>
+        <dt>Tarefa</dt>
+        <dd id="r-task">—</dd>
+        <dt>Rota</dt>
+        <dd id="r-route">—</dd>
+        <dt>Velocidade</dt>
+        <dd class="mono" id="r-speed">—</dd>
+      </dl>
     </aside>
 
     <section id="help" class="hud hud--help" aria-label="Atalhos e legenda" hidden>
@@ -127,9 +177,19 @@
         <dt><kbd>+</kbd><kbd>−</kbd></dt>
         <dd>zoom</dd>
         <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt>
-        <dd>câmeras aérea, chão e seguir pacote</dd>
+        <dd>câmeras aérea, chão e seguir robô</dd>
+        <dt><kbd>N</kbd></dt>
+        <dd>seguir o próximo robô</dd>
         <dt><kbd>Espaço</kbd></dt>
         <dd>pausar / continuar</dd>
+        <dt><kbd>,</kbd><kbd>.</kbd></dt>
+        <dd>velocidade 1×, 4× ou 16×</dd>
+        <dt><kbd>5</kbd>…<kbd>8</kbd></dt>
+        <dd>falhas: esteira quebrada, pico de pedidos, robô com defeito, doca bloqueada</dd>
+        <dt><kbd>9</kbd></dt>
+        <dd>falhas automáticas</dd>
+        <dt><kbd>M</kbd></dt>
+        <dd>mapa de calor: ocupação, tempo de espera, tráfego de robôs</dd>
         <dt><kbd>T</kbd></dt>
         <dd>teste de carga (taxa de pedidos alta)</dd>
         <dt><kbd>G</kbd></dt>
@@ -139,17 +199,28 @@
       </dl>
       <h2>Legenda</h2>
       <ul class="legend">
-        <li><span class="swatch" data-color="amber"></span> Pacote</li>
         <li>
-          <span class="swatch" data-color="cyan"></span> Esteira em operação e estações de
-          transferência
+          <span class="swatch" data-color="amber"></span> Pacote (fica vermelho enquanto espera)
         </li>
-        <li><span class="swatch" data-color="alert"></span> Esteira parada (falha)</li>
+        <li>
+          <span class="swatch" data-color="cyan"></span> Esteira em operação, robô trabalhando, rota
+          planejada
+        </li>
+        <li>
+          <span class="swatch" data-color="amber-dim"></span> Robô recarregando ou com bateria baixa
+        </li>
+        <li>
+          <span class="swatch" data-color="alert"></span> Falha: esteira parada, robô com defeito,
+          doca bloqueada
+        </li>
         <li>
           <span class="swatch" data-color="ice"></span> Caixas plásticas do estoque (decoração)
         </li>
       </ul>
-      <p class="muted"><kbd>E1</kbd>…<kbd>E24</kbd> pintados no piso identificam cada esteira.</p>
+      <p class="muted">
+        <kbd>E1</kbd>…<kbd>E24</kbd> no piso identificam as esteiras; faixas âmbar marcam as
+        passagens dos robôs por baixo delas.
+      </p>
     </section>
 
     <script type="module" src="/src/main.ts"></script>

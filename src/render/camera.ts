@@ -51,6 +51,11 @@ export class OrbitCamera {
     this.apply();
   }
 
+  /** Current distance from the camera to its target (meters). */
+  get distance(): number {
+    return this.pose.radius;
+  }
+
   setReducedMotion(v: boolean): void {
     this.reducedMotion = v;
   }

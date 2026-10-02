@@ -40,5 +40,20 @@ export function fingerprint(world: World): string {
     mix(d.truck.awayLeft);
     for (const p of d.staged) mix(p.id);
   }
+  for (const lane of world.lanes) {
+    for (const p of lane.pickup) mix(p.id);
+    for (const p of lane.drop) mix(p.id);
+  }
+  if (world.fleet) {
+    for (const r of world.fleet.robots) {
+      mix(r.motion.x);
+      mix(r.motion.z);
+      mix(r.motion.heading);
+      mix(r.battery);
+      mix(r.load.length);
+      mix(r.cells.length);
+      mix(r.planStart);
+    }
+  }
   return (h >>> 0).toString(16).padStart(8, '0');
 }
