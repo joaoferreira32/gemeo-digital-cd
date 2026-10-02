@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Gêmeo digital de um centro de distribuição: simulação 3D em tempo real de esteiras, pacotes e docas, no navegador."
+    />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>Gêmeo Digital · CD</title>
+  </head>
+  <body>
+    <canvas
+      id="scene"
+      aria-label="Vista 3D do centro de distribuição: esteiras levando pacotes das entradas até as docas"
+      role="img"
+    ></canvas>
+
+    <div id="loading" class="loading" role="status">
+      <p class="loading__brand">Gêmeo Digital</p>
+      <p class="loading__text" id="loading-text">Gerando o galpão…</p>
+      <div class="loading__bar" aria-hidden="true"><span></span></div>
+    </div>
+
+    <header class="hud hud--brand">
+      <p class="brand__eyebrow">Gêmeo digital</p>
+      <h1 class="brand__title">Centro de Distribuição <span>CD-01</span></h1>
+      <p class="brand__clock">
+        <span id="sim-state" class="state-dot" data-state="running">Rodando</span>
+        <span class="mono" id="sim-clock">T+ 00:00:00</span>
+        <span class="mono muted" id="sim-seed"></span>
+      </p>
+    </header>
+
+    <section class="hud hud--metrics" aria-label="Métricas da simulação">
+      <article class="metric" data-tone="alert">
+        <h2 class="metric__label">Pacotes na fila</h2>
+        <p class="metric__value mono" id="m-waiting">0</p>
+        <p class="metric__sub" id="m-waiting-sub">entrada 0 · parados 0</p>
+      </article>
+      <article class="metric" data-tone="cyan">
+        <h2 class="metric__label">Entregues</h2>
+        <p class="metric__value mono" id="m-delivered">0</p>
+        <p class="metric__sub" id="m-delivered-sub">expedidos 0</p>
+      </article>
+      <article class="metric" data-tone="amber">
+        <h2 class="metric__label">Tempo médio no sistema</h2>
+        <p class="metric__value mono" id="m-cycle">—</p>
+        <p class="metric__sub" id="m-cycle-sub">últimos 120 s simulados</p>
+      </article>
+      <article class="metric" data-tone="ice">
+        <h2 class="metric__label">Vazão</h2>
+        <p class="metric__value mono" id="m-throughput">0</p>
+        <p class="metric__sub">pacotes por minuto</p>
+      </article>
+    </section>
+
+    <nav class="hud hud--controls" aria-label="Controles">
+      <div class="group" role="group" aria-label="Câmera">
+        <button type="button" data-camera="aerial" aria-keyshortcuts="1" aria-pressed="true">
+          <kbd>1</kbd> Aérea
+        </button>
+        <button type="button" data-camera="ground" aria-keyshortcuts="2" aria-pressed="false">
+          <kbd>2</kbd> Chão
+        </button>
+        <button type="button" data-camera="follow" aria-keyshortcuts="3" aria-pressed="false">
+          <kbd>3</kbd> Seguir pacote
+        </button>
+      </div>
+      <div class="group" role="group" aria-label="Simulação">
+        <button type="button" id="btn-pause" aria-keyshortcuts="Space" aria-pressed="false">
+          <kbd>Espaço</kbd> Pausar
+        </button>
+        <button type="button" id="btn-stress" aria-keyshortcuts="T" aria-pressed="false">
+          <kbd>T</kbd> Teste de carga
+        </button>
+        <button type="button" id="btn-restart" aria-keyshortcuts="Shift+R">
+          <kbd>⇧R</kbd> Reiniciar
+        </button>
+      </div>
+      <div class="group" role="group" aria-label="Exibição">
+        <button type="button" id="btn-quality" aria-keyshortcuts="G"><kbd>G</kbd> Qualidade</button>
+        <button
+          type="button"
+          id="btn-help"
+          aria-keyshortcuts="H"
+          aria-expanded="false"
+          aria-controls="help"
+        >
+          <kbd>H</kbd> Atalhos
+        </button>
+      </div>
+    </nav>
+
+    <aside class="hud hud--perf" aria-label="Desempenho da renderização">
+      <p><span class="muted">FPS</span> <span class="mono" id="p-fps">—</span></p>
+      <p>
+        <span class="muted">Qualidade</span> <span id="p-quality">Alta</span>
+        <span class="muted" id="p-quality-mode">(auto)</span>
+      </p>
+      <p><span class="muted">Pacotes desenhados</span> <span class="mono" id="p-drawn">0</span></p>
+      <p id="p-hidden-row" hidden>
+        <span class="muted">Além da pilha visível</span> <span class="mono" id="p-hidden">0</span>
+      </p>
+      <p id="p-follow" hidden>
+        <span class="muted">Seguindo</span> <span class="mono" id="p-follow-id"></span>
+      </p>
+    </aside>
+
+    <section id="help" class="hud hud--help" aria-label="Atalhos e legenda" hidden>
+      <h2>Atalhos</h2>
+      <dl>
+        <dt>Arrastar</dt>
+        <dd>girar a câmera</dd>
+        <dt>Botão direito / ⇧ + arrastar</dt>
+        <dd>mover (pan)</dd>
+        <dt>Roda do mouse</dt>
+        <dd>zoom em direção ao cursor</dd>
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / setas</dt>
+        <dd>mover</dd>
+        <dt><kbd>Q</kbd><kbd>E</kbd></dt>
+        <dd>girar</dd>
+        <dt><kbd>R</kbd><kbd>F</kbd></dt>
+        <dd>inclinar</dd>
+        <dt><kbd>+</kbd><kbd>−</kbd></dt>
+        <dd>zoom</dd>
+        <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt>
+        <dd>câmeras aérea, chão e seguir pacote</dd>
+        <dt><kbd>Espaço</kbd></dt>
+        <dd>pausar / continuar</dd>
+        <dt><kbd>T</kbd></dt>
+        <dd>teste de carga (taxa de pedidos alta)</dd>
+        <dt><kbd>G</kbd></dt>
+        <dd>trocar qualidade gráfica (desliga o modo automático)</dd>
+        <dt><kbd>⇧</kbd><kbd>R</kbd></dt>
+        <dd>reiniciar com a mesma seed</dd>
+      </dl>
+      <h2>Legenda</h2>
+      <ul class="legend">
+        <li><span class="swatch" data-color="amber"></span> Pacote</li>
+        <li>
+          <span class="swatch" data-color="cyan"></span> Esteira em operação e estações de
+          transferência
+        </li>
+        <li><span class="swatch" data-color="alert"></span> Esteira parada (falha)</li>
+        <li>
+          <span class="swatch" data-color="ice"></span> Caixas plásticas do estoque (decoração)
+        </li>
+      </ul>
+      <p class="muted"><kbd>E1</kbd>…<kbd>E24</kbd> pintados no piso identificam cada esteira.</p>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
