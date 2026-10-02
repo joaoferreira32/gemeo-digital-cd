@@ -5,10 +5,20 @@ import { shortestPathTree } from '../src/sim/graph';
 import { World } from '../src/sim/world';
 
 const MINUTE = 60 * 60; // steps at the default 60 Hz
+/** The phase-1 flow tests are about conveyors: they run without the robot fleet. */
+const CONVEYORS_ONLY = { robots: 0 } as const;
 
 function conservationHolds(w: World): boolean {
   const s = w.stats;
-  return w.metrics.created === s.backlog + s.onConveyors + s.staged + w.metrics.shipped;
+  const accounted =
+    s.backlog +
+    s.onConveyors +
+    s.staged +
+    w.metrics.shipped +
+    s.inBypass +
+    s.onRobots +
+    s.rackPending;
+  return w.metrics.created === accounted;
 }
 
 describe('World determinism', () => {
@@ -43,17 +53,18 @@ describe('World determinism', () => {
 });
 
 describe('World flow', () => {
-  it('conserves packets at every step', () => {
+  it('conserves packets at every step, robots included', () => {
     const w = new World({ seed: 5, arrivalRate: 6 });
     for (let i = 0; i < 10 * MINUTE; i++) {
       w.step();
       if (i % 97 === 0) expect(conservationHolds(w)).toBe(true);
     }
     expect(conservationHolds(w)).toBe(true);
-  });
+    expect(w.metrics.deliveredByRobots).toBeGreaterThan(0);
+  }, 60_000);
 
   it('delivers every packet to its own dock', () => {
-    const w = new World({ seed: 8 });
+    const w = new World({ ...CONVEYORS_ONLY, seed: 8 });
     w.stepMany(10 * MINUTE);
     expect(w.metrics.delivered).toBeGreaterThan(1000);
     expect(w.metrics.misrouted).toBe(0);
@@ -63,7 +74,7 @@ describe('World flow', () => {
   });
 
   it('keeps up with the default demand (stable backlog)', () => {
-    const w = new World({ seed: 21 });
+    const w = new World({ ...CONVEYORS_ONLY, seed: 21 });
     w.stepMany(15 * MINUTE);
     // Arrival rate is below every bottleneck's capacity, so nothing piles up.
     expect(w.stats.backlog).toBeLessThan(10);
@@ -73,7 +84,7 @@ describe('World flow', () => {
   });
 
   it('never delivers faster than the shortest path allows', () => {
-    const w = new World({ seed: 4 });
+    const w = new World({ ...CONVEYORS_ONLY, seed: 4 });
     const { graph, inboundNodes, dockNodes } = w.layout;
     let minTravel = Infinity;
     for (const dock of dockNodes) {
@@ -88,7 +99,7 @@ describe('World flow', () => {
   });
 
   it('builds a queue behind a broken conveyor and drains it after the repair', () => {
-    const w = new World({ seed: 33 });
+    const w = new World({ ...CONVEYORS_ONLY, seed: 33 });
     w.stepMany(2 * MINUTE);
     const feeder = w.conveyors.find(
       (c) => w.layout.graph.edge(c.edgeId).to === w.layout.dockNodes[2],
@@ -108,7 +119,7 @@ describe('World flow', () => {
   });
 
   it('never exceeds lane or staging capacity under overload', () => {
-    const w = new World({ seed: 77, arrivalRate: 30 });
+    const w = new World({ ...CONVEYORS_ONLY, seed: 77, arrivalRate: 30 });
     for (let i = 0; i < 5 * MINUTE; i++) {
       w.step();
       if (i % 113 !== 0) continue;
@@ -123,7 +134,7 @@ describe('World flow', () => {
   });
 
   it('ships full truckloads and brings the truck back', () => {
-    const w = new World({ seed: 12, truckCapacity: 20, truckAwayTime: 10 });
+    const w = new World({ ...CONVEYORS_ONLY, seed: 12, truckCapacity: 20, truckAwayTime: 10 });
     const dock = w.docks[0]!;
     const seen: string[] = [];
     for (let i = 0; i < 10 * MINUTE; i++) {

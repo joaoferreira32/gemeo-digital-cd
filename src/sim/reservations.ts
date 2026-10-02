@@ -167,6 +167,11 @@ export class ReservationTable {
     return (this.holdBy[cell] as number) - 1;
   }
 
+  /** Cancels `robot`'s hold (used when someone else must stop on that cell first). */
+  cancelHold(robot: number): void {
+    this.dropHold(robot);
+  }
+
   private dropHold(robot: number): void {
     const cell = this.holdCell[robot] as number;
     if (cell < 0) return;

@@ -6,6 +6,8 @@
 export class Metrics {
   created = 0;
   delivered = 0;
+  /** Deliveries made by robots (stock orders taken straight to a dock). */
+  deliveredByRobots = 0;
   shipped = 0;
   /** Packets that reached a dock other than their destination (must stay 0). */
   misrouted = 0;

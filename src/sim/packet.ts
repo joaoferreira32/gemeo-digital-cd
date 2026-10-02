@@ -1,11 +1,14 @@
 /**
  * Where a packet is in its life cycle:
- *  - backlog:  created by the order generator, waiting to enter the inbound conveyor;
+ *  - backlog:  created by the inbound order generator, waiting to enter the conveyor;
+ *  - rack:     a stock order waiting on its rack shelf for a robot;
  *  - conveyor: on a conveyor lane (`edge`, `s`);
+ *  - bypass:   in the buffer of a robot bypass around a broken conveyor;
+ *  - robot:    carried by a robot;
  *  - staged:   sorted to its dock, waiting on the staging area for a truck ("delivered").
  * Once loaded into a truck the packet leaves the simulation and is only counted.
  */
-export type PacketState = 'backlog' | 'conveyor' | 'staged';
+export type PacketState = 'backlog' | 'rack' | 'conveyor' | 'bypass' | 'robot' | 'staged';
 
 export interface Packet {
   readonly id: number;
