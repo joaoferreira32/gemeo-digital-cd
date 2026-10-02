@@ -4,6 +4,7 @@ name: CI
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,3 +25,43 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  # Performance check: runs the engine benchmark for this commit and for the
+  # base commit on the same runner, so machine speed cancels out. Warning
+  # only for now: it never fails the workflow (decided until the run-to-run
+  # variation is known).
+  bench:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Benchmark deste commit
+        run: npm run bench -- head.json
+      - name: Benchmark do commit base
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Sem commit base."; exit 0
+          fi
+          git worktree add ../base "$BASE"
+          cd ../base
+          if [ ! -f bench/run.ts ]; then echo "O commit base ainda não tem benchmark."; exit 0; fi
+          npm ci
+          npm run bench -- "$GITHUB_WORKSPACE/base.json"
+      - name: Comparar (aviso acima de 15 %)
+        run: node bench/compare.mjs head.json base.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: benchmark
+          path: |
+            head.json
+            base.json
+          if-no-files-found: ignore

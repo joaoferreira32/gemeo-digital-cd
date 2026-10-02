@@ -14,6 +14,11 @@ export default tseslint.config(
     },
   },
   {
+    // Node scripts (benchmark).
+    files: ['bench/**/*.{ts,mjs}'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
     // The simulation must stay deterministic and renderer-agnostic.
     files: ['src/sim/**/*.ts', 'src/ai/**/*.ts'],
     rules: {
