@@ -44,6 +44,12 @@ jobs:
       - run: npm ci
       - name: Benchmark deste commit
         run: npm run bench -- head.json
+      # Same code twice on the same runner: the difference is pure noise, the
+      # false alarms a regression threshold would have to tolerate.
+      - name: Benchmark A/A (mesmo código de novo)
+        run: |
+          npm run bench -- head2.json
+          node bench/compare.mjs head2.json head.json "Teste A/A (mesmo código, mesmo runner)"
       - name: Benchmark do commit base
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -63,5 +69,6 @@ jobs:
           name: benchmark
           path: |
             head.json
+            head2.json
             base.json
           if-no-files-found: ignore

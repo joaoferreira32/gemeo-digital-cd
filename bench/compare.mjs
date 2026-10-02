@@ -2,11 +2,11 @@
 // to the GitHub job summary. Regressions beyond the threshold become
 // warnings; the script never fails the job (warning-only, by decision).
 //
-//   node bench/compare.mjs head.json [base.json]
+//   node bench/compare.mjs head.json [base.json] [title]
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 
 const THRESHOLD = 0.15;
-const [headPath, basePath] = process.argv.slice(2);
+const [headPath, basePath, title = 'Benchmark do motor'] = process.argv.slice(2);
 const head = JSON.parse(readFileSync(headPath, 'utf8'));
 const base = basePath && existsSync(basePath) ? JSON.parse(readFileSync(basePath, 'utf8')) : null;
 
@@ -20,7 +20,7 @@ const spread = (s) => {
 };
 
 const lines = [
-  '## Benchmark do motor',
+  `## ${title}`,
   '',
   base
     ? '| Caso | Base | Este commit | Diferença | Variação entre repetições |'
