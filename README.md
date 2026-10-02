@@ -97,3 +97,7 @@ capacidade fixa e sem horário.
 
 Fontes Barlow Condensed e JetBrains Mono (SIL Open Font License), empacotadas
 via `@fontsource`. Sem nenhum outro asset externo.
+
+## Licença
+
+[MIT](LICENSE) © 2026 João Pedro Ferreira.
