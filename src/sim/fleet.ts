@@ -483,6 +483,23 @@ export class Fleet {
     return candidates.slice(0, QUEUE_SPOTS);
   }
 
+  /**
+   * A station or queue spot is free for `r` when nobody else owns it and
+   * nobody else is standing on it. Ownership is released as soon as a robot
+   * is done, but that robot leaves the cell only when its next plan starts;
+   * until then the cell is still held in the reservation table, and planning
+   * toward it would just fail.
+   */
+  private cellFree(cell: number, r: Robot | null): boolean {
+    const h = this.table.holder(cell);
+    return h < 0 || (r !== null && h === r.id);
+  }
+
+  private stationFree(st: Station, r: Robot | null): boolean {
+    const owner = this.stationOwner[st.id] as number;
+    return (owner < 0 || (r !== null && owner === r.id)) && this.cellFree(st.cell, r);
+  }
+
   private releaseStation(r: Robot): void {
     if (r.station && this.stationOwner[r.station.id] === r.id) this.stationOwner[r.station.id] = -1;
     r.station = null;
@@ -502,8 +519,7 @@ export class Fleet {
     }
     r.station = null;
     this.setStage(r, stage, now);
-    const owner = this.stationOwner[station.id] as number;
-    if (owner < 0 || owner === r.id) {
+    if (this.stationFree(station, r)) {
       this.stationOwner[station.id] = r.id;
       r.station = station;
       r.waitingFor = null;
@@ -514,7 +530,9 @@ export class Fleet {
     }
     r.waitingFor = station;
     if (r.spot < 0) {
-      const spot = (this.queueSpots[station.id] as number[]).find((c) => !this.spotOwner.has(c));
+      const spot = (this.queueSpots[station.id] as number[]).find(
+        (c) => !this.spotOwner.has(c) && this.cellFree(c, r),
+      );
       if (spot !== undefined) {
         this.spotOwner.set(spot, r.id);
         r.spot = spot;
@@ -528,7 +546,7 @@ export class Fleet {
   private pickDock(r: Robot, dock: number): Station {
     const options = this.dockStations[dock] as Station[];
     const cell = this.currentCell(r);
-    const free = options.filter((s) => (this.stationOwner[s.id] as number) < 0);
+    const free = options.filter((s) => this.stationFree(s, r));
     const pool = free.length ? free : options;
     return pool.reduce((best, s) =>
       (this.grid.distanceMap(s.cell)[cell] as number) <
@@ -745,8 +763,7 @@ export class Fleet {
   private retryQueues(now: number): void {
     for (const r of this.robots) {
       if (!r.waitingFor || r.stage === 'defect') continue;
-      if ((this.stationOwner[r.waitingFor.id] as number) < 0)
-        this.goTo(r, r.waitingFor, r.stage, now);
+      if (this.stationFree(r.waitingFor, r)) this.goTo(r, r.waitingFor, r.stage, now);
     }
   }
 
@@ -756,7 +773,7 @@ export class Fleet {
     for (const r of this.robots) {
       if (r.stage === 'defect' || r.evading || (r.job && r.job.kind !== 'park')) continue;
       if (r.battery >= c.lowBattery + 10) continue;
-      const free = this.chargers.filter((s) => (this.stationOwner[s.id] as number) < 0);
+      const free = this.chargers.filter((s) => this.stationFree(s, null));
       if (free.length === 0) continue;
       const charger = free.reduce((a, b) => (this.distance(a, r) <= this.distance(b, r) ? a : b));
       this.assign(r, { kind: 'charge' }, charger, 'toCharger', now);
@@ -775,7 +792,7 @@ export class Fleet {
     // 3. Stock orders, oldest first, when their rack face is free.
     for (let i = 0; i < this.orders.length; i++) {
       const order = this.orders[i] as RackOrder;
-      if ((this.stationOwner[order.face.id] as number) >= 0) continue;
+      if (!this.stationFree(order.face, null)) continue;
       const r = this.nearestAvailable(order.face);
       if (!r) break;
       this.orders.splice(i--, 1);
