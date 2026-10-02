@@ -1,5 +1,10 @@
 # Gêmeo Digital de Centro de Distribuição
 
+[![CI](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml)
+[![Deploy](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml)
+
+**Demo:** https://joaoferreira32.github.io/gemeo-digital-cd/
+
 Simulação 3D em tempo real, no navegador, de um galpão logístico: esteiras,
 pacotes, docas e caminhões, com um motor de simulação determinístico separado
 da renderização.
