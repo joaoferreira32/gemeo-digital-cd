@@ -13,13 +13,29 @@ import { World } from '../src/sim/world';
 
 const REPS = 5;
 
+interface Gate {
+  /** Relative regression (0.10 = 10 %) that triggers the gate. */
+  threshold: number;
+  /** true: the CI job fails (after a confirmation round); false: warning only. */
+  blocking: boolean;
+}
+
 interface Case {
   name: string;
   /** Unit of the reported value; "higher" says which direction is better. */
   unit: string;
   better: 'higher' | 'lower';
+  gate: Gate;
   run: () => number;
 }
+
+/**
+ * Steps per second are stable on one runner (A/A runs differed by at most
+ * 3.4 % over 5 CI runs), so they block above 10 %. Snapshot time is a
+ * fraction of a millisecond and noisier (8.5 %): it only warns.
+ */
+const BLOCK: Gate = { threshold: 0.1, blocking: true };
+const WARN: Gate = { threshold: 0.15, blocking: false };
 
 function stepsPerSecond(
   config: ConstructorParameters<typeof World>[0],
@@ -38,24 +54,28 @@ const cases: Case[] = [
     name: 'Motor sem robôs (passos/s)',
     unit: 'passos/s',
     better: 'higher',
+    gate: BLOCK,
     run: () => stepsPerSecond({ seed: 1, robots: 0 }, 3600, 72_000),
   },
   {
     name: 'Motor com 40 robôs (passos/s)',
     unit: 'passos/s',
     better: 'higher',
+    gate: BLOCK,
     run: () => stepsPerSecond({ seed: 1 }, 1800, 7200),
   },
   {
     name: 'Teste de carga + 40 robôs (passos/s)',
     unit: 'passos/s',
     better: 'higher',
+    gate: BLOCK,
     run: () => stepsPerSecond({ seed: 1, arrivalRate: 40 }, 3600, 3600),
   },
   {
     name: 'Snapshot com 40 robôs (ms)',
     unit: 'ms',
     better: 'lower',
+    gate: WARN,
     run: () => {
       const w = new World({ seed: 1, arrivalRate: 40 });
       w.stepMany(3600);
@@ -79,7 +99,14 @@ const median = (xs: number[]) => {
 const results = cases.map((c) => {
   c.run(); // warm-up: lets the JIT compile the hot paths, not measured
   const samples = Array.from({ length: REPS }, () => c.run());
-  return { name: c.name, unit: c.unit, better: c.better, value: median(samples), samples };
+  return {
+    name: c.name,
+    unit: c.unit,
+    better: c.better,
+    gate: c.gate,
+    value: median(samples),
+    samples,
+  };
 });
 
 const report = { node: process.version, reps: REPS, results };
