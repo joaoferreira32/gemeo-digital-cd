@@ -8,6 +8,13 @@ import {
   type Conveyor,
   type ConveyorStatus,
 } from './conveyor';
+import {
+  FailureInjector,
+  type FailureHost,
+  type FailureKind,
+  type SimEvent,
+  type SimEventKind,
+} from './failures';
 import { DEFAULT_FLEET, Fleet, type BypassLane, type FleetConfig, type FleetHost } from './fleet';
 import type { Station } from './floor';
 import { createDefaultLayout, type WarehouseLayout } from './layout';
@@ -43,6 +50,8 @@ export interface SimConfig {
   readonly rackOrderRate: number;
   /** Fleet tuning (motion, battery, capacity); defaults in fleet.ts. */
   readonly fleet?: Partial<FleetConfig>;
+  /** Robots bridge broken conveyors without alternative (off = packets just wait). */
+  readonly robotBypass: boolean;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -59,7 +68,11 @@ export const DEFAULT_CONFIG: SimConfig = {
   metricsWindow: 120,
   robots: 40,
   rackOrderRate: 0.25,
+  robotBypass: true,
 };
+
+/** Events kept for the UI (captions, history). */
+const MAX_EVENTS = 300;
 
 /** Conveyors without a conveyor alternative, bridged by robots when broken. */
 const BYPASSES: readonly [string, string][] = [
@@ -116,7 +129,7 @@ export interface WorldStats {
  * No rendering, no wall clock, no Math.random: `step()` advances exactly `dt`
  * seconds and the same config always produces the same sequence of states.
  */
-export class World implements FleetHost {
+export class World implements FleetHost, FailureHost {
   readonly config: SimConfig;
   readonly layout: WarehouseLayout;
   /** One conveyor per graph edge, indexed by edge id. */
@@ -138,6 +151,12 @@ export class World implements FleetHost {
   readonly fleet: Fleet | null;
   /** Lane by conveyor edge id. */
   private readonly laneByEdge = new Map<number, BypassLane>();
+  readonly failures: FailureInjector;
+  /** Latest events, oldest first (bounded). */
+  readonly events: SimEvent[] = [];
+  private nextEventId = 1;
+  private baseArrivalRate: number;
+  private surgeFactor = 1;
   tick = 0;
 
   private router: Router;
@@ -158,6 +177,7 @@ export class World implements FleetHost {
     );
     this.orderRng = new Rng(deriveSeed(this.config.seed, 'orders'));
     this.arrivalRate = this.config.arrivalRate;
+    this.baseArrivalRate = this.config.arrivalRate;
     this.destinationWeights = this.config.destinationWeights ?? layout.dockNodes.map(() => 1);
     if (this.destinationWeights.length !== layout.dockNodes.length) {
       throw new Error('destinationWeights must have one entry per dock');
@@ -190,6 +210,7 @@ export class World implements FleetHost {
     } else {
       this.fleet = null;
     }
+    this.failures = new FailureInjector(this, this.config.seed);
   }
 
   private createLanes(fleet: Fleet): void {
@@ -297,18 +318,81 @@ export class World implements FleetHost {
     c.status = status;
   }
 
-  /** Changes the order rate from now on; already scheduled arrivals are kept. */
+  /** Changes the base order rate from now on; already scheduled arrivals are kept. */
   setArrivalRate(rate: number): void {
     if (!(rate > 0)) throw new Error('arrival rate must be positive');
-    this.arrivalRate = rate;
+    this.baseArrivalRate = rate;
+    this.arrivalRate = rate * this.surgeFactor;
+  }
+
+  // ---------------------------------------------------------------- FailureHost
+
+  get conveyorCount(): number {
+    return this.conveyors.length;
+  }
+
+  conveyorLabel(edgeId: number): string {
+    const { graph } = this.layout;
+    const e = graph.edge(edgeId);
+    return `${e.name} (${graph.node(e.from).name}→${graph.node(e.to).name})`;
+  }
+
+  isConveyorBroken(edgeId: number): boolean {
+    return this.conveyors[edgeId]?.status !== 'ok';
+  }
+
+  get bypassEdges(): number[] {
+    return this.lanes.map((l) => l.edgeId);
+  }
+
+  setConveyorBroken(edgeId: number, broken: boolean): void {
+    this.setConveyorStatus(edgeId, broken ? 'broken' : 'ok');
+  }
+
+  /** Multiplies the order rates (inbound and racks) while a surge lasts. */
+  setSurge(factor: number): void {
+    this.surgeFactor = factor;
+    this.arrivalRate = this.baseArrivalRate * factor;
+    this.fleet?.setRackOrderRate(this.config.rackOrderRate * (factor > 1 ? 2 : 1));
+  }
+
+  get robotCount(): number {
+    return this.fleet?.robots.length ?? 0;
+  }
+
+  canBreakRobot(robotId: number): boolean {
+    const r = this.fleet?.robots[robotId];
+    return !!r && r.stage !== 'defect' && r.stage !== 'charging';
+  }
+
+  setRobotDefect(robotId: number, until: number): void {
+    this.fleet?.setDefect(robotId, until);
+  }
+
+  get dockCount(): number {
+    return this.docks.length;
+  }
+
+  emit(kind: SimEventKind, text: string, failure?: FailureKind, target?: number): void {
+    const e: SimEvent = {
+      id: this.nextEventId++,
+      time: this.time,
+      kind,
+      text,
+      ...(failure !== undefined ? { failure } : {}),
+      ...(target !== undefined ? { target } : {}),
+    };
+    this.events.push(e);
+    if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
   }
 
   step(): void {
     this.tick++;
     const now = this.time;
     const dt = this.config.dt;
+    this.failures.update(now);
     this.generateOrders(now);
-    for (const lane of this.lanes) lane.active = this.conveyors[lane.edgeId]?.status !== 'ok';
+    this.updateLanes();
     for (const c of this.conveyors) advanceConveyor(c, dt);
     this.serveDocks(now, dt);
     this.transferAtJunctions();
@@ -321,6 +405,24 @@ export class World implements FleetHost {
 
   stepMany(steps: number): void {
     for (let i = 0; i < steps; i++) this.step();
+  }
+
+  private updateLanes(): void {
+    for (const lane of this.lanes) {
+      const active = this.conveyors[lane.edgeId]?.status !== 'ok';
+      if (active === lane.active) continue;
+      lane.active = active;
+      if (!this.fleet || !this.config.robotBypass) continue;
+      if (active) {
+        lane.carried = 0;
+        this.emit('bypass-start', `Robôs assumem o desvio ${lane.label}`);
+      } else {
+        this.emit(
+          'bypass-end',
+          `Desvio ${lane.label} encerrado: ${lane.carried} pacotes levados por robôs`,
+        );
+      }
+    }
   }
 
   private nextInterval(): number {
@@ -415,7 +517,12 @@ export class World implements FleetHost {
       return true;
     }
     const lane = this.laneByEdge.get(outEdge);
-    if (this.fleet && lane?.active && lane.pickup.length < lane.capacity) {
+    if (
+      this.fleet &&
+      this.config.robotBypass &&
+      lane?.active &&
+      lane.pickup.length < lane.capacity
+    ) {
       if (from) popHead(from);
       p.edge = -1;
       p.state = 'bypass';
