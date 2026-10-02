@@ -125,8 +125,8 @@ completo, mas resolve conflitos numa árvore cujo tamanho cresce de forma
 exponencial no pior caso. Aqui o problema é "lifelong": chegam tarefas novas o
 tempo todo, e cada replanejamento precisa caber no tempo de um passo da
 simulação. O Cooperative A* custa um A* por robô, de custo previsível e
-incremental (só replaneja quem mudou). Medido: **0,72 ms por plano em média,
-1,62 ms no p95**. O preço é perder a garantia teórica: o CA* pode falhar em
+incremental (só replaneja quem mudou). Medido: **cerca de 0,7 ms por plano em média,
+1,6–1,7 ms no p95**. O preço é perder a garantia teórica: o CA* pode falhar em
 casos em que existe solução. Essa garantia foi trocada por regras (folga,
 reserva final, estações com fila, pedido de passagem) e verificada por teste:
 6 seeds × 10.000 passos com falhas, mais um turno de 1.000 s, sem colisão e sem
@@ -155,6 +155,9 @@ mapeia o canal escolhido em verde → âmbar → vermelho:
 
 ## Números medidos
 
+Todos os números de cada fase, com método e forma de reproduzir, estão em
+[`docs/resultados.md`](docs/resultados.md).
+
 Máquina de desenvolvimento: Chromium com GPU dedicada (RTX 5060 Ti); um
 notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
 
@@ -164,12 +167,12 @@ notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | Segurança da frota (6 seeds × 10.000 passos com falhas + turno de 1.000 s)           | menor distância entre centros de robôs 0,974 m (mínimo seguro 0,89 m), 0 violações de frenagem, atraso máximo em relação ao plano 0,50 s          | `tests/fleet.test.ts`                     |
 | Robô travado sem conseguir planejar                                                  | no máximo 15 s (com robôs em defeito e doca bloqueada no meio)                                                                                    | `tests/fleet.test.ts`                     |
-| Planejamento (40 robôs, 3 seeds × 10 min)                                            | 0,72 ms por plano (p95 1,62 ms), 1,3% de tentativas sem caminho, rota 7% mais longa que o caminho livre                                           | `npm run bench:mapf`                      |
+| Planejamento (40 robôs, 3 seeds × 10 min)                                            | 0,72–0,74 ms por plano (p95 1,6–1,7 ms), 1,3% de tentativas sem caminho (episódio mais longo: 10 s), rota 7% mais longa que o caminho livre       | `npm run bench:mapf`                      |
 | Desvio por robôs (A4→S1 quebrada 3 min, mesma seed com e sem robôs, seeds 2026/7/11) | pico da fila −18% a −21%; entregas até o conserto +44% a +47%                                                                                     | `tests/failures.test.ts`, seção "benefit" |
 | Interface com a simulação pesada (16×, teste de carga, salto de 2 min a cada 3 s)    | worker: 0 tarefas longas, pior quadro 16,8 ms, 60 FPS · mesma simulação na thread da página: 8 tarefas longas (4,8 s), pior quadro 250 ms, 47 FPS | Long Tasks API no Chromium, `?sim=main`   |
 | Mapa de calor: CPU por quadro                                                        | GPU 0,04–0,07 ms · versão de referência na CPU 0,46–0,67 ms (≈10× menos)                                                                          | `__gemeo.benchHeat()` no console          |
 | Desempenho                                                                           | 2.369 pacotes desenhados + 40 robôs a 60 FPS em qualidade alta, com bloom                                                                         | teste de carga (<kbd>T</kbd>)             |
-| Motor no Node (mediana de 5)                                                         | 3.513 passos/s com 40 robôs (≈58× o tempo real); 950 mil passos/s sem robôs                                                                       | `npm run bench`                           |
+| Motor no Node (mediana de 5)                                                         | 4.086 passos/s com 40 robôs (≈68× o tempo real); 941 mil passos/s sem robôs                                                                       | `npm run bench`                           |
 | 5 reinícios seguidos                                                                 | geometrias e texturas na GPU estáveis (sem vazamento)                                                                                             | `Shift+R`                                 |
 
 ### Fase 1
