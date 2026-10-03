@@ -1,6 +1,6 @@
 import { pointOnEdge, type EdgePoint } from './graph';
 import type { SimEvent } from './failures';
-import type { RobotStage } from './fleet';
+import { ROBOT_STAGES, type RobotStage } from './fleet';
 import type { World } from './world';
 
 /**
@@ -82,18 +82,7 @@ export const LANE_STRIDE = 4; // active pickup drop carried
 export const FAILURE_STRIDE = 5; // kind target startedAt endsAt id
 export const CONVEYOR_STRIDE = 2; // status blocked
 
-export const STAGES: readonly RobotStage[] = [
-  'parked',
-  'toPark',
-  'toPickup',
-  'loading',
-  'toDrop',
-  'unloading',
-  'toCharger',
-  'charging',
-  'defect',
-  'toPoint',
-];
+export const STAGES: readonly RobotStage[] = ROBOT_STAGES;
 export const JOBS = ['none', 'rack', 'bypass', 'charge', 'park', 'goto'] as const;
 export const TRUCK_STATES = ['docked', 'loading', 'away'] as const;
 export const FAILURE_KINDS = ['conveyor', 'surge', 'robot', 'dock'] as const;

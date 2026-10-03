@@ -19,9 +19,10 @@ import { DEFAULT_FLEET, Fleet, type BypassLane, type FleetConfig, type FleetHost
 import type { Station } from './floor';
 import { createDefaultLayout, type WarehouseLayout } from './layout';
 import { Metrics } from './metrics';
-import { createPacket, type Packet } from './packet';
+import { createPacket, type Packet, type PacketState } from './packet';
 import { deriveSeed, Rng } from './rng';
 import { ShortestPathRouter, type Router } from './router';
+import { StateReader, StateWriter, type EncodedState } from './state';
 
 export interface SimConfig {
   readonly seed: number;
@@ -73,6 +74,25 @@ export const DEFAULT_CONFIG: SimConfig = {
 
 /** Events kept for the UI (captions, history). */
 const MAX_EVENTS = 300;
+
+/** Bumped whenever the checkpoint layout changes. */
+const CHECKPOINT_VERSION = 1;
+const PACKET_STATES: readonly PacketState[] = [
+  'backlog',
+  'rack',
+  'conveyor',
+  'bypass',
+  'robot',
+  'staged',
+];
+const CONVEYOR_STATUSES: readonly ConveyorStatus[] = ['ok', 'broken'];
+const TRUCK_STATES: readonly TruckState[] = ['docked', 'loading', 'away'];
+
+/** The complete changing state of a world at one tick. */
+export interface Checkpoint {
+  readonly tick: number;
+  readonly state: EncodedState;
+}
 
 /** Conveyors without a conveyor alternative, bridged by robots when broken. */
 const BYPASSES: readonly [string, string][] = [
@@ -247,6 +267,170 @@ export class World implements FleetHost, FailureHost {
       this.lanes.push(lane);
       this.laneByEdge.set(edge.id, lane);
     });
+  }
+
+  // ---------------------------------------------------------------- checkpoints
+
+  /**
+   * Everything that changes while the world runs, in a compact binary form.
+   * The layout, the floor, the stations and the routing tables come from the
+   * configuration and are rebuilt by the constructor, so a checkpoint only
+   * loads into a world built with the same configuration. The event feed is
+   * not part of it (the recorder keeps the full log); event ids continue.
+   */
+  saveState(): Checkpoint {
+    const w = new StateWriter();
+    w.int(CHECKPOINT_VERSION);
+    w.int(this.fleet?.robots.length ?? 0);
+    w.int(this.tick);
+    w.int(this.nextPacketId);
+    w.int(this.nextEventId);
+    w.float(this.baseArrivalRate);
+    w.float(this.surgeFactor);
+    w.float(this.arrivalRate);
+    w.int(this.orderRng.getState());
+    w.ints32(this.roundRobin);
+
+    const packets = this.livePackets();
+    w.int(packets.size);
+    for (const p of packets.values()) {
+      w.int(p.id);
+      w.int(p.origin);
+      w.int(p.destination);
+      w.float(p.createdAt);
+      w.pick(p.state, PACKET_STATES);
+      w.int(p.edge);
+      w.float(p.s);
+      w.float(p.prevS);
+      w.bool(p.blocked);
+      w.float(p.deliveredAt);
+    }
+    const ids = (list: readonly Packet[]) => w.ints32(list.map((p) => p.id));
+
+    for (const inbound of this.inbounds) {
+      w.float(inbound.nextArrivalAt);
+      ids(inbound.backlog);
+    }
+    for (const c of this.conveyors) {
+      w.pick(c.status, CONVEYOR_STATUSES);
+      w.float(c.speed);
+      ids(c.packets);
+    }
+    for (const d of this.docks) {
+      w.float(d.serviceProgress);
+      w.pick(d.truck.state, TRUCK_STATES);
+      w.int(d.truck.load);
+      w.float(d.truck.awayLeft);
+      w.float(d.truck.loadProgress);
+      w.float(d.blockedUntil);
+      ids(d.staged);
+    }
+    for (const lane of this.lanes) {
+      w.bool(lane.active);
+      w.int(lane.carried);
+      ids(lane.pickup);
+      ids(lane.drop);
+    }
+    this.metrics.save(w);
+    this.failures.save(w);
+    this.fleet?.save(w);
+    return { tick: this.tick, state: w.finish() };
+  }
+
+  /** Puts this world exactly in the state of `checkpoint` (taken from a world with the same configuration). */
+  loadState(checkpoint: Checkpoint): void {
+    const r = new StateReader(checkpoint.state);
+    if (r.int() !== CHECKPOINT_VERSION) throw new Error('checkpoint from another version');
+    if (r.int() !== (this.fleet?.robots.length ?? 0))
+      throw new Error('checkpoint from another fleet');
+    this.tick = r.int();
+    this.nextPacketId = r.int();
+    this.nextEventId = r.int();
+    this.baseArrivalRate = r.float();
+    this.surgeFactor = r.float();
+    this.arrivalRate = r.float();
+    this.orderRng.setState(r.int());
+    this.roundRobin.set(r.ints32());
+
+    const byId = new Map<number, Packet>();
+    for (let n = r.int(); n > 0; n--) {
+      const p: Packet = {
+        id: r.int(),
+        origin: r.int(),
+        destination: r.int(),
+        createdAt: r.float(),
+        state: r.pick(PACKET_STATES),
+        edge: r.int(),
+        s: r.float(),
+        prevS: r.float(),
+        blocked: r.bool(),
+        deliveredAt: r.float(),
+      };
+      byId.set(p.id, p);
+    }
+    const packet = (id: number) => {
+      const p = byId.get(id);
+      if (!p) throw new Error(`checkpoint refers to unknown packet ${id}`);
+      return p;
+    };
+    const fill = (list: Packet[]) => {
+      list.length = 0;
+      for (const id of r.ints32()) list.push(packet(id));
+    };
+
+    for (const inbound of this.inbounds) {
+      inbound.nextArrivalAt = r.float();
+      fill(inbound.backlog);
+    }
+    for (const c of this.conveyors) {
+      c.status = r.pick(CONVEYOR_STATUSES);
+      c.speed = r.float();
+      fill(c.packets);
+    }
+    for (const d of this.docks) {
+      d.serviceProgress = r.float();
+      d.truck.state = r.pick(TRUCK_STATES);
+      d.truck.load = r.int();
+      d.truck.awayLeft = r.float();
+      d.truck.loadProgress = r.float();
+      d.blockedUntil = r.float();
+      fill(d.staged);
+    }
+    for (const lane of this.lanes) {
+      lane.active = r.bool();
+      lane.carried = r.int();
+      fill(lane.pickup);
+      fill(lane.drop);
+    }
+    this.metrics.load(r);
+    this.failures.load(r);
+    this.fleet?.load(r, packet);
+    r.end();
+    this.events.length = 0;
+    this.updateStats();
+  }
+
+  /** Every packet still in the building, once each (some are in two lists, e.g. an order and a robot's load). */
+  private livePackets(): Map<number, Packet> {
+    const out = new Map<number, Packet>();
+    const add = (list: readonly Packet[]) => {
+      for (const p of list) out.set(p.id, p);
+    };
+    for (const inbound of this.inbounds) add(inbound.backlog);
+    for (const c of this.conveyors) add(c.packets);
+    for (const d of this.docks) add(d.staged);
+    for (const lane of this.lanes) {
+      add(lane.pickup);
+      add(lane.drop);
+    }
+    if (this.fleet) {
+      for (const o of this.fleet.orders) add(o.packets);
+      for (const robot of this.fleet.robots) {
+        add(robot.load);
+        if (robot.job?.kind === 'rack') add(robot.job.order.packets);
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------- FleetHost

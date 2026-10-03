@@ -1,4 +1,5 @@
 import { deriveSeed, Rng } from './rng';
+import type { StateReader, StateWriter } from './state';
 
 /**
  * Failure injection: conveyor breakdowns, order surges, robot defects and
@@ -96,6 +97,39 @@ export class FailureInjector {
 
   get autoEnabled(): boolean {
     return this.auto;
+  }
+
+  save(w: StateWriter): void {
+    w.bool(this.auto);
+    w.int(this.rng.getState());
+    w.float(this.nextAutoAt);
+    w.int(this.nextId);
+    w.int(this.active.length);
+    for (const f of this.active) {
+      w.int(f.id);
+      w.pick(f.kind, KINDS);
+      w.int(f.target);
+      w.float(f.startedAt);
+      w.float(f.endsAt);
+    }
+  }
+
+  load(r: StateReader): void {
+    this.auto = r.bool();
+    this.rng.setState(r.int());
+    this.nextAutoAt = r.float();
+    this.nextId = r.int();
+    this.active.length = 0;
+    const n = r.int();
+    for (let i = 0; i < n; i++) {
+      this.active.push({
+        id: r.int(),
+        kind: r.pick(KINDS),
+        target: r.int(),
+        startedAt: r.float(),
+        endsAt: r.float(),
+      });
+    }
   }
 
   setAuto(on: boolean, now: number): void {

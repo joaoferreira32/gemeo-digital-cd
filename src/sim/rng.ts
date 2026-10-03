@@ -54,6 +54,11 @@ export class Rng {
   getState(): number {
     return this.state;
   }
+
+  /** Continues the sequence from a state read with `getState` (checkpoints). */
+  setState(state: number): void {
+    this.state = state >>> 0;
+  }
 }
 
 /** FNV-1a hash of the seed and a stream label, used to derive independent streams. */

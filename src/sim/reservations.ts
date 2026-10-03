@@ -16,6 +16,8 @@
  * Storage is a ring buffer of `horizon` steps × cells, so lookups are O(1) and
  * nothing is allocated while planning.
  */
+import type { StateReader, StateWriter } from './state';
+
 export class ReservationTable {
   private readonly occ: Int16Array;
   private readonly holdBy: Int16Array;
@@ -180,6 +182,54 @@ export class ReservationTable {
   /** Cancels `robot`'s hold (used when someone else must stop on that cell first). */
   cancelHold(robot: number): void {
     this.dropHold(robot);
+  }
+
+  /** Live reservations (from the oldest stored step on) and holds; scratch-free. */
+  save(w: StateWriter): void {
+    w.int(this.base);
+    for (let robot = 0; robot < this.robotCount; robot++) {
+      const live: number[] = [];
+      for (const key of this.owned[robot] as number[]) {
+        const step = Math.floor(key / this.cellCount);
+        if (step < this.base) continue;
+        if (this.occ[this.slot(key - step * this.cellCount, step)] === robot + 1) live.push(key);
+      }
+      // Keys are step * cellCount + cell: two ints keep them exact past 2^31.
+      w.int(live.length);
+      for (const key of live) {
+        const step = Math.floor(key / this.cellCount);
+        w.int(step);
+        w.int(key - step * this.cellCount);
+      }
+      const cell = this.holdCell[robot] as number;
+      w.int(cell);
+      if (cell >= 0) w.int(this.holdFrom[cell] as number);
+    }
+  }
+
+  load(r: StateReader): void {
+    this.occ.fill(0);
+    this.holdBy.fill(0);
+    this.holdFrom.fill(0);
+    this.holdCell.fill(-1);
+    this.base = r.int();
+    for (let robot = 0; robot < this.robotCount; robot++) {
+      const keys: number[] = [];
+      const n = r.int();
+      for (let i = 0; i < n; i++) {
+        const step = r.int();
+        const cell = r.int();
+        this.occ[this.slot(cell, step)] = robot + 1;
+        keys.push(step * this.cellCount + cell);
+      }
+      this.owned[robot] = keys;
+      const cell = r.int();
+      if (cell >= 0) {
+        this.holdBy[cell] = robot + 1;
+        this.holdFrom[cell] = r.int();
+        this.holdCell[robot] = cell;
+      }
+    }
   }
 
   private dropHold(robot: number): void {

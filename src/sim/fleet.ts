@@ -6,6 +6,7 @@ import { CooperativePlanner, moveAllowed, startMode, waitMode, type PlanStart } 
 import { ReservationTable } from './reservations';
 import { deriveSeed, Rng } from './rng';
 import type { SimEventKind } from './failures';
+import type { StateReader, StateWriter } from './state';
 
 /**
  * Fleet manager: hands out jobs, plans every robot with Cooperative A* over
@@ -122,6 +123,20 @@ export type RobotStage =
   | 'defect'
   /** Scripted move to a cell (scenarios). */
   | 'toPoint';
+
+/** Every stage, in the order checkpoints and snapshots encode them. */
+export const ROBOT_STAGES: readonly RobotStage[] = [
+  'parked',
+  'toPark',
+  'toPickup',
+  'loading',
+  'toDrop',
+  'unloading',
+  'toCharger',
+  'charging',
+  'defect',
+  'toPoint',
+];
 
 export type Job =
   | { kind: 'rack'; order: RackOrder }
@@ -332,6 +347,152 @@ export class Fleet {
       if (out[out.length - 1] !== c) out.push(c);
     }
     return out;
+  }
+
+  // ---------------------------------------------------------------- checkpoints
+
+  /**
+   * Everything that changes while the fleet runs. Packets are written as ids
+   * (the world writes them once), bypass lanes as their index; the floor,
+   * the stations and the queue spots never change and are not stored.
+   */
+  save(w: StateWriter): void {
+    w.int(this.k);
+    w.float(this.nextOrderAt);
+    w.int(this.nextOrderId);
+    w.float(this.orderRate);
+    w.int(this.rackRng.getState());
+    w.ints32(this.stationOwner);
+    w.int(this.spotOwner.size);
+    for (const [cell, robot] of this.spotOwner) {
+      w.int(cell);
+      w.int(robot);
+    }
+    for (const v of Object.values(this.stats)) w.float(v);
+    for (const v of Object.values(this.planner.stats)) w.float(v);
+    this.table.save(w);
+    w.int(this.orders.length);
+    for (const o of this.orders) saveOrder(w, o);
+    for (const r of this.robots) this.saveRobot(w, r);
+  }
+
+  load(r: StateReader, packet: (id: number) => Packet): void {
+    this.k = r.int();
+    this.nextOrderAt = r.float();
+    this.nextOrderId = r.int();
+    this.orderRate = r.float();
+    this.rackRng.setState(r.int());
+    this.stationOwner.set(r.ints32());
+    this.spotOwner.clear();
+    for (let i = r.int(); i > 0; i--) this.spotOwner.set(r.int(), r.int());
+    const stats = this.stats as unknown as Record<string, number>;
+    for (const key of Object.keys(stats)) stats[key] = r.float();
+    const plannerStats = this.planner.stats as unknown as Record<string, number>;
+    for (const key of Object.keys(plannerStats)) plannerStats[key] = r.float();
+    this.table.load(r);
+    this.orders.length = 0;
+    for (let i = r.int(); i > 0; i--) this.orders.push(this.loadOrder(r, packet));
+    for (const robot of this.robots) this.loadRobot(r, robot, packet);
+  }
+
+  private saveRobot(w: StateWriter, r: Robot): void {
+    w.float(r.battery);
+    w.pick(r.stage, ROBOT_STAGES);
+    const job = r.job;
+    w.int(job ? JOB_KINDS.indexOf(job.kind) : -1);
+    if (job?.kind === 'rack') saveOrder(w, job.order);
+    else if (job?.kind === 'bypass') w.int(job.lane.id);
+    else if (job?.kind === 'goto') w.int(job.cell);
+    w.ints32(r.load.map((p) => p.id));
+    w.int(r.station ? r.station.id : -1);
+    w.int(r.waitingFor ? r.waitingFor.id : -1);
+    w.int(r.spot);
+    w.int(r.goalCell);
+    w.bool(r.needsPlan);
+    w.ints32(r.cells);
+    w.int(r.planStart);
+    w.ints32(r.modes);
+    w.int(r.modeStart);
+    w.float(r.dwellUntil);
+    w.int(r.failures);
+    w.float(r.failingSince);
+    w.bool(r.evadeFrom !== null);
+    if (r.evadeFrom) w.ints32([...r.evadeFrom]);
+    w.bool(r.evading);
+    w.int(r.evadeGoal);
+    w.float(r.resumeAt);
+    w.float(r.watchedAt);
+    w.float(r.reportedEpisode);
+    w.float(r.defectUntil);
+    w.pick(r.stageBeforeDefect, ROBOT_STAGES);
+    w.float(r.dwellLeftAtDefect);
+    w.float(r.lastStageChange);
+    w.int(r.jobsDone);
+    w.int(r.delivered);
+    r.motion.save(w);
+  }
+
+  private loadRobot(rd: StateReader, r: Robot, packet: (id: number) => Packet): void {
+    const stations = this.grid.stations;
+    r.battery = rd.float();
+    r.stage = rd.pick(ROBOT_STAGES);
+    const kind = rd.int();
+    switch (JOB_KINDS[kind]) {
+      case 'rack':
+        r.job = { kind: 'rack', order: this.loadOrder(rd, packet) };
+        break;
+      case 'bypass':
+        r.job = { kind: 'bypass', lane: this.host.lanes[rd.int()] as BypassLane };
+        break;
+      case 'goto':
+        r.job = { kind: 'goto', cell: rd.int() };
+        break;
+      case 'charge':
+        r.job = { kind: 'charge' };
+        break;
+      case 'park':
+        r.job = { kind: 'park' };
+        break;
+      default:
+        r.job = null;
+    }
+    r.load = rd.ints32().map(packet);
+    const station = rd.int();
+    r.station = station >= 0 ? (stations[station] as Station) : null;
+    const waitingFor = rd.int();
+    r.waitingFor = waitingFor >= 0 ? (stations[waitingFor] as Station) : null;
+    r.spot = rd.int();
+    r.goalCell = rd.int();
+    r.needsPlan = rd.bool();
+    r.cells = rd.ints32();
+    r.planStart = rd.int();
+    r.modes = rd.ints32();
+    r.modeStart = rd.int();
+    r.dwellUntil = rd.float();
+    r.failures = rd.int();
+    r.failingSince = rd.float();
+    r.evadeFrom = rd.bool() ? new Set(rd.ints32()) : null;
+    r.evading = rd.bool();
+    r.evadeGoal = rd.int();
+    r.resumeAt = rd.float();
+    r.watchedAt = rd.float();
+    r.reportedEpisode = rd.float();
+    r.defectUntil = rd.float();
+    r.stageBeforeDefect = rd.pick(ROBOT_STAGES);
+    r.dwellLeftAtDefect = rd.float();
+    r.lastStageChange = rd.float();
+    r.jobsDone = rd.int();
+    r.delivered = rd.int();
+    r.motion.load(rd, r.cells, r.planStart);
+  }
+
+  private loadOrder(r: StateReader, packet: (id: number) => Packet): RackOrder {
+    return {
+      id: r.int(),
+      face: this.grid.stations[r.int()] as Station,
+      dock: r.int(),
+      packets: r.ints32().map(packet),
+    };
   }
 
   // ---------------------------------------------------------------- scenarios
@@ -1135,6 +1296,15 @@ export class Fleet {
       );
     }
   }
+}
+
+const JOB_KINDS: readonly Job['kind'][] = ['rack', 'bypass', 'charge', 'park', 'goto'];
+
+function saveOrder(w: StateWriter, o: RackOrder): void {
+  w.int(o.id);
+  w.int(o.face.id);
+  w.int(o.dock);
+  w.ints32(o.packets.map((p) => p.id));
 }
 
 /** Who backs off when two robots are equally quick to: empty-handed before loaded, then the higher id. */
