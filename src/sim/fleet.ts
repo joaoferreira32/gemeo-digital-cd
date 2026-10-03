@@ -5,6 +5,7 @@ import type { Packet } from './packet';
 import { CooperativePlanner, moveAllowed, startMode, waitMode, type PlanStart } from './planner';
 import { ReservationTable } from './reservations';
 import { deriveSeed, Rng } from './rng';
+import type { SimEventKind } from './failures';
 
 /**
  * Fleet manager: hands out jobs, plans every robot with Cooperative A* over
@@ -24,7 +25,9 @@ import { deriveSeed, Rng } from './rng';
  *    are exclusive; a robot that finds one busy waits on a queue spot next to
  *    it instead of in the corridor;
  *  - a robot that keeps failing asks robots standing still on its route to
- *    step aside to the nearest free holdable cell.
+ *    step aside to the nearest free holdable cell;
+ *  - a watchdog breaks the waits those requests do not solve (robots waiting
+ *    for each other, robots stuck behind a broken one); see `watchdog`.
  */
 
 export interface FleetConfig {
@@ -46,6 +49,10 @@ export interface FleetConfig {
   readonly rackOrderRate: number;
   /** Robots working the same bypass at once. */
   readonly maxRobotsPerLane: number;
+  /** Robots that keep failing ask the ones standing on their route to step aside. */
+  readonly stepAside: boolean;
+  /** Seconds without a path before the watchdog steps in (0 turns it off). */
+  readonly watchdogSeconds: number;
 }
 
 export const DEFAULT_FLEET: FleetConfig = {
@@ -62,6 +69,8 @@ export const DEFAULT_FLEET: FleetConfig = {
   fullBattery: 95,
   rackOrderRate: 0.25,
   maxRobotsPerLane: 5,
+  stepAside: true,
+  watchdogSeconds: 6,
 };
 
 /** Robots carry packets around a conveyor without alternative while it is broken. */
@@ -98,6 +107,7 @@ export interface FleetHost {
   takeFromLane(lane: BypassLane, max: number): Packet[];
   /** False when the lane's drop buffer has no room. */
   dropIntoLane(lane: BypassLane, packets: Packet[]): boolean;
+  emit(kind: SimEventKind, text: string): void;
 }
 
 export type RobotStage =
@@ -151,6 +161,9 @@ export interface Robot {
   /** Where the robot steps aside to (its job goal stays in goalCell). */
   evadeGoal: number;
   resumeAt: number;
+  /** Last time the watchdog acted on this robot, and the failing episode it last reported. */
+  watchedAt: number;
+  reportedEpisode: number;
   defectUntil: number;
   stageBeforeDefect: RobotStage;
   dwellLeftAtDefect: number;
@@ -171,6 +184,10 @@ export interface FleetStats {
   /** Longest time any robot spent unable to plan (seconds). */
   maxFailingSeconds: number;
   batteryDepleted: number;
+  /** Watchdog: waiting cycles broken, cycles it could not break yet, robots sent to another station. */
+  cyclesBroken: number;
+  cyclesStalled: number;
+  reroutes: number;
 }
 
 const QUEUE_SPOTS = 3;
@@ -192,6 +209,9 @@ export class Fleet {
     rackOrdersDone: 0,
     maxFailingSeconds: 0,
     batteryDepleted: 0,
+    cyclesBroken: 0,
+    cyclesStalled: 0,
+    reroutes: 0,
   };
   readonly ticksPerStep: number;
   private readonly stationOwner: Int32Array;
@@ -272,6 +292,8 @@ export class Fleet {
         evading: false,
         evadeGoal: -1,
         resumeAt: 0,
+        watchedAt: -Infinity,
+        reportedEpisode: -1,
         defectUntil: -1,
         stageBeforeDefect: 'parked',
         dwellLeftAtDefect: 0,
@@ -652,6 +674,21 @@ export class Fleet {
         (a, b) =>
           Number(!!b.evadeFrom) - Number(!!a.evadeFrom) || b.failures - a.failures || a.id - b.id,
       );
+    this.drain(queue, k);
+
+    for (const r of this.robots) {
+      if (r.failures > 0) {
+        this.stats.maxFailingSeconds = Math.max(this.stats.maxFailingSeconds, now - r.failingSince);
+        if (this.config.stepAside && r.failures >= 4 && r.failures % 2 === 0) {
+          this.requestEvasion(r, k);
+        }
+      }
+    }
+    this.watchdog(k, now);
+  }
+
+  /** Plans the robots in `queue` in order; robots bumped by a failed plan join the end. */
+  private drain(queue: Robot[], k: number): void {
     const passes = new Map<number, number>();
     while (queue.length) {
       const r = queue.shift() as Robot;
@@ -662,13 +699,6 @@ export class Fleet {
         other.needsPlan = true;
         this.stats.bumps++;
         if (!queue.includes(other)) queue.push(other);
-      }
-    }
-
-    for (const r of this.robots) {
-      if (r.failures > 0) {
-        this.stats.maxFailingSeconds = Math.max(this.stats.maxFailingSeconds, now - r.failingSince);
-        if (r.failures >= 4 && r.failures % 2 === 0) this.requestEvasion(r, k);
       }
     }
   }
@@ -964,6 +994,161 @@ export class Fleet {
       this.stats.evades++;
     }
   }
+
+  // ---------------------------------------------------------------- watchdog
+
+  /**
+   * Supervisor for the waits that step-aside requests do not solve. It looks
+   * at robots that have had no path for `watchdogSeconds`; each one waits for
+   * the first robot standing on its static route (a wait-for graph with one
+   * edge per robot, so cycles are found by following the edges).
+   *
+   *  - Cycle (robots waiting for each other): it tries a back-off for every
+   *    member, without side effects, and the one that gets out of the way in
+   *    the fewest steps backs off to a holdable cell off the others' routes
+   *    (an empty-handed robot yields before a loaded one), and the others
+   *    replan at once. It cannot block them again on its way back: it only
+   *    leaves with a complete plan, and no plan crosses a robot that holds its
+   *    cell. Nothing depends on the blocker accepting a request: the fleet
+   *    manager plans both sides itself.
+   *  - Behind a broken robot: it is sent to an equivalent station it can reach
+   *    now (the other drop of the same dock). Without one it waits for the
+   *    repair, which bounds the wait.
+   *
+   * It acts on a robot at most once per period.
+   */
+  private watchdog(k: number, now: number): void {
+    const period = this.config.watchdogSeconds;
+    if (!(period > 0)) return;
+    const routes = new Map<number, number[]>();
+    const waitsFor = new Map<number, number>();
+    for (const r of this.robots) {
+      if (r.stage === 'defect' || r.failures === 0) continue;
+      if (now - r.failingSince < period - 1e-9 || now - r.watchedAt < period - 1e-9) continue;
+      const route = this.staticRoute(r, k);
+      routes.set(r.id, route);
+      waitsFor.set(r.id, this.firstHolder(route, r));
+    }
+    if (routes.size === 0) return;
+
+    // Cycles: follow each robot's single edge until it leaves the stuck set or repeats.
+    const done = new Set<number>();
+    for (const first of routes.keys()) {
+      if (done.has(first)) continue;
+      const walk: number[] = [];
+      let id = first;
+      while (routes.has(id) && !done.has(id) && !walk.includes(id)) {
+        walk.push(id);
+        id = waitsFor.get(id) as number;
+      }
+      const at = walk.indexOf(id);
+      if (at >= 0) {
+        const cycle = walk.slice(at).map((i) => this.robots[i] as Robot);
+        this.breakCycle(cycle, routes, k, now);
+      }
+      for (const i of walk) done.add(i);
+    }
+
+    // Robots stuck behind a broken one.
+    for (const [id, blocker] of waitsFor) {
+      const r = this.robots[id] as Robot;
+      const b = this.robots[blocker];
+      if (!b || b.stage !== 'defect' || now - r.watchedAt < period - 1e-9) continue;
+      this.avoidBroken(r, b, k, now);
+    }
+  }
+
+  /** First robot other than `r` holding a cell of `route`, or -1. */
+  private firstHolder(route: readonly number[], r: Robot): number {
+    for (const c of route) {
+      const h = this.table.holder(c);
+      if (h >= 0 && h !== r.id) return h;
+    }
+    return -1;
+  }
+
+  private breakCycle(
+    cycle: Robot[],
+    routes: ReadonlyMap<number, number[]>,
+    k: number,
+    now: number,
+  ): void {
+    for (const r of cycle) r.watchedAt = now;
+    let best: { r: Robot; steps: number; avoid: Set<number> } | null = null;
+    for (const v of cycle) {
+      const avoid = new Set<number>();
+      for (const o of cycle) {
+        if (o !== v) for (const c of routes.get(o.id) as number[]) avoid.add(c);
+      }
+      const plan = this.planner.plan(v.id, this.commitPoint(v, k).start, { cell: -1, avoid });
+      if (!plan) continue;
+      const steps = plan.cells.length;
+      if (!best || steps < best.steps || (steps === best.steps && yieldsFirst(v, best.r))) {
+        best = { r: v, steps, avoid };
+      }
+    }
+    const names = listRobots(cycle);
+    if (!best) {
+      this.stats.cyclesStalled++;
+      this.host.emit('watchdog', `Vigia: ${names} esperam um pelo outro e nenhum consegue recuar`);
+      return;
+    }
+    const v = best.r;
+    const others = cycle.filter((r) => r !== v);
+    for (const r of cycle) {
+      r.evadeFrom = null;
+      r.needsPlan = true;
+    }
+    v.evadeFrom = best.avoid;
+    this.drain([v, ...others], k);
+    this.stats.cyclesBroken++;
+    this.host.emit(
+      'watchdog',
+      `Vigia: ${names} esperavam um pelo outro; o Robô ${v.id + 1} recuou para abrir passagem`,
+    );
+  }
+
+  private avoidBroken(r: Robot, broken: Robot, k: number, now: number): void {
+    r.watchedAt = now;
+    const job = r.job;
+    if (r.stage === 'toDrop' && job?.kind === 'rack' && r.station) {
+      const start = this.commitPoint(r, k).start;
+      for (const alt of this.dockStations[job.order.dock] as Station[]) {
+        if (alt === r.station || !this.stationFree(alt, r)) continue;
+        if (!this.planner.plan(r.id, start, { cell: alt.cell })) continue;
+        this.goTo(r, alt, 'toDrop', now);
+        this.drain([r], k);
+        this.stats.reroutes++;
+        this.host.emit(
+          'watchdog',
+          `Vigia: Robô ${r.id + 1} vai pela outra baia da Doca ${job.order.dock + 1}; ` +
+            `o Robô ${broken.id + 1}, com defeito, fecha o caminho`,
+        );
+        return;
+      }
+    }
+    if (r.reportedEpisode !== r.failingSince) {
+      r.reportedEpisode = r.failingSince;
+      this.host.emit(
+        'watchdog',
+        `Vigia: Robô ${r.id + 1} sem caminho; o Robô ${broken.id + 1}, com defeito, está na rota dele`,
+      );
+    }
+  }
+}
+
+/** Who backs off when two robots are equally quick to: empty-handed before loaded, then the higher id. */
+function yieldsFirst(a: Robot, b: Robot): boolean {
+  const la = a.load.length > 0 ? 1 : 0;
+  const lb = b.load.length > 0 ? 1 : 0;
+  return la !== lb ? la < lb : a.id > b.id;
+}
+
+/** "Robôs 3 e 7", "Robôs 3, 7 e 9". */
+function listRobots(rs: readonly Robot[]): string {
+  const ids = rs.map((r) => String(r.id + 1));
+  const last = ids.pop() as string;
+  return ids.length ? `Robôs ${ids.join(', ')} e ${last}` : `Robô ${last}`;
 }
 
 function headingIndex(radians: number): number {

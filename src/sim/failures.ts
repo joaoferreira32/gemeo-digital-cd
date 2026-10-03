@@ -18,7 +18,13 @@ export interface ActiveFailure {
   readonly endsAt: number;
 }
 
-export type SimEventKind = 'failure-start' | 'failure-end' | 'bypass-start' | 'bypass-end';
+export type SimEventKind =
+  | 'failure-start'
+  | 'failure-end'
+  | 'bypass-start'
+  | 'bypass-end'
+  /** The fleet watchdog broke a wait or rerouted a robot. */
+  | 'watchdog';
 
 /** Something worth telling the viewer; the text is ready to show (pt-BR). */
 export interface SimEvent {

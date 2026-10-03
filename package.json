@@ -14,7 +14,8 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "bench": "tsx bench/run.ts",
-    "bench:mapf": "tsx bench/mapf.ts"
+    "bench:mapf": "tsx bench/mapf.ts",
+    "bench:vigia": "tsx bench/vigia.ts"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",
