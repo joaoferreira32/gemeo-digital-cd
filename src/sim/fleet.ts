@@ -911,11 +911,14 @@ export class Fleet {
     }
   }
 
-  /** Asks robots standing still on `r`'s shortest route to step aside. */
-  private requestEvasion(r: Robot, k: number): void {
+  /**
+   * `r`'s shortest route to its goal on the empty floor, from where it stands
+   * (the same route for everyone who looks, so requests and the watchdog agree).
+   */
+  private staticRoute(r: Robot, k: number): number[] {
     const dist = this.grid.distanceMap(r.goalCell);
     let cell = this.cellAt(r, k);
-    const path = new Set<number>([cell]);
+    const route = [cell];
     for (let guard = 0; guard < 400 && (dist[cell] as number) > 0; guard++) {
       let next = -1;
       for (let d = 0; d < 4; d++) {
@@ -927,8 +930,18 @@ export class Fleet {
       }
       if (next < 0) break;
       cell = next;
-      path.add(cell);
+      route.push(cell);
     }
+    return route;
+  }
+
+  /** Asks robots standing still on `r`'s shortest route to step aside. */
+  private requestEvasion(r: Robot, k: number): void {
+    // Already asked to step aside itself: if both robots of a pair asked each
+    // other, both would back off and meet again.
+    if (r.evadeFrom || r.evading) return;
+    const path = new Set(this.staticRoute(r, k));
+    const inTheWay: Robot[] = [];
     for (const c of path) {
       const h = this.table.holder(c);
       if (h < 0 || h === r.id) continue;
@@ -940,7 +953,12 @@ export class Fleet {
         other.stage === 'charging' ||
         other.stage === 'parked' ||
         other.evading;
-      if (busy || other.evadeFrom) continue;
+      // One robot that cannot move now keeps the way shut: the others would
+      // step aside for nothing.
+      if (busy) return;
+      if (!other.evadeFrom) inTheWay.push(other);
+    }
+    for (const other of inTheWay) {
       other.evadeFrom = path;
       other.needsPlan = true;
       this.stats.evades++;
