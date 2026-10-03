@@ -7,11 +7,13 @@
 
 Simulação 3D em tempo real, no navegador, de um galpão logístico: esteiras,
 pacotes, docas, caminhões e uma frota de 40 robôs (AGVs) que se coordenam por
-planejamento multiagente, com falhas injetadas e mapa de calor. O motor de
-simulação é determinístico, roda num Web Worker e é testado sem navegador.
+planejamento multiagente, com falhas injetadas e mapa de calor. Toda a execução
+é gravada: dá para voltar a qualquer instante, ver o estado exato daquele
+momento, continuar dali por outro caminho e exportar o log de eventos. O motor
+de simulação é determinístico, roda num Web Worker e é testado sem navegador.
 
-> **Status:** Fase 2 de 6 concluída (frota de robôs e caos controlado). Viagem
-> no tempo, IA de operações, laboratório de cenários e modo cinema vêm depois.
+> **Status:** Fase 3 de 6 concluída (viagem no tempo e observabilidade). IA de
+> operações, laboratório de cenários e modo cinema vêm depois.
 
 ## Como rodar
 
@@ -25,6 +27,8 @@ npm run lint         # ESLint + Prettier
 npm run build        # build estático em dist/
 npm run bench        # benchmark curto do motor (o mesmo do CI)
 npm run bench:mapf   # estatísticas do planejamento multiagente
+npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
+npm run bench:tempo  # uma hora simulada: memória, checkpoints e latência do seek (~3 min)
 ```
 
 `?sim=main` na URL roda a simulação na thread da página em vez do worker
@@ -46,6 +50,12 @@ npm run bench:mapf   # estatísticas do planejamento multiagente
 | Teste de carga         | <kbd>T</kbd> (taxa de pedidos muito acima da capacidade)                                                |
 | Qualidade gráfica      | <kbd>G</kbd> (desliga o ajuste automático)                                                              |
 | Reiniciar (mesma seed) | <kbd>Shift</kbd> + <kbd>R</kbd>                                                                         |
+| Linha do tempo         | arrastar na barra de baixo · <kbd>[</kbd> <kbd>]</kbd> volta / avança 10 s                              |
+| Voltar ao vivo         | <kbd>L</kbd>                                                                                            |
+| Continuar daqui        | <kbd>C</kbd>, <kbd>Espaço</kbd> ou qualquer falha injetada no passado (descarta o que vinha depois)     |
+| Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, utilização, estados dos robôs, últimos 5 min)          |
+| Histórico              | clique num robô, numa esteira ou numa doca                                                              |
+| Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução    |
 | Atalhos e legenda      | <kbd>H</kbd>                                                                                            |
 
 ## Arquitetura
@@ -53,19 +63,23 @@ npm run bench:mapf   # estatísticas do planejamento multiagente
 ```
  página (thread principal)                         Web Worker
  ┌──────────────────────────────┐   comandos    ┌───────────────────────────┐
- │ ui/      HUD, controles      │ ────────────► │ worker/  SimHost: relógio │
- │ link/    FrameBuffer:        │               │          real × velocidade│
- │          interpola snapshots │ ◄──────────── │ sim/     World (passo     │
- │ render/  Three.js (só lê)    │  snapshot em  │          fixo, seed)      │
- └──────────────────────────────┘  ArrayBuffer  └───────────────────────────┘
-                                   transferido
+ │ ui/      HUD, painéis,       │ ────────────► │ worker/  SimHost: relógio │
+ │          linha do tempo      │               │          real × velocidade│
+ │ link/    FrameBuffer:        │ ◄──────────── │ sim/     Recorder: grava  │
+ │          interpola snapshots │  snapshot em  │          entradas e       │
+ │ render/  Three.js (só lê)    │  ArrayBuffer  │          checkpoints      │
+ └──────────────────────────────┘  transferido  │          World (passo     │
+                                 + status 2×/s  │          fixo, seed)      │
+                                                └───────────────────────────┘
 ```
 
 ```
 src/sim/     motor: TypeScript puro, sem Three.js, determinístico
              world, conveyor, graph/router, fleet, planner, reservations,
-             motion, floor, failures, snapshot
-src/worker/  SimHost (roda o World no tempo real) e o protocolo de mensagens
+             motion, floor, failures, snapshot, state (checkpoints),
+             recorder (viagem no tempo, KPIs), export, scenarios
+src/worker/  SimHost (roda a gravação no tempo real), protocolo e visões
+             (linha do tempo, histórico)
 src/link/    conexão com o worker e buffer de snapshots com interpolação
 src/render/  cena Three.js: pacotes, robôs, rastros, rotas, alertas, mapa de calor, bloom
 src/ui/      HUD e painéis (HTML/CSS próprios)
@@ -139,6 +153,52 @@ Os robôs têm três funções:
   B4→S2) enquanto estão quebradas.
 - **Bateria:** vão sozinhos ao carregador abaixo de 25%.
 
+## Viagem no tempo
+
+A execução inteira fica gravada no worker, e qualquer instante pode ser
+mostrado de novo **exatamente** como foi:
+
+- **Entradas com o tick.** Toda ação que muda a simulação (falha, modo
+  automático, teste de carga) é registrada com o tick em que foi aplicada e
+  aplicada pela mesma função ao vivo e nos replays. Com o motor
+  determinístico, isso basta para refazer qualquer trecho.
+- **Checkpoints a cada 30 s simulados.** Um codificador binário próprio grava
+  todo o estado que muda (pacotes, esteiras, docas, caminhões, frota, tabela de
+  reservas, falhas, métricas) em dois fluxos, de inteiros e de reais com os
+  bits exatos. Trajetórias, piso e tabelas de rota são reconstruídos a partir da
+  configuração. Média de 122 KB por checkpoint numa hora com falhas.
+- **Seek = checkpoint + replay**, num segundo mundo reaproveitado: o mundo ao
+  vivo espera, intacto, na ponta da gravação. O replay roda dentro do orçamento
+  de 40 ms por bombeamento, então a página vê o "avanço rápido" e pode pedir
+  outro instante a qualquer momento.
+- **Ramificação.** Continuar a partir do passado, ou injetar uma falha nele,
+  transforma aquele mundo no mundo ao vivo e descarta o que vinha depois.
+- **Relatório reproduzível.** O JSON exportado (configuração + entradas +
+  impressão digital do estado final) roda a execução de novo do zero; ao
+  terminar, a página confirma que o estado final bate.
+
+Verificado por teste: restaurado em 48 instantes de execuções caóticas (e no
+meio de esperas resolvidas pelo vigia), o mundo continua bit a bit igual ao
+original: impressão digital, bytes do snapshot e estatísticas da frota. Onze
+campos esquecidos de propósito no checkpoint foram pegos pelos testes.
+
+O mesmo gravador guarda o log de eventos, cada mudança de estado de cada robô e
+uma amostra por segundo. É de onde saem o painel de operação (<kbd>K</kbd>), o
+histórico ao clicar e a linha do tempo, inclusive para instantes do passado.
+
+## Vigia anti-travamento
+
+O pedido de passagem entre robôs resolve quase tudo, mas pode falhar. Depois
+de 6 s sem caminho, um vigia central monta o grafo de quem espera quem (cada
+robô espera o primeiro robô parado na sua rota). Num ciclo, testa um recuo para
+cada membro, sem efeito colateral, e manda recuar o que sai da frente mais
+rápido. Atrás de um robô com defeito, troca a entrega para a outra baia da mesma
+doca, se ela puder ser alcançada. Testes montam esses casos de propósito nos 4
+portões que são a única entrada das faixas de doca: sem o vigia, dois robôs
+frente a frente com os pedidos de passagem falhando ficam parados para sempre;
+com ele, os dois passam em no máximo 18,6 s (36 casos). Robô parado há mais de
+20 s gera alerta na cena e no log.
+
 ## Mapa de calor na GPU
 
 A CPU só envia as posições de pacotes e robôs (que já estão no snapshot). Na
@@ -160,6 +220,19 @@ Todos os números de cada fase, com método e forma de reproduzir, estão em
 
 Máquina de desenvolvimento: Chromium com GPU dedicada (RTX 5060 Ti); um
 notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
+
+### Fase 3
+
+| O que                                                                    | Resultado                                                                                                        | Como reproduzir                  |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| Voltar a um instante numa execução de 1 h (40 robôs, falhas automáticas) | mediana 253 ms, p95 484 ms (checkpoint + replay) · replay desde o zero: 65 s (≈255× mais lento)                  | `npm run bench:tempo`            |
+| Memória da gravação                                                      | 15,5 MB por hora simulada (14,5 MB de checkpoints, média 122 KB, máximo 172 KB)                                  | `npm run bench:tempo`            |
+| Reconstrução                                                             | idêntica bit a bit em 48 instantes de execuções caóticas e no meio de esperas; 11 de 11 campos omitidos pegos    | `tests/checkpoint.test.ts`       |
+| 50 viagens no tempo                                                      | GPU: 101 geometrias e 62 texturas antes e depois · heap da simulação estável (+0,03 MB nas 60 viagens seguintes) | Chromium + `npm run bench:tempo` |
+| Custo de gravar no motor ao vivo                                         | 4.231 passos/s gravando contra 4.210 sem gravar (dentro do ruído)                                                | `npm run bench`                  |
+| Dois robôs frente a frente num portão, pedidos de passagem falhando      | sem vigia: parados para sempre (36 de 36) · com vigia: os dois passam em até 18,6 s                              | `npm run bench:vigia`            |
+| Robô quebrado dentro do portão por 60 s                                  | quem tem outra baia espera 7 s (antes 60 s); quem fica preso atrás espera o conserto (60 s)                      | `npm run bench:vigia`            |
+| Tentativa de planejamento sem caminho (robô preso)                       | 19–20 ms → 0,002 ms, com resultado idêntico (400 casos comparados)                                               | `tests/planner.test.ts`          |
 
 ### Fase 2
 
@@ -197,6 +270,19 @@ Bugs encontrados medindo, não supondo:
 - **Dois robôs reservando a mesma parada.** Um robô que precisava parar podia
   encontrar a célula reservada "para sempre" por outro que ainda estava a
   caminho dela. Esse outro agora também replaneja.
+- **Pedido de passagem mútuo e inútil** (Fase 3). Dois robôs que se
+  bloqueavam pediam passagem um ao outro na mesma rodada, e os dois recuavam.
+  Um robô atrás de outro quebrado pedia passagem a todos na rota, mandando
+  robôs para trás à toa. Agora só um recua, e ninguém é chamado quando a rota
+  está fechada por quem não pode se mover.
+- **Cada tentativa sem caminho esgotava 60 mil estados** (Fase 3). Uma prova
+  barata (busca em largura com os robôs parados como parede) responde "não há
+  caminho" sem buscar no espaço-tempo; um teste compara as duas respostas em
+  400 casos aleatórios, com zero diferenças.
+- **Último bit diferente depois de restaurar** (Fase 3). As métricas
+  recalculavam a soma da janela ao compactar a memória, e a soma em ponto
+  flutuante dependia de quando isso acontecia. O mundo restaurado compactava em
+  outro momento e divergia no último bit. A compactação deixou de recalcular.
 - **Gargalo estrutural e pontos únicos de falha** (Fase 1): com roteamento
   estático, a esteira E9 opera a ~81%; A4→S1, B3→B4 e B4→S2 não têm
   alternativa por esteira. Os robôs cobrem essas três; o rebalanceamento é
@@ -216,6 +302,16 @@ Bugs encontrados medindo, não supondo:
   roteamento dos pacotes é estático até a IA da Fase 4.
 - Os FPS foram medidos numa GPU dedicada. A contagem de tarefas longas usa uma
   API que só existe no Chromium.
+- A gravação vive na memória do worker (cerca de 15 MB por hora simulada) e se
+  perde ao recarregar a página; para guardar uma execução, exporte o relatório.
+- Só existe uma linha do tempo: continuar a partir do passado descarta o que
+  vinha depois (não há árvore de ramificações).
+- Depois de um salto no tempo, a cor de "pacote esperando" recomeça do zero: o
+  tempo de espera de cada pacote é acompanhado por quem desenha, não guardado no
+  checkpoint.
+- O vigia resolve esperas circulares e desvia de robôs quebrados quando há outra
+  baia; um robô preso atrás de um robô quebrado, sem outro caminho, espera o
+  conserto (40 a 60 s).
 
 ## Créditos
 
