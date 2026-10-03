@@ -14,8 +14,8 @@ export default tseslint.config(
     },
   },
   {
-    // Node scripts (benchmark).
-    files: ['bench/**/*.{ts,mjs}'],
+    // Node scripts (benchmarks, mutation check).
+    files: ['bench/**/*.{ts,mjs}', 'scripts/**/*.mjs'],
     languageOptions: { globals: { ...globals.node } },
   },
   {

@@ -16,7 +16,8 @@
     "bench": "tsx bench/run.ts",
     "bench:mapf": "tsx bench/mapf.ts",
     "bench:vigia": "tsx bench/vigia.ts",
-    "bench:tempo": "tsx --expose-gc bench/tempo.ts"
+    "bench:tempo": "tsx --expose-gc bench/tempo.ts",
+    "mutate": "node scripts/mutate.mjs"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",

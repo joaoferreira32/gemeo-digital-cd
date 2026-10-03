@@ -1,0 +1,95 @@
+{
+  "tests": ["tests/watchdog.test.ts", "tests/planner.test.ts", "tests/fleet.test.ts"],
+  "mutations": [
+    {
+      "name": "vigia não quebra ciclos",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "    for (const r of cycle) r.watchedAt = now;\n    let best",
+          "replace": "    for (const r of cycle) r.watchedAt = now;\n    if (cycle.length) return;\n    let best"
+        }
+      ]
+    },
+    {
+      "name": "vigia não troca de baia",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "        if (alt === r.station || !this.stationFree(alt, r)) continue;",
+          "replace": "        if (alt === r.station || !this.stationFree(alt, r) || alt) continue;"
+        }
+      ]
+    },
+    {
+      "name": "escolhe quem recua mais devagar",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "if (!best || steps < best.steps ||",
+          "replace": "if (!best || steps > best.steps ||"
+        }
+      ]
+    },
+    {
+      "name": "pedido de passagem mútuo de volta",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "    if (r.evadeFrom || r.evading) return;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "pedido passa por robô que não pode se mover",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "      if (busy) return;",
+          "replace": "      if (busy) continue;"
+        }
+      ]
+    },
+    {
+      "name": "alerta de robô travado nunca dispara",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "          now - r.failingSince >= STUCK_SECONDS - 1e-9",
+          "replace": "          now - r.failingSince >= STUCK_SECONDS * 100"
+        }
+      ]
+    },
+    {
+      "name": "prova de \"sem caminho\" fecha hold futuro",
+      "edits": [
+        {
+          "file": "src/sim/reservations.ts",
+          "find": "(this.holdFrom[cell] as number) <= step + 1;",
+          "replace": "(this.holdFrom[cell] as number) <= step + 1000;"
+        }
+      ]
+    },
+    {
+      "name": "prova de \"sem caminho\" desligada",
+      "edits": [
+        {
+          "file": "src/sim/planner.ts",
+          "find": "if (this.limits.precheck !== false && !this.reachable(robot, start, goal)) {",
+          "replace": "if (this.limits.precheck === 123 && !this.reachable(robot, start, goal)) {"
+        }
+      ]
+    },
+    {
+      "name": "prova de \"sem caminho\" ignora células a evitar",
+      "edits": [
+        {
+          "file": "src/sim/planner.ts",
+          "find": ": grid.holdable[cell] === 1 && !goal.avoid?.has(cell)",
+          "replace": ": grid.holdable[cell] === 1"
+        }
+      ]
+    }
+  ]
+}

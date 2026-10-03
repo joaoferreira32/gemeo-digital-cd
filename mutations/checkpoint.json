@@ -1,0 +1,115 @@
+{
+  "tests": ["tests/checkpoint.test.ts"],
+  "mutations": [
+    {
+      "name": "pacote: posição anterior não restaurada",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "        prevS: r.float(),",
+          "replace": "        prevS: (r.float(), 0),"
+        }
+      ]
+    },
+    {
+      "name": "métricas: soma da janela zerada",
+      "edits": [
+        {
+          "file": "src/sim/metrics.ts",
+          "find": "    this.windowCycleSum = r.float();",
+          "replace": "    this.windowCycleSum = r.float() * 0;"
+        }
+      ]
+    },
+    {
+      "name": "sorteio de pedidos de estoque",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "    this.rackRng.setState(r.int());",
+          "replace": "    r.int();"
+        }
+      ]
+    },
+    {
+      "name": "hold: passo inicial perdido",
+      "edits": [
+        {
+          "file": "src/sim/reservations.ts",
+          "find": "        this.holdFrom[cell] = r.int();",
+          "replace": "        this.holdFrom[cell] = r.int() * 0;"
+        }
+      ]
+    },
+    {
+      "name": "robô: fim do carregamento perdido",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "    r.dwellUntil = rd.float();",
+          "replace": "    r.dwellUntil = rd.float() * 0;"
+        }
+      ]
+    },
+    {
+      "name": "robô: pausa depois de sair da frente perdida",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "    r.resumeAt = rd.float();",
+          "replace": "    r.resumeAt = rd.float() * 0;"
+        }
+      ]
+    },
+    {
+      "name": "robô: início da falha de planejamento perdido",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "    r.failingSince = rd.float();",
+          "replace": "    r.failingSince = rd.float() * 0;"
+        }
+      ]
+    },
+    {
+      "name": "movimento: velocidade zerada",
+      "edits": [
+        {
+          "file": "src/sim/motion.ts",
+          "find": "    this.v = r.float();",
+          "replace": "    this.v = r.float() * 0;"
+        }
+      ]
+    },
+    {
+      "name": "falhas: próximo sorteio automático",
+      "edits": [
+        {
+          "file": "src/sim/failures.ts",
+          "find": "    this.nextAutoAt = r.float();",
+          "replace": "    this.nextAutoAt = r.float() + 1;"
+        }
+      ]
+    },
+    {
+      "name": "caminhão: progresso da carga",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "      d.truck.loadProgress = r.float();",
+          "replace": "      d.truck.loadProgress = r.float() * 0;"
+        }
+      ]
+    },
+    {
+      "name": "rodízio das junções",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "    this.roundRobin.set(r.ints32());",
+          "replace": "    r.ints32();"
+        }
+      ]
+    }
+  ]
+}
