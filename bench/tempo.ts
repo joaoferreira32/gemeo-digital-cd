@@ -51,6 +51,10 @@ const checkpointBytes = sizes.reduce((a, b) => a + b, 0);
 // Seeks to random moments, each from the live head (a restore every time).
 const rng = new Rng(9);
 const seekMs: number[] = [];
+rec.seek(1);
+rec.backToLive();
+gc?.();
+const beforeTrips = used();
 for (let i = 0; i < 60; i++) {
   const target = rng.int(rec.headTick);
   rec.backToLive();
@@ -58,7 +62,20 @@ for (let i = 0; i < 60; i++) {
   rec.seek(target);
   seekMs.push(performance.now() - t);
 }
+// End where the baseline was taken, so the reused world holds the same moment.
+rec.seek(1);
 rec.backToLive();
+gc?.();
+const afterTrips = used();
+// Another 60 trips (not timed): a leak keeps growing, a cache levels off.
+for (let i = 0; i < 60; i++) {
+  rec.backToLive();
+  rec.seek(rng.int(rec.headTick));
+}
+rec.seek(1);
+rec.backToLive();
+gc?.();
+const afterMoreTrips = used();
 
 // Replay from tick 0 to the end of the hour (what a seek would cost without checkpoints).
 const fromZero = (seconds: number) => {
@@ -94,6 +111,8 @@ console.log(
       stageChanges: rec.journal.length,
       seek: {
         samples: seekMs.length,
+        heapAndBuffersGrowthMB: gc ? round((afterTrips - beforeTrips) / 2 ** 20, 2) : null,
+        heapAndBuffersGrowthNext60MB: gc ? round((afterMoreTrips - afterTrips) / 2 ** 20, 2) : null,
         msMedian: round(quantile(seekMs, 0.5)),
         msP95: round(quantile(seekMs, 0.95)),
         msMax: round(Math.max(...seekMs)),

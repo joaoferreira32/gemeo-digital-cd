@@ -228,3 +228,31 @@ describe('Event log export', () => {
     expect(rows.find((r) => r[1] === 'Vigia')?.[3]).toBe('texto com ; e "aspas"');
   });
 });
+
+describe('Time travel memory', () => {
+  it('50 trips to the past and back keep the memory flat and use two worlds at most', () => {
+    const rec = record(150);
+    const before = rec.memoryBytes;
+    const worlds = new Set([rec.live]);
+    const rng = new Rng(21);
+    for (let i = 0; i < 50; i++) {
+      rec.seek(rng.int(rec.headTick));
+      worlds.add(rec.shown);
+      if (i % 3 === 0) rec.backToLive();
+    }
+    rec.backToLive();
+    expect(rec.memoryBytes).toBe(before);
+    expect(worlds.size).toBe(2);
+    expect(rec.checkpoints).toHaveLength(6); // 0, 30, …, 150 s: seeking never adds any
+
+    // Continuing from the past drops what came after it.
+    rec.seek(40 * SECOND);
+    rec.branch();
+    expect(rec.memoryBytes).toBeLessThan(before);
+    for (let i = 0; i < 20; i++) {
+      rec.seek(rng.int(rec.headTick));
+      worlds.add(rec.shown);
+    }
+    expect(worlds.size).toBe(2);
+  }, 60_000);
+});
