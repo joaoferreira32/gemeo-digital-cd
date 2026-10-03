@@ -76,7 +76,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 2;
+const CHECKPOINT_VERSION = 3;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -298,7 +298,13 @@ export class World implements FleetHost, FailureHost {
     w.ints32(this.conveyorExits);
     w.ints32(this.dockDeliveries);
 
-    const packets = this.livePackets();
+    // Packets waiting at an inbound are still as created: id, destination and
+    // creation time say everything (16 bytes instead of 60). They are most of
+    // the packets when the piles grow.
+    const compact = this.inbounds.map((inbound) =>
+      inbound.backlog.every((p) => isAsCreated(p, inbound.nodeId)),
+    );
+    const packets = this.livePackets(compact);
     w.int(packets.size);
     for (const p of packets.values()) {
       w.int(p.id);
@@ -314,10 +320,20 @@ export class World implements FleetHost, FailureHost {
     }
     const ids = (list: readonly Packet[]) => w.ints32(list.map((p) => p.id));
 
-    for (const inbound of this.inbounds) {
+    this.inbounds.forEach((inbound, i) => {
       w.float(inbound.nextArrivalAt);
-      ids(inbound.backlog);
-    }
+      w.bool(compact[i] as boolean);
+      if (!compact[i]) {
+        ids(inbound.backlog);
+        return;
+      }
+      w.int(inbound.backlog.length);
+      for (const p of inbound.backlog) {
+        w.int(p.id);
+        w.int(p.destination);
+        w.float(p.createdAt);
+      }
+    });
     for (const c of this.conveyors) {
       w.pick(c.status, CONVEYOR_STATUSES);
       w.float(c.speed);
@@ -389,7 +405,14 @@ export class World implements FleetHost, FailureHost {
 
     for (const inbound of this.inbounds) {
       inbound.nextArrivalAt = r.float();
-      fill(inbound.backlog);
+      if (!r.bool()) {
+        fill(inbound.backlog);
+        continue;
+      }
+      inbound.backlog.length = 0;
+      for (let n = r.int(); n > 0; n--) {
+        inbound.backlog.push(createPacket(r.int(), inbound.nodeId, r.int(), r.float()));
+      }
     }
     for (const c of this.conveyors) {
       c.status = r.pick(CONVEYOR_STATUSES);
@@ -419,13 +442,18 @@ export class World implements FleetHost, FailureHost {
     this.updateStats();
   }
 
-  /** Every packet still in the building, once each (some are in two lists, e.g. an order and a robot's load). */
-  private livePackets(): Map<number, Packet> {
+  /**
+   * Every packet still in the building, once each (some are in two lists, e.g.
+   * an order and a robot's load), except the inbound piles written compactly.
+   */
+  private livePackets(compactInbound: readonly boolean[]): Map<number, Packet> {
     const out = new Map<number, Packet>();
     const add = (list: readonly Packet[]) => {
       for (const p of list) out.set(p.id, p);
     };
-    for (const inbound of this.inbounds) add(inbound.backlog);
+    this.inbounds.forEach((inbound, i) => {
+      if (!compactInbound[i]) add(inbound.backlog);
+    });
     for (const c of this.conveyors) add(c.packets);
     for (const d of this.docks) add(d.staged);
     for (const lane of this.lanes) {
@@ -820,6 +848,19 @@ export class World implements FleetHost, FailureHost {
     this.stats.rackPending = rackPending;
     this.stats.waiting = backlog + blocked + waitingBypass;
   }
+}
+
+/** True while a packet still has every field `createPacket` gave it at `origin`. */
+function isAsCreated(p: Packet, origin: number): boolean {
+  return (
+    p.origin === origin &&
+    p.state === 'backlog' &&
+    p.edge === -1 &&
+    Object.is(p.s, 0) &&
+    Object.is(p.prevS, 0) &&
+    p.blocked &&
+    p.deliveredAt === -1
+  );
 }
 
 function validateConfig(c: SimConfig): void {
