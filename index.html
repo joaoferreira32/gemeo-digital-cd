@@ -102,6 +102,15 @@
         <button type="button" id="btn-heat" aria-keyshortcuts="M" aria-pressed="false">
           <kbd>M</kbd> Mapa de calor: <span id="heat-label">Desligado</span>
         </button>
+        <button
+          type="button"
+          id="btn-kpi"
+          aria-keyshortcuts="K"
+          aria-expanded="false"
+          aria-controls="kpi-panel"
+        >
+          <kbd>K</kbd> Operação
+        </button>
         <button type="button" id="btn-quality" aria-keyshortcuts="G"><kbd>G</kbd> Qualidade</button>
         <button
           type="button"
@@ -159,6 +168,48 @@
       </dl>
     </aside>
 
+    <aside id="kpi-panel" class="hud hud--kpi" aria-label="Operação: indicadores" hidden></aside>
+
+    <aside
+      id="history-panel"
+      class="hud hud--history"
+      aria-label="Histórico do item selecionado"
+      aria-live="polite"
+      hidden
+    ></aside>
+
+    <footer id="timeline" class="hud hud--timeline" data-mode="live" aria-label="Linha do tempo">
+      <div class="timeline__bar">
+        <button type="button" id="tl-live" aria-keyshortcuts="L" disabled>
+          <kbd>L</kbd> Ao vivo
+        </button>
+        <button type="button" id="tl-branch" aria-keyshortcuts="C" disabled>
+          <kbd>C</kbd> Continuar daqui
+        </button>
+        <p class="timeline__time mono" id="tl-time">0:00 · ao vivo</p>
+        <div class="timeline__files" role="group" aria-label="Exportar e carregar">
+          <button type="button" id="tl-csv">Eventos (CSV)</button>
+          <button type="button" id="tl-report">Relatório (JSON)</button>
+          <button type="button" id="tl-load">Carregar relatório</button>
+          <input type="file" id="tl-file" accept="application/json,.json" hidden />
+        </div>
+      </div>
+      <div class="timeline__track">
+        <canvas id="tl-canvas" aria-hidden="true"></canvas>
+        <input
+          type="range"
+          id="tl-range"
+          min="0"
+          max="1"
+          step="1"
+          value="0"
+          aria-label="Momento da gravação"
+          aria-keyshortcuts="[ ]"
+        />
+        <div class="viz-tooltip timeline__tooltip" id="tl-tooltip" hidden></div>
+      </div>
+    </footer>
+
     <section id="help" class="hud hud--help" aria-label="Atalhos e legenda" hidden>
       <h2>Atalhos</h2>
       <dl>
@@ -196,6 +247,16 @@
         <dd>trocar qualidade gráfica (desliga o modo automático)</dd>
         <dt><kbd>⇧</kbd><kbd>R</kbd></dt>
         <dd>reiniciar com a mesma seed</dd>
+        <dt><kbd>[</kbd><kbd>]</kbd></dt>
+        <dd>voltar / avançar 10 s na gravação (a simulação ao vivo espera)</dd>
+        <dt><kbd>L</kbd></dt>
+        <dd>voltar ao vivo</dd>
+        <dt><kbd>C</kbd> ou <kbd>Espaço</kbd> no passado</dt>
+        <dd>continuar daqui (o que vinha depois é descartado)</dd>
+        <dt><kbd>K</kbd></dt>
+        <dd>painel de operação: vazão, tempo de ciclo, utilização</dd>
+        <dt>Clique na cena</dt>
+        <dd>histórico do robô, da esteira ou da doca</dd>
       </dl>
       <h2>Legenda</h2>
       <ul class="legend">
@@ -215,6 +276,11 @@
         </li>
         <li>
           <span class="swatch" data-color="ice"></span> Caixas plásticas do estoque (decoração)
+        </li>
+        <li>
+          Linha do tempo: faixa clara = pacotes na fila; barras vermelhas = falhas e robôs travados;
+          âmbar = pico de pedidos; pontos ciano = ações do vigia; traço branco = onde a simulação
+          continuou a partir do passado
         </li>
       </ul>
       <p class="muted">

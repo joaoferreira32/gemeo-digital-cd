@@ -207,7 +207,7 @@ export interface Kpis {
   /** Second of the recording they describe. */
   readonly second: number;
   readonly windowSeconds: number;
-  /** Deliveries per minute over the last minute. */
+  /** Deliveries in the last minute (fewer at the start of a run, never extrapolated). */
   readonly throughput: number;
   /** Cycle time (order to delivery) over the window, seconds. */
   readonly cycleMean: number;
@@ -431,10 +431,7 @@ export class Recorder {
     const from = Math.max(0, at - window);
     const span = at - from;
     const lastMinute = Math.max(0, at - 60);
-    const throughput =
-      at > lastMinute
-        ? ((s.delivered.get(at) - s.delivered.get(lastMinute)) / (at - lastMinute)) * 60
-        : 0;
+    const throughput = s.delivered.get(at) - s.delivered.get(lastMinute);
     const c0 = s.cycleEnd.get(from);
     const c1 = s.cycleEnd.get(at);
     const cycles = s.cycles.data.subarray(c0, c1);
@@ -471,8 +468,7 @@ export class Recorder {
       const sec = at - window + 1 + i;
       if (sec < 0) continue;
       const before = Math.max(0, sec - 60);
-      chart.throughput[i] =
-        sec > before ? ((s.delivered.get(sec) - s.delivered.get(before)) / (sec - before)) * 60 : 0;
+      chart.throughput[i] = s.delivered.get(sec) - s.delivered.get(before);
       chart.waiting[i] = s.waiting.get(sec);
       chart.busyRobots[i] = s.busyNow.get(sec);
     }

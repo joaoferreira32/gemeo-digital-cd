@@ -3,7 +3,16 @@ import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/jetbrains-mono/500.css';
 import './styles.css';
-import { ACESFilmicToneMapping, PCFShadowMap, SRGBColorSpace, WebGLRenderer } from 'three';
+import {
+  ACESFilmicToneMapping,
+  PCFShadowMap,
+  Plane,
+  Raycaster,
+  SRGBColorSpace,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
 import { FrameBuffer, decodeFrame, type SimFrame } from './link/frames';
 import { createLink } from './link/link';
 import { isTyping, type CameraPreset } from './render/camera';
@@ -16,6 +25,11 @@ import { createDefaultLayout } from './sim/layout';
 import { HEADER } from './sim/snapshot';
 import { DEFAULT_CONFIG } from './sim/world';
 import { Hud } from './ui/hud';
+import { HistoryPanel } from './ui/history';
+import { KpiPanel } from './ui/kpi';
+import { pickEntity } from './ui/pick';
+import { TimelineBar } from './ui/timeline';
+import type { RunReport } from './sim/recorder';
 import { CpuHeatmap } from './render/heatmap-cpu';
 import { SPEEDS, type SimCommand } from './worker/protocol';
 
@@ -72,6 +86,16 @@ const hud = new Hud(grid);
 const governor = new QualityGovernor('alta', (level) => applyQuality(level));
 const link = createLink();
 const frames = new FrameBuffer((buffer) => link.send({ type: 'release', buffer }, [buffer]));
+const kpiPanel = new KpiPanel(document.getElementById('kpi-panel') as HTMLElement, layout);
+const historyPanel = new HistoryPanel(document.getElementById('history-panel') as HTMLElement);
+const timeline = new TimelineBar(document.getElementById('timeline') as HTMLElement, {
+  seek: (time) => send({ type: 'seek', time }),
+  live: () => send({ type: 'live' }),
+  branch: () => continueHere(),
+  exportCsv: () => send({ type: 'export', what: 'csv' }),
+  exportReport: () => send({ type: 'export', what: 'report' }),
+  loadReport: (file) => void loadReport(file),
+});
 
 let view!: SceneView;
 let paused = false;
@@ -100,15 +124,103 @@ function send(cmd: SimCommand) {
 }
 
 link.onMessage = (msg) => {
-  if (msg.type === 'error') {
-    console.error('Simulação:', msg.message);
+  switch (msg.type) {
+    case 'snapshot': {
+      const frame = decodeFrame(msg.buffer, msg.events);
+      // Entering the past: the feed showed what happened later; it starts over.
+      if (frame.mode === 1 && (frames.latest?.mode ?? 0) === 0) hud.clearEvents();
+      frames.push(frame);
+      firstFrame ??= frame;
+      if (msg.events.length) hud.pushEvents(msg.events, performance.now() / 1000);
+      return;
+    }
+    case 'status':
+      timeline.update(msg.timeline);
+      kpiPanel.update(msg.kpis, msg.stages, msg.timeline.shown, msg.timeline.viewing);
+      return;
+    case 'history':
+      historyPanel.render(msg.history);
+      return;
+    case 'export':
+      download(msg.filename, msg.mime, msg.text);
+      return;
+    case 'replay':
+      showReplay(msg.progress, msg.done, msg.ok);
+      return;
+    case 'error':
+      console.error('Simulação:', msg.message);
+      note(msg.message);
+      return;
+  }
+};
+
+/** A line in the event feed from the page itself (not from the simulation). */
+function note(text: string) {
+  hud.pushEvents([{ id: -1, time: 0, kind: 'watchdog', text }], performance.now() / 1000);
+}
+
+function download(filename: string, mime: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function loadReport(file: File) {
+  try {
+    const report = JSON.parse(await file.text()) as RunReport;
+    hud.clearEvents();
+    historyPanel.close();
+    send({ type: 'load-report', report });
+    note(`Reproduzindo o relatório ${file.name}…`);
+  } catch {
+    note('Não foi possível ler esse arquivo como relatório.');
+  }
+}
+
+let replayNoted = 0;
+function showReplay(progress: number, done: boolean, ok?: boolean) {
+  if (done) {
+    replayNoted = 0;
+    setPaused(true);
+    note(
+      ok
+        ? 'Relatório reproduzido: o estado final bate com o da gravação original (mesma impressão digital).'
+        : 'Relatório reproduzido, mas o estado final difere do original.',
+    );
     return;
   }
-  const frame = decodeFrame(msg.buffer, msg.events);
-  frames.push(frame);
-  firstFrame ??= frame;
-  if (msg.events.length) hud.pushEvents(msg.events, performance.now() / 1000);
-};
+  const step = Math.floor(progress * 4);
+  if (step > replayNoted) {
+    replayNoted = step;
+    note(`Reproduzindo relatório: ${Math.round(progress * 100)}%`);
+  }
+}
+
+/** Continues the run from the moment shown (the future that was recorded is dropped). */
+function continueHere() {
+  if (!timeline.viewing) return;
+  send({ type: 'branch' });
+  if (paused) setPaused(false);
+  note('A simulação continua daqui; o que vinha depois foi descartado.');
+}
+
+function seekBy(seconds: number) {
+  const from = timeline.viewing ? timeline.shown : timeline.head;
+  send({ type: 'seek', time: Math.max(0, Math.min(timeline.head, from + seconds)) });
+}
+
+function openHistory(entity: string) {
+  historyPanel.show(entity);
+  document.getElementById('robot-panel')!.hidden = true;
+  send({ type: 'history', entity });
+}
+
+function toggleKpi(force?: boolean) {
+  kpiPanel.toggle(force);
+}
 
 function viewport() {
   return { w: window.innerWidth, h: window.innerHeight };
@@ -131,6 +243,7 @@ function buildView() {
 function restart() {
   send({ type: 'restart' });
   hud.clearEvents();
+  historyPanel.close();
   buildView();
 }
 
@@ -223,6 +336,14 @@ function bindControls() {
   document.getElementById('btn-heat')!.addEventListener('click', cycleHeat);
   document.getElementById('btn-quality')!.addEventListener('click', () => governor.cycle());
   document.getElementById('btn-help')!.addEventListener('click', () => toggleHelp());
+  document.getElementById('btn-kpi')!.addEventListener('click', () => toggleKpi());
+  // Panels above the control bar follow its real height (it wraps on narrow screens).
+  const controls = document.querySelector('.hud--controls') as HTMLElement;
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--controls-h', `${controls.offsetHeight}px`);
+  }).observe(controls);
+  kpiPanel.onPick = openHistory;
+  bindPicking();
 
   const failureKeys: Record<string, FailureKind> = {
     Digit5: 'conveyor',
@@ -258,7 +379,24 @@ function bindControls() {
       case 'Space':
         if (onButton) return;
         e.preventDefault();
-        setPaused(!paused);
+        // In the past, playing means continuing from there.
+        if (timeline.viewing) continueHere();
+        else setPaused(!paused);
+        break;
+      case 'BracketLeft':
+        seekBy(-10);
+        break;
+      case 'BracketRight':
+        seekBy(10);
+        break;
+      case 'KeyL':
+        send({ type: 'live' });
+        break;
+      case 'KeyC':
+        continueHere();
+        break;
+      case 'KeyK':
+        toggleKpi();
         break;
       case 'Comma':
         changeSpeed(-1);
@@ -280,6 +418,7 @@ function bindControls() {
         break;
       case 'Escape':
         toggleHelp(false);
+        if (historyPanel.entity) historyPanel.close();
         break;
       case 'KeyR':
         if (e.shiftKey) restart();
@@ -294,8 +433,36 @@ function bindControls() {
   motionQuery.addEventListener('change', () => view.setReducedMotion(motionQuery.matches));
 }
 
+/** A click (not a drag) on the scene opens the history of what is under it. */
+function bindPicking() {
+  const ray = new Raycaster();
+  const floor = new Plane(new Vector3(0, 1, 0), -0.4);
+  const ndc = new Vector2();
+  const hit = new Vector3();
+  let down: { x: number; y: number; t: number } | null = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    down = { x: e.clientX, y: e.clientY, t: performance.now() };
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    const d = down;
+    down = null;
+    if (!d || e.button !== 0) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5 || performance.now() - d.t > 400) return;
+    const box = canvas.getBoundingClientRect();
+    ndc.set(
+      ((e.clientX - box.left) / box.width) * 2 - 1,
+      -((e.clientY - box.top) / box.height) * 2 + 1,
+    );
+    ray.setFromCamera(ndc, view.orbit.camera);
+    if (!ray.ray.intersectPlane(floor, hit)) return;
+    const entity = pickEntity(layout, view.poses, hit.x, hit.z);
+    if (entity) openHistory(entity);
+  });
+}
+
 let last = performance.now();
 let hudTimer = 0;
+let historyTimer = 0;
 
 function frame(now: number) {
   const realDt = Math.min((now - last) / 1000, 0.25);
@@ -328,6 +495,11 @@ function frame(now: number) {
     );
     const auto = (sample.frame.s.header[HEADER.autoFailures] as number) > 0;
     document.getElementById('btn-auto')!.setAttribute('aria-pressed', String(auto));
+  }
+  historyTimer -= realDt;
+  if (historyPanel.entity && historyTimer <= 0) {
+    historyTimer = 1;
+    send({ type: 'history', entity: historyPanel.entity });
   }
   requestAnimationFrame(frame);
 }

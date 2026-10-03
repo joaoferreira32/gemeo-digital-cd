@@ -77,11 +77,12 @@ export class Hud {
     const h = frame.s.header;
     const v = (k: keyof typeof HEADER) => h[HEADER[k]] as number;
     const speed = v('speed');
+    const past = v('mode') === 1;
     this.set(this.clock, formatClock(v('time')));
     this.set(this.seed, `seed ${v('seed')}`);
-    this.state.dataset.state = speed === 0 ? 'paused' : 'running';
-    this.set(this.state, speed === 0 ? 'Pausado' : 'Rodando');
-    this.set(this.speed, speed === 0 ? '' : `${speed}×`);
+    this.state.dataset.state = past ? 'past' : speed === 0 ? 'paused' : 'running';
+    this.set(this.state, past ? 'Revendo o passado' : speed === 0 ? 'Pausado' : 'Rodando');
+    this.set(this.speed, past || speed === 0 ? '' : `${speed}×`);
 
     const waiting = v('waiting');
     const backlog = v('backlog');
