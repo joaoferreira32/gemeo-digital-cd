@@ -1,4 +1,5 @@
 import {
+  Color,
   AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
@@ -208,6 +209,21 @@ export class HeatmapView {
   }
 
   /** Advances the heat field by `simDt` simulated seconds. Always runs, so switching layers is instant. */
+  /** Forgets the accumulated field (the moment drawn jumped elsewhere in time). */
+  reset(): void {
+    const r = this.renderer;
+    const prevTarget = r.getRenderTarget();
+    const prevColor = r.getClearColor(new Color());
+    const prevAlpha = r.getClearAlpha();
+    r.setClearColor(0x000000, 0);
+    for (const t of this.targets) {
+      r.setRenderTarget(t);
+      r.clear(true, false, false);
+    }
+    r.setClearColor(prevColor, prevAlpha);
+    r.setRenderTarget(prevTarget);
+  }
+
   update(frame: SimFrame, alpha: number, robots: RobotPoses, simDt: number): void {
     const t0 = performance.now();
     const s = frame.s;

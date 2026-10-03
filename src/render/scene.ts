@@ -64,11 +64,15 @@ export class SceneView {
   private readonly followPoint = new Vector3();
   private wallTime = 0;
   private trailsOn = true;
+  /** Rewind look: where it is going (1 looking at the past) and where it is. */
+  private rewindTarget = 0;
+  private rewindAmount = 0;
+  private lastCut: SimFrame | null = null;
 
   constructor(
     private readonly renderer: WebGLRenderer,
     private readonly opts: SceneOptions,
-    canvas: HTMLElement,
+    private readonly canvas: HTMLElement,
     private reducedMotion: boolean,
   ) {
     const { layout } = opts;
@@ -182,6 +186,16 @@ export class SceneView {
   update(realDt: number, frame: SimFrame, alpha: number, simDt: number): void {
     this.wallTime += realDt;
     const s = frame.s;
+    if (frame.cut && frame !== this.lastCut) {
+      // Another moment: trails and heat built up elsewhere in time no longer apply.
+      this.lastCut = frame;
+      this.trails.reset();
+      this.heat.reset();
+    }
+    this.rewindTarget = frame.mode === 1 ? 1 : 0;
+    this.rewindAmount = this.reducedMotion
+      ? this.rewindTarget
+      : this.rewindAmount + (this.rewindTarget - this.rewindAmount) * Math.min(1, realDt * 6);
     this.poses.update(frame, alpha);
     for (let e = 0; e < this.beltBroken.length; e++) {
       const broken = (s.conveyors[e * CONVEYOR_STRIDE] as number) > 0;
@@ -237,7 +251,16 @@ export class SceneView {
   }
 
   render(): void {
+    const shader = this.post.setRewind(this.rewindAmount, this.wallTime, !this.reducedMotion);
+    // Low quality has no post-processing: a CSS filter gives the same cue.
+    const css = !shader && this.rewindAmount > 0.01 ? `grayscale(${0.8 * this.rewindAmount})` : '';
+    if (this.canvas.style.filter !== css) this.canvas.style.filter = css;
     this.post.render();
+  }
+
+  /** How strongly the past look is applied right now (0 … 1), for tests. */
+  get rewind(): number {
+    return this.rewindAmount;
   }
 
   dispose(): void {
