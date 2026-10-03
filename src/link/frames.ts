@@ -7,6 +7,10 @@ export interface SimFrame {
   readonly time: number;
   readonly prevTime: number;
   readonly speed: number;
+  /** This frame does not continue the previous one (seek, back to live, restart). */
+  readonly cut: boolean;
+  /** 0 live · 1 a past moment of the recording. */
+  readonly mode: number;
   readonly events: SimEvent[];
 }
 
@@ -18,6 +22,8 @@ export function decodeFrame(buffer: ArrayBuffer, events: SimEvent[]): SimFrame {
     time: s.header[HEADER.time] as number,
     prevTime: s.header[HEADER.prevTime] as number,
     speed: s.header[HEADER.speed] as number,
+    cut: s.header[HEADER.cut] === 1,
+    mode: s.header[HEADER.mode] as number,
     events,
   };
 }
@@ -45,8 +51,8 @@ export class FrameBuffer {
 
   push(frame: SimFrame): void {
     const last = this.latest;
-    if (last && frame.time < last.time) {
-      // A restart: older frames belong to another world.
+    if ((last && frame.time < last.time) || frame.cut) {
+      // A restart or a jump in time: older frames belong to another moment.
       this.clear();
     }
     this.frames.push(frame);

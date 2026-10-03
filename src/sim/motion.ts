@@ -1,4 +1,5 @@
 import type { FloorGrid } from './floor';
+import type { StateReader, StateWriter } from './state';
 
 /**
  * Continuous motion of a robot following a timed cell plan.
@@ -417,6 +418,45 @@ export class RobotMotion {
       this.x = this.pose.x;
       this.z = this.pose.z;
     }
+  }
+
+  /**
+   * Checkpoints. The path itself is not stored: it is always built from the
+   * robot's timed cells (`Robot.cells` from `Robot.planStart`), so `load`
+   * rebuilds it from them.
+   */
+  save(w: StateWriter): void {
+    w.float(this.x);
+    w.float(this.z);
+    w.float(this.heading);
+    w.float(this.v);
+    w.float(this.s);
+    w.float(this.odometer);
+    w.int(this.brakingViolations);
+    w.bool(this.timeline !== null);
+  }
+
+  load(r: StateReader, cells: readonly number[], startStep: number): void {
+    this.x = r.float();
+    this.z = r.float();
+    this.heading = r.float();
+    this.v = r.float();
+    this.s = r.float();
+    this.odometer = r.float();
+    this.brakingViolations = r.int();
+    this.timeline = r.bool()
+      ? new PathTimeline(this.grid, cells, startStep, this.params.turnRadius)
+      : null;
+  }
+
+  /** Puts the robot at rest on `cell` (scenario setup). */
+  teleport(cell: number, heading: number): void {
+    this.x = this.grid.x(cell);
+    this.z = this.grid.z(cell);
+    this.heading = heading;
+    this.v = 0;
+    this.s = 0;
+    this.timeline = null;
   }
 
   /** Stops following any path (the robot stays where it is). */

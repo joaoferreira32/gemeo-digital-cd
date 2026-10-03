@@ -172,6 +172,130 @@ falhar) e só avisa no snapshot.
 
 ---
 
+## Fase 3 — viagem no tempo e observabilidade
+
+### Vigia anti-travamento
+
+Cenários montados de propósito no mapa real (`src/sim/scenarios.ts`), nos 4
+portões que são a única entrada das faixas de doca (1 célula entre duas paredes
+de esteira, o corredor mais estreito que os robôs usam). Depois de 6 s sem
+caminho, o vigia monta o grafo de quem espera quem; num ciclo, testa um recuo
+para cada robô e manda recuar o que sai da frente mais rápido; atrás de um robô
+com defeito, troca a entrega para a outra baia da mesma doca, se ela puder ser
+alcançada.
+
+**Dois robôs parados esperando um pelo outro, pedidos de passagem falhando**
+(desligados de propósito). 4 portões × 3 posições (em volta do portão ou um
+deles dentro) × 3 cargas (os dois vazios, um ou outro carregado) = 36 casos:
+
+| O que                                 | Sem vigia                          | Com vigia |
+| ------------------------------------- | ---------------------------------- | --------- |
+| Casos travados                        | 36 de 36 (nenhum se move em 2 min) | 0 de 36   |
+| Tempo até os dois passarem, pior caso | —                                  | 18,6 s    |
+| Tempo até os dois passarem, mediana   | —                                  | 18,6 s    |
+| Menor distância entre robôs           | —                                  | 1,000 m   |
+| Frenagens acima do limite             | —                                  | 0         |
+
+Os 18,6 s são 6 s até o vigia agir, o recuo (3 a 4 passos), a espera de 4 s de
+quem recuou e a volta dele. O teste exige no máximo 20 s em todos os casos. O
+mesmo vale para uma troca de lugares (cada robô quer a célula onde o outro
+está): sem vigia, os dois seguem parados depois de 89 s; com vigia, espera
+máxima de 6 s (o teste exige até 7 s).
+
+**Robô com defeito dentro do portão por 60 s.** Um robô fica preso na faixa
+atrás dele; dois precisam entregar em docas cuja baia mais próxima fica atrás do
+portão (cada uma tem uma segunda baia, alcançada por outro caminho). Igual nos 4
+portões:
+
+| Espera máxima                      | Sem vigia | Com vigia                  |
+| ---------------------------------- | --------- | -------------------------- |
+| Robô preso atrás do defeito        | 60 s      | 60 s (o tempo do conserto) |
+| Robôs com outra baia para entregar | 60 s      | 7 s                        |
+
+Para o robô preso não há o que fazer: o único caminho passa pelo robô quebrado,
+e a espera fica limitada pelo conserto (40 a 60 s no injetor de falhas). Num
+portão que tem outro ao lado (as passagens sob as linhas principais), ninguém
+espera: o planejador já contorna pelo outro.
+
+**Custo de uma tentativa sem caminho** (robô preso atrás de um robô parado):
+
+| O que                                 | Só a busca no espaço-tempo | Com a prova no piso |
+| ------------------------------------- | -------------------------- | ------------------- |
+| Uma tentativa (duas rodadas)          | 19,0–19,9 ms               | 0,0019–0,002 ms     |
+| CPU dos 36 casos de impasse com vigia | 11,8 s                     | 1,8 s               |
+
+A prova trata como parede as células que outro robô já segura (elas não abrem
+durante a busca) e faz uma busca em largura no piso. Ela ignora o tempo e as
+regras de movimento, então nunca recusa um caminho que a busca acharia: um
+teste compara as duas respostas em 400 casos aleatórios (191 com caminho, 209
+sem), com 0 diferenças. No turno normal e no cenário duro (`npm run bench:mapf`)
+os resultados ficaram idênticos aos da Fase 2 e o benchmark do motor ficou
+dentro do ruído (−1,2% a +2,6%).
+
+### Viagem no tempo
+
+Uma hora simulada com 40 robôs e falhas automáticas (`npm run bench:tempo`,
+seed 2026, Node 24, mesma máquina das outras medições):
+
+| O que                                        | Resultado                                                 |
+| -------------------------------------------- | --------------------------------------------------------- |
+| Checkpoints (a cada 30 s simulados)          | 121; média 122 KB, máximo 172 KB                          |
+| Tempo para gravar um checkpoint              | mediana 1,2 ms, máximo 23 ms                              |
+| Memória da gravação                          | 15,5 MB por hora (14,5 MB de checkpoints)                 |
+| Voltar a um instante sorteado (60 sorteios)  | mediana 253 ms, p95 484 ms, máximo 580 ms                 |
+| Mesmo instante refazendo tudo desde o tick 0 | 34 s na meia hora, 65 s no fim da hora (≈255× mais lento) |
+
+Antes da codificação compacta das filas de entrada, os checkpoints tinham 211 KB
+em média (326 KB no máximo) e a gravação ocupava 26 MB por hora: 3.595 dos 4.833
+pacotes do maior checkpoint esperavam nas entradas, ainda com os valores de
+criação, e passaram de 60 para 16 bytes cada.
+
+**Reconstrução idêntica** (`tests/checkpoint.test.ts`, `tests/recorder.test.ts`):
+restaurado em 48 instantes de duas execuções caóticas (a cada 10 s, com
+caminhões carregando, robôs com defeito e falhas automáticas) e em 48 instantes
+de esperas resolvidas pelo pedido de passagem e pelo vigia, o mundo continua
+igual ao original: impressão digital, bytes do snapshot e estatísticas da
+frota. Voltar a 30 instantes sorteados de uma gravação com falhas manuais e
+automáticas e teste de carga mostra exatamente o estado que o mundo tinha ao vivo.
+Continuar a partir do passado com uma entrada nova dá o mesmo que uma execução
+nova com as mesmas entradas. Onze campos esquecidos de propósito na codificação
+(posição anterior do pacote, soma da janela de métricas, sorteio de pedidos,
+início de um hold, espera de um robô, pausa depois de sair da frente, início da
+falha de planejamento, velocidade, próximo sorteio de falha, carga do caminhão,
+rodízio das junções) foram todos pegos pelos testes.
+
+**Sem vazamento em 50 viagens no tempo:**
+
+| Onde                                  | Antes                       | Depois                      |
+| ------------------------------------- | --------------------------- | --------------------------- |
+| GPU (Chromium, 50 viagens, 5 ramos)   | 101 geometrias, 62 texturas | 101 geometrias, 62 texturas |
+| Heap da página (após coleta forçada)  | 12,98 MB                    | 13,23 MB                    |
+| Heap da simulação, 60 viagens         | —                           | +0,77 MB (caches aquecendo) |
+| Heap da simulação, mais 60 viagens    | —                           | +0,03 MB                    |
+| Bytes da gravação (teste, 50 viagens) | iguais                      | iguais; só 2 mundos em uso  |
+
+**Custo de gravar no motor ao vivo** (`npm run bench`, mediana de 5): 4.231
+passos/s rodando pela gravação contra 4.210 passos/s do motor sozinho, dentro do
+ruído entre repetições (1,1% a 1,8%).
+
+### Indicadores do painel de operação
+
+Calculados no worker para o instante mostrado (ao vivo ou passado), a partir de
+uma amostra por segundo com contadores acumulados: uma janela é uma subtração.
+
+- **Vazão:** entregas no último minuto (no começo da execução, as entregas até
+  ali; nunca extrapola um trecho curto).
+- **Tempo de ciclo médio e p95:** sobre todas as entregas dos últimos 5 min,
+  do pedido à doca. O p95 é exato (seleção, posto mais próximo); um teste o
+  compara com a ordenação completa em 300 conjuntos aleatórios com empates.
+- **Utilização:** esteira = pacotes que saíram ÷ capacidade (velocidade ÷
+  espaçamento); doca = entregas ÷ taxa de serviço; robô = fração do tempo
+  buscando, carregando, entregando ou descarregando.
+- **Alerta de robô travado:** 20 s sem caminho geram um evento e o alerta
+  vermelho na cena; quando ele volta a planejar, outro evento diz quanto esperou.
+
+---
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                          |
@@ -184,6 +308,12 @@ falhar) e só avisa no snapshot.
 | 2    | Frenagem brusca logo após replanejar                               | o novo plano mudava a curva na célula seguinte                   | compromisso 2 passos à frente: 0 violações em 8 seeds       |
 | 2    | Exceção "célula já reservada"                                      | robô precisando parar numa célula que outro reservaria no futuro | esse outro também replaneja                                 |
 | 2    | 31% das tentativas de planejamento sem caminho                     | estação liberada com o robô ainda em cima                        | 1,3%, e plano 10× mais rápido                               |
+| 3    | Os dois robôs de um par recuavam ao mesmo tempo                    | cada um pedia passagem ao outro na mesma rodada                  | só um recua (teste)                                         |
+| 3    | Robôs saindo da frente à toa atrás de um robô com defeito          | o pedido de passagem passava por quem não podia se mover         | nenhum pedido nesses casos (teste)                          |
+| 3    | 36 casos de impasse custando 11,8 s de CPU                         | cada tentativa sem caminho esgotava 60 mil estados da busca      | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa      |
+| 3    | Robô restaurado divergindo no último bit                           | a soma da janela de métricas era recalculada ao compactar        | compactação sem recálculo: idêntico bit a bit               |
+| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas      | pacotes parados nas entradas gravados com todos os campos        | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB    |
+| 3    | Teste de carga perdido ao reiniciar (teste do worker)              | a carga virou entrada gravada e o reinício criava gravação nova  | a carga volta como entrada no tick 0 da nova gravação       |
 
 ## Como reproduzir
 
@@ -191,6 +321,8 @@ falhar) e só avisa no snapshot.
 npm test             # segurança da frota, desvio, falhas, determinismo
 npm run bench        # benchmark do motor
 npm run bench:mapf   # planejamento e episódios sem caminho
+npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
+npm run bench:tempo  # uma hora simulada: memória, checkpoints e seek (cerca de 3 min)
 npm run dev          # depois, no console do navegador: __gemeo.benchHeat()
 ```
 

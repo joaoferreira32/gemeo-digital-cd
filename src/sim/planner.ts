@@ -36,6 +36,8 @@ export interface PlanGoal {
 export interface PlannerLimits {
   maxExpansions: number;
   maxSteps: number;
+  /** Prove "no path" with one floor search before the space-time search (off only in tests). */
+  precheck?: boolean;
 }
 
 export interface Plan {
@@ -144,14 +146,20 @@ class OpenList {
 export class CooperativePlanner {
   private readonly open = new OpenList();
   private readonly parent = new Map<number, number>();
+  private readonly queue: Int32Array;
+  private readonly seen: Uint32Array;
+  private stamp = 0;
   /** Statistics for the HUD and the benchmarks. */
-  readonly stats = { plans: 0, failures: 0, expansions: 0 };
+  readonly stats = { plans: 0, failures: 0, expansions: 0, provedUnreachable: 0 };
 
   constructor(
     private readonly grid: FloorGrid,
     private readonly table: ReservationTable,
     private readonly limits: PlannerLimits = DEFAULT_LIMITS,
-  ) {}
+  ) {
+    this.queue = new Int32Array(grid.cellCount);
+    this.seen = new Uint32Array(grid.cellCount);
+  }
 
   /** Finds a path for `robot`; returns null when none exists within the limits. */
   plan(robot: number, start: PlanStart, goal: PlanGoal): Plan | null {
@@ -159,6 +167,10 @@ export class CooperativePlanner {
     const cells = grid.cellCount;
     const h = goal.cell >= 0 ? grid.distanceMap(goal.cell) : null;
     if (h && (h[start.cell] as number) >= 1 << 29) return this.fail();
+    if (this.limits.precheck !== false && !this.reachable(robot, start, goal)) {
+      this.stats.provedUnreachable++;
+      return this.fail();
+    }
     const open = this.open;
     const parent = this.parent;
     open.clear();
@@ -224,6 +236,45 @@ export class CooperativePlanner {
       plan.startStep + plan.cells.length - 1,
       robot,
     );
+  }
+
+  /**
+   * Cheap proof that no plan exists. A cell another robot already holds stays
+   * closed for the whole search (holds have no end), so if no goal cell can be
+   * reached on the floor with those cells as walls, the space-time search
+   * could only exhaust its budget. It ignores time and the motion rules, so
+   * it never rejects a goal the search would find: one breadth-first pass
+   * over the floor instead of up to `maxExpansions` states for a robot that
+   * is shut in.
+   */
+  private reachable(robot: number, start: PlanStart, goal: PlanGoal): boolean {
+    const { grid, table, queue, seen } = this;
+    const closedAt = start.step + 1;
+    if (++this.stamp === 0xffffffff) {
+      seen.fill(0);
+      this.stamp = 1;
+    }
+    const stamp = this.stamp;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = start.cell;
+    seen[start.cell] = stamp;
+    while (head < tail) {
+      const cell = queue[head++] as number;
+      if (
+        goal.cell >= 0 ? cell === goal.cell : grid.holdable[cell] === 1 && !goal.avoid?.has(cell)
+      ) {
+        return true;
+      }
+      for (let d = 0; d < 4; d++) {
+        const n = grid.neighbor(cell, d);
+        if (n < 0 || grid.blocked[n] || seen[n] === stamp) continue;
+        seen[n] = stamp;
+        if (table.closedFrom(n, closedAt, robot)) continue;
+        queue[tail++] = n;
+      }
+    }
+    return false;
   }
 
   private isGoal(robot: number, cell: number, step: number, goal: PlanGoal): boolean {

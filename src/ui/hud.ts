@@ -1,6 +1,7 @@
 import type { FloorGrid } from '../sim/floor';
 import type { SimEvent } from '../sim/failures';
 import type { RobotStage } from '../sim/fleet';
+import { STAGE_LABEL } from '../sim/labels';
 import { HEADER, JOBS, ROBOT, ROBOT_STRIDE, STAGES } from '../sim/snapshot';
 import type { SimFrame } from '../link/frames';
 import { QUALITY_LABEL, type QualityLevel } from '../render/quality';
@@ -12,17 +13,7 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T {
   return node as T;
 }
 
-export const STAGE_LABEL: Record<RobotStage, string> = {
-  parked: 'Estacionado',
-  toPark: 'Voltando à vaga',
-  toPickup: 'Indo buscar caixas',
-  loading: 'Carregando caixas',
-  toDrop: 'Indo entregar',
-  unloading: 'Descarregando',
-  toCharger: 'Indo recarregar',
-  charging: 'Recarregando',
-  defect: 'Com defeito',
-};
+export { STAGE_LABEL };
 
 export interface RenderStats {
   fps: number;
@@ -86,11 +77,12 @@ export class Hud {
     const h = frame.s.header;
     const v = (k: keyof typeof HEADER) => h[HEADER[k]] as number;
     const speed = v('speed');
+    const past = v('mode') === 1;
     this.set(this.clock, formatClock(v('time')));
     this.set(this.seed, `seed ${v('seed')}`);
-    this.state.dataset.state = speed === 0 ? 'paused' : 'running';
-    this.set(this.state, speed === 0 ? 'Pausado' : 'Rodando');
-    this.set(this.speed, speed === 0 ? '' : `${speed}×`);
+    this.state.dataset.state = past ? 'past' : speed === 0 ? 'paused' : 'running';
+    this.set(this.state, past ? 'Revendo o passado' : speed === 0 ? 'Pausado' : 'Rodando');
+    this.set(this.speed, past || speed === 0 ? '' : `${speed}×`);
 
     const waiting = v('waiting');
     const backlog = v('backlog');
@@ -138,7 +130,14 @@ export class Hud {
     const load = r[o + ROBOT.load] as number;
     const waiting = r[o + ROBOT.waiting] as number;
     this.set(this.rName, `Robô ${index + 1}`);
-    const note = waiting === 1 ? ' · aguardando a estação' : waiting === 2 ? ' · replanejando' : '';
+    const note =
+      waiting === 1
+        ? ' · aguardando a estação'
+        : waiting === 2
+          ? ' · replanejando'
+          : waiting === 3
+            ? ' · travado, sem caminho'
+            : '';
     this.set(this.rState, STAGE_LABEL[stage] + note);
     this.rState.dataset.stage = stage;
     this.set(this.rBattery, `${formatInt(battery)}%`);
@@ -161,9 +160,11 @@ export class Hud {
             ? target
             : job === 'park'
               ? `Voltar à ${target.toLowerCase()}`
-              : stage === 'parked'
-                ? 'Sem tarefa'
-                : '—';
+              : job === 'goto'
+                ? 'Deslocamento programado'
+                : stage === 'parked'
+                  ? 'Sem tarefa'
+                  : '—';
     this.set(this.rTask, task);
     const cells = r[o + ROBOT.routeLength] as number;
     const stepSeconds = frame.s.header[HEADER.stepSeconds] as number;

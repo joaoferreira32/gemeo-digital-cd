@@ -1,6 +1,6 @@
 import { pointOnEdge, type EdgePoint } from './graph';
 import type { SimEvent } from './failures';
-import type { RobotStage } from './fleet';
+import { ROBOT_STAGES, type RobotStage } from './fleet';
 import type { World } from './world';
 
 /**
@@ -53,8 +53,14 @@ export const HEADER = {
   stress: 36,
   seed: 37,
   stepSeconds: 38,
+  /** 0 live · 1 a past moment of the recording. */
+  mode: 39,
+  /** Time at the head of the recording (the live world), seconds. */
+  head: 40,
+  /** 1 when this frame does not continue the previous one (seek, back to live, new run). */
+  cut: 41,
 } as const;
-export const HEADER_LEN = 40;
+export const HEADER_LEN = 48;
 
 /** Floats per entry in each section. */
 export const PACKET_STRIDE = 8; // x0 z0 h0 x1 z1 h1 waitSeconds dockIndex
@@ -82,18 +88,8 @@ export const LANE_STRIDE = 4; // active pickup drop carried
 export const FAILURE_STRIDE = 5; // kind target startedAt endsAt id
 export const CONVEYOR_STRIDE = 2; // status blocked
 
-export const STAGES: readonly RobotStage[] = [
-  'parked',
-  'toPark',
-  'toPickup',
-  'loading',
-  'toDrop',
-  'unloading',
-  'toCharger',
-  'charging',
-  'defect',
-];
-export const JOBS = ['none', 'rack', 'bypass', 'charge', 'park'] as const;
+export const STAGES: readonly RobotStage[] = ROBOT_STAGES;
+export const JOBS = ['none', 'rack', 'bypass', 'charge', 'park', 'goto'] as const;
 export const TRUCK_STATES = ['docked', 'loading', 'away'] as const;
 export const FAILURE_KINDS = ['conveyor', 'surge', 'robot', 'dock'] as const;
 
@@ -196,12 +192,27 @@ export class SnapshotWriter {
   private generation = 0;
   private prevTime: number;
   private lastEventId = 0;
+  private cut = true;
   /** Buffers handed back by the reader, ready to be reused. */
   private readonly pool: ArrayBuffer[] = [];
   allocations = 0;
 
-  constructor(private readonly world: World) {
+  constructor(private world: World) {
     this.prevTime = world.time;
+  }
+
+  /**
+   * Draws `world` from the next frame on (another world, or the same one after
+   * a jump in time): the previous poses are forgotten and the frame is marked
+   * as a cut, so nothing is blended across the two moments.
+   */
+  show(world: World): void {
+    this.world = world;
+    this.packetTraces.clear();
+    this.robotTraces.length = 0;
+    this.prevTime = world.time;
+    this.lastEventId = world.events.at(-1)?.id ?? 0;
+    this.cut = true;
   }
 
   /** Returns a buffer the reader no longer needs. */
@@ -216,7 +227,7 @@ export class SnapshotWriter {
     return out;
   }
 
-  write(extra: { speed: number; stress: boolean }): ArrayBuffer {
+  write(extra: { speed: number; stress: boolean; mode?: number; head?: number }): ArrayBuffer {
     const w = this.world;
     const fleet = w.fleet;
     const now = w.time;
@@ -287,6 +298,10 @@ export class SnapshotWriter {
     h[HEADER.stress] = extra.stress ? 1 : 0;
     h[HEADER.seed] = w.config.seed;
     h[HEADER.stepSeconds] = fleet?.stepSeconds ?? 1;
+    h[HEADER.mode] = extra.mode ?? 0;
+    h[HEADER.head] = extra.head ?? now;
+    h[HEADER.cut] = this.cut ? 1 : 0;
+    this.cut = false;
     if (fleet) {
       for (const r of robots) {
         if (r.stage === 'defect') h[HEADER.robotsDefect]!++;
@@ -375,7 +390,8 @@ export class SnapshotWriter {
       a[o + ROBOT.routeOffset] = routeOffset;
       a[o + ROBOT.routeLength] = route.length;
       a[o + ROBOT.planEnd] = r.planStart + r.cells.length - 1;
-      a[o + ROBOT.waiting] = r.waitingFor ? 1 : r.failures > 0 ? 2 : 0;
+      // 0 moving · 1 queued at a station · 2 no path · 3 no path for STUCK_SECONDS.
+      a[o + ROBOT.waiting] = r.waitingFor ? 1 : fleet?.isStuck(r) ? 3 : r.failures > 0 ? 2 : 0;
       for (const cell of route) {
         v.routes[routeOffset * 2] = fleet!.grid.x(cell);
         v.routes[routeOffset * 2 + 1] = fleet!.grid.z(cell);

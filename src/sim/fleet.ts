@@ -5,6 +5,8 @@ import type { Packet } from './packet';
 import { CooperativePlanner, moveAllowed, startMode, waitMode, type PlanStart } from './planner';
 import { ReservationTable } from './reservations';
 import { deriveSeed, Rng } from './rng';
+import type { SimEventKind } from './failures';
+import type { StateReader, StateWriter } from './state';
 
 /**
  * Fleet manager: hands out jobs, plans every robot with Cooperative A* over
@@ -24,7 +26,9 @@ import { deriveSeed, Rng } from './rng';
  *    are exclusive; a robot that finds one busy waits on a queue spot next to
  *    it instead of in the corridor;
  *  - a robot that keeps failing asks robots standing still on its route to
- *    step aside to the nearest free holdable cell.
+ *    step aside to the nearest free holdable cell;
+ *  - a watchdog breaks the waits those requests do not solve (robots waiting
+ *    for each other, robots stuck behind a broken one); see `watchdog`.
  */
 
 export interface FleetConfig {
@@ -46,6 +50,10 @@ export interface FleetConfig {
   readonly rackOrderRate: number;
   /** Robots working the same bypass at once. */
   readonly maxRobotsPerLane: number;
+  /** Robots that keep failing ask the ones standing on their route to step aside. */
+  readonly stepAside: boolean;
+  /** Seconds without a path before the watchdog steps in (0 turns it off). */
+  readonly watchdogSeconds: number;
 }
 
 export const DEFAULT_FLEET: FleetConfig = {
@@ -62,6 +70,8 @@ export const DEFAULT_FLEET: FleetConfig = {
   fullBattery: 95,
   rackOrderRate: 0.25,
   maxRobotsPerLane: 5,
+  stepAside: true,
+  watchdogSeconds: 6,
 };
 
 /** Robots carry packets around a conveyor without alternative while it is broken. */
@@ -98,6 +108,8 @@ export interface FleetHost {
   takeFromLane(lane: BypassLane, max: number): Packet[];
   /** False when the lane's drop buffer has no room. */
   dropIntoLane(lane: BypassLane, packets: Packet[]): boolean;
+  /** Tells the viewer something about these robots. */
+  notify(kind: SimEventKind, text: string, robots: readonly number[]): void;
 }
 
 export type RobotStage =
@@ -109,13 +121,30 @@ export type RobotStage =
   | 'unloading'
   | 'toCharger'
   | 'charging'
-  | 'defect';
+  | 'defect'
+  /** Scripted move to a cell (scenarios). */
+  | 'toPoint';
+
+/** Every stage, in the order checkpoints and snapshots encode them. */
+export const ROBOT_STAGES: readonly RobotStage[] = [
+  'parked',
+  'toPark',
+  'toPickup',
+  'loading',
+  'toDrop',
+  'unloading',
+  'toCharger',
+  'charging',
+  'defect',
+  'toPoint',
+];
 
 export type Job =
   | { kind: 'rack'; order: RackOrder }
   | { kind: 'bypass'; lane: BypassLane }
   | { kind: 'charge' }
-  | { kind: 'park' };
+  | { kind: 'park' }
+  | { kind: 'goto'; cell: number };
 
 export interface Robot {
   readonly id: number;
@@ -148,6 +177,11 @@ export interface Robot {
   /** Where the robot steps aside to (its job goal stays in goalCell). */
   evadeGoal: number;
   resumeAt: number;
+  /** Last time the watchdog acted on this robot, and the failing episode it last reported. */
+  watchedAt: number;
+  reportedEpisode: number;
+  /** Failing episode (its start) already reported as stuck, or -1. */
+  stuckSince: number;
   defectUntil: number;
   stageBeforeDefect: RobotStage;
   dwellLeftAtDefect: number;
@@ -168,9 +202,15 @@ export interface FleetStats {
   /** Longest time any robot spent unable to plan (seconds). */
   maxFailingSeconds: number;
   batteryDepleted: number;
+  /** Watchdog: waiting cycles broken, cycles it could not break yet, robots sent to another station. */
+  cyclesBroken: number;
+  cyclesStalled: number;
+  reroutes: number;
 }
 
 const QUEUE_SPOTS = 3;
+/** Seconds without a path before a robot is reported stuck. */
+export const STUCK_SECONDS = 20;
 
 export class Fleet {
   readonly grid: FloorGrid;
@@ -189,8 +229,13 @@ export class Fleet {
     rackOrdersDone: 0,
     maxFailingSeconds: 0,
     batteryDepleted: 0,
+    cyclesBroken: 0,
+    cyclesStalled: 0,
+    reroutes: 0,
   };
   readonly ticksPerStep: number;
+  /** Called on every stage change (the recorder keeps them for the history panels). */
+  onStage: ((robot: number, stage: RobotStage, time: number) => void) | null = null;
   private readonly stationOwner: Int32Array;
   private readonly spotOwner = new Map<number, number>();
   private readonly queueSpots: number[][];
@@ -269,6 +314,9 @@ export class Fleet {
         evading: false,
         evadeGoal: -1,
         resumeAt: 0,
+        watchedAt: -Infinity,
+        reportedEpisode: -1,
+        stuckSince: -1,
         defectUntil: -1,
         stageBeforeDefect: 'parked',
         dwellLeftAtDefect: 0,
@@ -298,6 +346,11 @@ export class Fleet {
     r.defectUntil = until;
   }
 
+  /** True while a robot is reported stuck (no path for STUCK_SECONDS, not repaired yet). */
+  isStuck(r: Robot): boolean {
+    return r.failures > 0 && r.stuckSince === r.failingSince;
+  }
+
   /** Remaining cells of a robot's route from step `step` on (consecutive duplicates removed). */
   route(r: Robot, step: number, max = 32): number[] {
     const out: number[] = [];
@@ -307,6 +360,218 @@ export class Fleet {
       if (out[out.length - 1] !== c) out.push(c);
     }
     return out;
+  }
+
+  // ---------------------------------------------------------------- checkpoints
+
+  /**
+   * Everything that changes while the fleet runs. Packets are written as ids
+   * (the world writes them once), bypass lanes as their index; the floor,
+   * the stations and the queue spots never change and are not stored.
+   */
+  save(w: StateWriter): void {
+    w.int(this.k);
+    w.float(this.nextOrderAt);
+    w.int(this.nextOrderId);
+    w.float(this.orderRate);
+    w.int(this.rackRng.getState());
+    w.ints32(this.stationOwner);
+    w.int(this.spotOwner.size);
+    for (const [cell, robot] of this.spotOwner) {
+      w.int(cell);
+      w.int(robot);
+    }
+    for (const v of Object.values(this.stats)) w.float(v);
+    for (const v of Object.values(this.planner.stats)) w.float(v);
+    this.table.save(w);
+    w.int(this.orders.length);
+    for (const o of this.orders) saveOrder(w, o);
+    for (const r of this.robots) this.saveRobot(w, r);
+  }
+
+  load(r: StateReader, packet: (id: number) => Packet): void {
+    this.k = r.int();
+    this.nextOrderAt = r.float();
+    this.nextOrderId = r.int();
+    this.orderRate = r.float();
+    this.rackRng.setState(r.int());
+    this.stationOwner.set(r.ints32());
+    this.spotOwner.clear();
+    for (let i = r.int(); i > 0; i--) this.spotOwner.set(r.int(), r.int());
+    const stats = this.stats as unknown as Record<string, number>;
+    for (const key of Object.keys(stats)) stats[key] = r.float();
+    const plannerStats = this.planner.stats as unknown as Record<string, number>;
+    for (const key of Object.keys(plannerStats)) plannerStats[key] = r.float();
+    this.table.load(r);
+    this.orders.length = 0;
+    for (let i = r.int(); i > 0; i--) this.orders.push(this.loadOrder(r, packet));
+    for (const robot of this.robots) this.loadRobot(r, robot, packet);
+  }
+
+  private saveRobot(w: StateWriter, r: Robot): void {
+    w.float(r.battery);
+    w.pick(r.stage, ROBOT_STAGES);
+    const job = r.job;
+    w.int(job ? JOB_KINDS.indexOf(job.kind) : -1);
+    if (job?.kind === 'rack') saveOrder(w, job.order);
+    else if (job?.kind === 'bypass') w.int(job.lane.id);
+    else if (job?.kind === 'goto') w.int(job.cell);
+    w.ints32(r.load.map((p) => p.id));
+    w.int(r.station ? r.station.id : -1);
+    w.int(r.waitingFor ? r.waitingFor.id : -1);
+    w.int(r.spot);
+    w.int(r.goalCell);
+    w.bool(r.needsPlan);
+    w.ints32(r.cells);
+    w.int(r.planStart);
+    w.ints32(r.modes);
+    w.int(r.modeStart);
+    w.float(r.dwellUntil);
+    w.int(r.failures);
+    w.float(r.failingSince);
+    w.bool(r.evadeFrom !== null);
+    if (r.evadeFrom) w.ints32([...r.evadeFrom]);
+    w.bool(r.evading);
+    w.int(r.evadeGoal);
+    w.float(r.resumeAt);
+    w.float(r.watchedAt);
+    w.float(r.reportedEpisode);
+    w.float(r.stuckSince);
+    w.float(r.defectUntil);
+    w.pick(r.stageBeforeDefect, ROBOT_STAGES);
+    w.float(r.dwellLeftAtDefect);
+    w.float(r.lastStageChange);
+    w.int(r.jobsDone);
+    w.int(r.delivered);
+    r.motion.save(w);
+  }
+
+  private loadRobot(rd: StateReader, r: Robot, packet: (id: number) => Packet): void {
+    const stations = this.grid.stations;
+    r.battery = rd.float();
+    r.stage = rd.pick(ROBOT_STAGES);
+    const kind = rd.int();
+    switch (JOB_KINDS[kind]) {
+      case 'rack':
+        r.job = { kind: 'rack', order: this.loadOrder(rd, packet) };
+        break;
+      case 'bypass':
+        r.job = { kind: 'bypass', lane: this.host.lanes[rd.int()] as BypassLane };
+        break;
+      case 'goto':
+        r.job = { kind: 'goto', cell: rd.int() };
+        break;
+      case 'charge':
+        r.job = { kind: 'charge' };
+        break;
+      case 'park':
+        r.job = { kind: 'park' };
+        break;
+      default:
+        r.job = null;
+    }
+    r.load = rd.ints32().map(packet);
+    const station = rd.int();
+    r.station = station >= 0 ? (stations[station] as Station) : null;
+    const waitingFor = rd.int();
+    r.waitingFor = waitingFor >= 0 ? (stations[waitingFor] as Station) : null;
+    r.spot = rd.int();
+    r.goalCell = rd.int();
+    r.needsPlan = rd.bool();
+    r.cells = rd.ints32();
+    r.planStart = rd.int();
+    r.modes = rd.ints32();
+    r.modeStart = rd.int();
+    r.dwellUntil = rd.float();
+    r.failures = rd.int();
+    r.failingSince = rd.float();
+    r.evadeFrom = rd.bool() ? new Set(rd.ints32()) : null;
+    r.evading = rd.bool();
+    r.evadeGoal = rd.int();
+    r.resumeAt = rd.float();
+    r.watchedAt = rd.float();
+    r.reportedEpisode = rd.float();
+    r.stuckSince = rd.float();
+    r.defectUntil = rd.float();
+    r.stageBeforeDefect = rd.pick(ROBOT_STAGES);
+    r.dwellLeftAtDefect = rd.float();
+    r.lastStageChange = rd.float();
+    r.jobsDone = rd.int();
+    r.delivered = rd.int();
+    r.motion.load(rd, r.cells, r.planStart);
+  }
+
+  private loadOrder(r: StateReader, packet: (id: number) => Packet): RackOrder {
+    return {
+      id: r.int(),
+      face: this.grid.stations[r.int()] as Station,
+      dock: r.int(),
+      packets: r.ints32().map(packet),
+    };
+  }
+
+  // ---------------------------------------------------------------- scenarios
+
+  /**
+   * Scenario setup (tests, scenario lab, cinema mode): moves an idle robot to
+   * `cell`, at rest and facing `heading`, without driving there.
+   */
+  place(robotId: number, cell: number, heading: number): void {
+    const r = this.robot(robotId);
+    if (r.stage !== 'parked' && r.stage !== 'toPark')
+      throw new Error('only idle robots can be placed');
+    if (!this.grid.passable(cell)) throw new Error(`cell ${cell} is not floor`);
+    const holder = this.table.holder(cell);
+    if (holder >= 0 && holder !== r.id) throw new Error(`cell ${cell} is taken by robot ${holder}`);
+    this.releaseStation(r);
+    this.table.release(r.id, -1);
+    this.table.hold(cell, this.k, r.id);
+    r.motion.teleport(cell, (heading * Math.PI) / 2);
+    r.cells = [cell];
+    r.planStart = this.k;
+    r.modes = [];
+    r.goalCell = cell;
+    r.needsPlan = false;
+    r.job = null;
+    this.setStage(r, 'toPark', this.k * this.stepSeconds);
+  }
+
+  /** Scenario setup: sends a robot to `cell`; it stops there and is free again. */
+  sendTo(robotId: number, cell: number): void {
+    const r = this.robot(robotId);
+    if (r.stage === 'defect') throw new Error('a broken robot cannot move');
+    if (!this.grid.passable(cell)) throw new Error(`cell ${cell} is not floor`);
+    this.releaseStation(r);
+    r.job = { kind: 'goto', cell };
+    this.setStage(r, 'toPoint', this.k * this.stepSeconds);
+    r.goalCell = cell;
+    r.needsPlan = true;
+  }
+
+  /** Scenario setup: loads `count` new packets on a robot and sends it to deliver them to a dock. */
+  deliver(robotId: number, dock: number, count: number): void {
+    const r = this.robot(robotId);
+    if (r.stage === 'defect') throw new Error('a broken robot cannot move');
+    const now = this.k * this.stepSeconds;
+    const packets = Array.from({ length: count }, () => this.host.createRackPacket(dock, now));
+    for (const p of packets) p.state = 'robot';
+    const order: RackOrder = {
+      id: this.nextOrderId++,
+      face: this.racks[0] as Station,
+      dock,
+      packets,
+    };
+    this.stats.rackOrdersCreated++;
+    this.releaseStation(r);
+    r.job = { kind: 'rack', order };
+    r.load = packets.slice();
+    this.goTo(r, this.pickDock(r, dock), 'toDrop', now);
+  }
+
+  private robot(id: number): Robot {
+    const r = this.robots[id];
+    if (!r) throw new Error(`Unknown robot ${id}`);
+    return r;
   }
 
   update(tick: number, now: number, dt: number): void {
@@ -357,7 +622,8 @@ export class Fleet {
       r.stage === 'toPark' ||
       r.stage === 'toPickup' ||
       r.stage === 'toDrop' ||
-      r.stage === 'toCharger';
+      r.stage === 'toCharger' ||
+      r.stage === 'toPoint';
     const target = r.evading ? r.evadeGoal : r.goalCell;
     if (
       !r.needsPlan &&
@@ -382,8 +648,10 @@ export class Fleet {
   }
 
   private setStage(r: Robot, stage: RobotStage, now: number): void {
-    if (r.stage !== stage) r.lastStageChange = now;
+    if (r.stage === stage) return;
+    r.lastStageChange = now;
     r.stage = stage;
+    this.onStage?.(r.id, stage, now);
   }
 
   private arrive(r: Robot, now: number): void {
@@ -412,6 +680,9 @@ export class Fleet {
       case 'toPark':
         this.setStage(r, 'parked', now);
         r.job = null;
+        return;
+      case 'toPoint':
+        this.finishJob(r, now);
         return;
       default:
         return;
@@ -457,7 +728,7 @@ export class Fleet {
   }
 
   private finishJob(r: Robot, now: number): void {
-    if (r.job && r.job.kind !== 'park') {
+    if (r.job && r.job.kind !== 'park' && r.job.kind !== 'goto') {
       r.jobsDone++;
       this.stats.jobsDone++;
     }
@@ -581,6 +852,31 @@ export class Fleet {
         (a, b) =>
           Number(!!b.evadeFrom) - Number(!!a.evadeFrom) || b.failures - a.failures || a.id - b.id,
       );
+    this.drain(queue, k);
+
+    for (const r of this.robots) {
+      if (r.failures > 0) {
+        this.stats.maxFailingSeconds = Math.max(this.stats.maxFailingSeconds, now - r.failingSince);
+        if (
+          r.stage !== 'defect' &&
+          r.stuckSince !== r.failingSince &&
+          now - r.failingSince >= STUCK_SECONDS - 1e-9
+        ) {
+          r.stuckSince = r.failingSince;
+          this.host.notify('robot-stuck', `Robô ${r.id + 1} sem caminho há ${STUCK_SECONDS} s`, [
+            r.id,
+          ]);
+        }
+        if (this.config.stepAside && r.failures >= 4 && r.failures % 2 === 0) {
+          this.requestEvasion(r, k);
+        }
+      }
+    }
+    this.watchdog(k, now);
+  }
+
+  /** Plans the robots in `queue` in order; robots bumped by a failed plan join the end. */
+  private drain(queue: Robot[], k: number): void {
     const passes = new Map<number, number>();
     while (queue.length) {
       const r = queue.shift() as Robot;
@@ -591,13 +887,6 @@ export class Fleet {
         other.needsPlan = true;
         this.stats.bumps++;
         if (!queue.includes(other)) queue.push(other);
-      }
-    }
-
-    for (const r of this.robots) {
-      if (r.failures > 0) {
-        this.stats.maxFailingSeconds = Math.max(this.stats.maxFailingSeconds, now - r.failingSince);
-        if (r.failures >= 4 && r.failures % 2 === 0) this.requestEvasion(r, k);
       }
     }
   }
@@ -619,6 +908,12 @@ export class Fleet {
       r.modes = replayModes(this.grid, plan.cells, startMode(commit.start));
       r.modeStart = plan.startStep;
       r.needsPlan = false;
+      if (r.failures > 0 && r.stuckSince === r.failingSince) {
+        const waited = Math.round(k * this.stepSeconds - r.failingSince);
+        this.host.notify('robot-moving', `Robô ${r.id + 1} voltou a andar após ${waited} s`, [
+          r.id,
+        ]);
+      }
       r.failures = 0;
       if (r.evadeFrom) {
         r.evading = true;
@@ -840,11 +1135,14 @@ export class Fleet {
     }
   }
 
-  /** Asks robots standing still on `r`'s shortest route to step aside. */
-  private requestEvasion(r: Robot, k: number): void {
+  /**
+   * `r`'s shortest route to its goal on the empty floor, from where it stands
+   * (the same route for everyone who looks, so requests and the watchdog agree).
+   */
+  private staticRoute(r: Robot, k: number): number[] {
     const dist = this.grid.distanceMap(r.goalCell);
     let cell = this.cellAt(r, k);
-    const path = new Set<number>([cell]);
+    const route = [cell];
     for (let guard = 0; guard < 400 && (dist[cell] as number) > 0; guard++) {
       let next = -1;
       for (let d = 0; d < 4; d++) {
@@ -856,8 +1154,18 @@ export class Fleet {
       }
       if (next < 0) break;
       cell = next;
-      path.add(cell);
+      route.push(cell);
     }
+    return route;
+  }
+
+  /** Asks robots standing still on `r`'s shortest route to step aside. */
+  private requestEvasion(r: Robot, k: number): void {
+    // Already asked to step aside itself: if both robots of a pair asked each
+    // other, both would back off and meet again.
+    if (r.evadeFrom || r.evading) return;
+    const path = new Set(this.staticRoute(r, k));
+    const inTheWay: Robot[] = [];
     for (const c of path) {
       const h = this.table.holder(c);
       if (h < 0 || h === r.id) continue;
@@ -869,12 +1177,188 @@ export class Fleet {
         other.stage === 'charging' ||
         other.stage === 'parked' ||
         other.evading;
-      if (busy || other.evadeFrom) continue;
+      // One robot that cannot move now keeps the way shut: the others would
+      // step aside for nothing.
+      if (busy) return;
+      if (!other.evadeFrom) inTheWay.push(other);
+    }
+    for (const other of inTheWay) {
       other.evadeFrom = path;
       other.needsPlan = true;
       this.stats.evades++;
     }
   }
+
+  // ---------------------------------------------------------------- watchdog
+
+  /**
+   * Supervisor for the waits that step-aside requests do not solve. It looks
+   * at robots that have had no path for `watchdogSeconds`; each one waits for
+   * the first robot standing on its static route (a wait-for graph with one
+   * edge per robot, so cycles are found by following the edges).
+   *
+   *  - Cycle (robots waiting for each other): it tries a back-off for every
+   *    member, without side effects, and the one that gets out of the way in
+   *    the fewest steps backs off to a holdable cell off the others' routes
+   *    (an empty-handed robot yields before a loaded one), and the others
+   *    replan at once. It cannot block them again on its way back: it only
+   *    leaves with a complete plan, and no plan crosses a robot that holds its
+   *    cell. Nothing depends on the blocker accepting a request: the fleet
+   *    manager plans both sides itself.
+   *  - Behind a broken robot: it is sent to an equivalent station it can reach
+   *    now (the other drop of the same dock). Without one it waits for the
+   *    repair, which bounds the wait.
+   *
+   * It acts on a robot at most once per period.
+   */
+  private watchdog(k: number, now: number): void {
+    const period = this.config.watchdogSeconds;
+    if (!(period > 0)) return;
+    const routes = new Map<number, number[]>();
+    const waitsFor = new Map<number, number>();
+    for (const r of this.robots) {
+      if (r.stage === 'defect' || r.failures === 0) continue;
+      if (now - r.failingSince < period - 1e-9 || now - r.watchedAt < period - 1e-9) continue;
+      const route = this.staticRoute(r, k);
+      routes.set(r.id, route);
+      waitsFor.set(r.id, this.firstHolder(route, r));
+    }
+    if (routes.size === 0) return;
+
+    // Cycles: follow each robot's single edge until it leaves the stuck set or repeats.
+    const done = new Set<number>();
+    for (const first of routes.keys()) {
+      if (done.has(first)) continue;
+      const walk: number[] = [];
+      let id = first;
+      while (routes.has(id) && !done.has(id) && !walk.includes(id)) {
+        walk.push(id);
+        id = waitsFor.get(id) as number;
+      }
+      const at = walk.indexOf(id);
+      if (at >= 0) {
+        const cycle = walk.slice(at).map((i) => this.robots[i] as Robot);
+        this.breakCycle(cycle, routes, k, now);
+      }
+      for (const i of walk) done.add(i);
+    }
+
+    // Robots stuck behind a broken one.
+    for (const [id, blocker] of waitsFor) {
+      const r = this.robots[id] as Robot;
+      const b = this.robots[blocker];
+      if (!b || b.stage !== 'defect' || now - r.watchedAt < period - 1e-9) continue;
+      this.avoidBroken(r, b, k, now);
+    }
+  }
+
+  /** First robot other than `r` holding a cell of `route`, or -1. */
+  private firstHolder(route: readonly number[], r: Robot): number {
+    for (const c of route) {
+      const h = this.table.holder(c);
+      if (h >= 0 && h !== r.id) return h;
+    }
+    return -1;
+  }
+
+  private breakCycle(
+    cycle: Robot[],
+    routes: ReadonlyMap<number, number[]>,
+    k: number,
+    now: number,
+  ): void {
+    for (const r of cycle) r.watchedAt = now;
+    let best: { r: Robot; steps: number; avoid: Set<number> } | null = null;
+    for (const v of cycle) {
+      const avoid = new Set<number>();
+      for (const o of cycle) {
+        if (o !== v) for (const c of routes.get(o.id) as number[]) avoid.add(c);
+      }
+      const plan = this.planner.plan(v.id, this.commitPoint(v, k).start, { cell: -1, avoid });
+      if (!plan) continue;
+      const steps = plan.cells.length;
+      if (!best || steps < best.steps || (steps === best.steps && yieldsFirst(v, best.r))) {
+        best = { r: v, steps, avoid };
+      }
+    }
+    const names = listRobots(cycle);
+    if (!best) {
+      this.stats.cyclesStalled++;
+      this.host.notify(
+        'watchdog',
+        `Vigia: ${names} esperam um pelo outro e nenhum consegue recuar`,
+        cycle.map((r) => r.id),
+      );
+      return;
+    }
+    const v = best.r;
+    const others = cycle.filter((r) => r !== v);
+    for (const r of cycle) {
+      r.evadeFrom = null;
+      r.needsPlan = true;
+    }
+    v.evadeFrom = best.avoid;
+    this.drain([v, ...others], k);
+    this.stats.cyclesBroken++;
+    this.host.notify(
+      'watchdog',
+      `Vigia: ${names} esperavam um pelo outro; o Robô ${v.id + 1} recuou para abrir passagem`,
+      cycle.map((r) => r.id),
+    );
+  }
+
+  private avoidBroken(r: Robot, broken: Robot, k: number, now: number): void {
+    r.watchedAt = now;
+    const job = r.job;
+    if (r.stage === 'toDrop' && job?.kind === 'rack' && r.station) {
+      const start = this.commitPoint(r, k).start;
+      for (const alt of this.dockStations[job.order.dock] as Station[]) {
+        if (alt === r.station || !this.stationFree(alt, r)) continue;
+        if (!this.planner.plan(r.id, start, { cell: alt.cell })) continue;
+        this.goTo(r, alt, 'toDrop', now);
+        this.drain([r], k);
+        this.stats.reroutes++;
+        this.host.notify(
+          'watchdog',
+          `Vigia: Robô ${r.id + 1} vai pela outra baia da Doca ${job.order.dock + 1}; ` +
+            `o Robô ${broken.id + 1}, com defeito, fecha o caminho`,
+          [r.id, broken.id],
+        );
+        return;
+      }
+    }
+    if (r.reportedEpisode !== r.failingSince) {
+      r.reportedEpisode = r.failingSince;
+      this.host.notify(
+        'watchdog',
+        `Vigia: Robô ${r.id + 1} sem caminho; o Robô ${broken.id + 1}, com defeito, está na rota dele`,
+        [r.id, broken.id],
+      );
+    }
+  }
+}
+
+const JOB_KINDS: readonly Job['kind'][] = ['rack', 'bypass', 'charge', 'park', 'goto'];
+
+function saveOrder(w: StateWriter, o: RackOrder): void {
+  w.int(o.id);
+  w.int(o.face.id);
+  w.int(o.dock);
+  w.ints32(o.packets.map((p) => p.id));
+}
+
+/** Who backs off when two robots are equally quick to: empty-handed before loaded, then the higher id. */
+function yieldsFirst(a: Robot, b: Robot): boolean {
+  const la = a.load.length > 0 ? 1 : 0;
+  const lb = b.load.length > 0 ? 1 : 0;
+  return la !== lb ? la < lb : a.id > b.id;
+}
+
+/** "Robôs 3 e 7", "Robôs 3, 7 e 9". */
+function listRobots(rs: readonly Robot[]): string {
+  const ids = rs.map((r) => String(r.id + 1));
+  const last = ids.pop() as string;
+  return ids.length ? `Robôs ${ids.join(', ')} e ${last}` : `Robô ${last}`;
 }
 
 function headingIndex(radians: number): number {

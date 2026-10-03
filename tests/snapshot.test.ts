@@ -109,17 +109,22 @@ describe('SimHost', () => {
       host.pump();
     }
     expect(host.currentWorld.time - t0).toBeCloseTo(3.84, 1);
-    expect(posted.every((m) => m.type === 'snapshot')).toBe(true);
+    // Snapshots for the scene; timeline and KPIs twice per real second.
+    const statuses = posted.filter((m) => m.type === 'status').length;
+    expect(posted.filter((m) => m.type === 'snapshot').length).toBeGreaterThan(60);
+    expect(statuses).toBeGreaterThanOrEqual(3);
+    expect(statuses).toBeLessThanOrEqual(5);
   });
 
   it('does not advance while paused and still answers commands', () => {
     const { host, posted, tick } = makeHost();
     host.handle({ type: 'speed', speed: 0 });
-    const before = posted.length;
     tick(500);
     host.pump();
     expect(host.currentWorld.tick).toBe(0);
+    const before = posted.length;
     host.handle({ type: 'inject', kind: 'conveyor', target: 1 });
+    // Answered at once, with the failure already in the snapshot's events.
     expect(posted.length).toBe(before + 1);
     const last = posted.at(-1)!;
     expect(last.type === 'snapshot' && last.events.map((e) => e.text)).toEqual([

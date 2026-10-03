@@ -9,6 +9,7 @@
 import { writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { SnapshotWriter } from '../src/sim/snapshot';
+import { Recorder } from '../src/sim/recorder';
 import { World } from '../src/sim/world';
 
 const REPS = 5;
@@ -63,6 +64,21 @@ const cases: Case[] = [
     better: 'higher',
     gate: BLOCK,
     run: () => stepsPerSecond({ seed: 1 }, 1800, 7200),
+  },
+  {
+    // The live app runs through the recorder: checkpoints every 30 s and one
+    // sample per second on top of the engine.
+    name: 'Motor gravando, 40 robôs (passos/s)',
+    unit: 'passos/s',
+    better: 'higher',
+    gate: BLOCK,
+    run: () => {
+      const rec = new Recorder({ seed: 1 });
+      rec.stepMany(1800);
+      const t0 = performance.now();
+      rec.stepMany(7200);
+      return 7200 / ((performance.now() - t0) / 1000);
+    },
   },
   {
     name: 'Teste de carga + 40 robôs (passos/s)',

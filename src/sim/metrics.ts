@@ -3,6 +3,8 @@
  * last `windowSeconds` of simulation time so the HUD reacts to what is
  * happening now instead of averaging the whole run.
  */
+import type { StateReader, StateWriter } from './state';
+
 export class Metrics {
   created = 0;
   delivered = 0;
@@ -37,15 +39,48 @@ export class Metrics {
       this.head++;
     }
     // Compact occasionally so the arrays do not grow forever.
+    // Compaction only frees memory: the window sum is never recomputed, so a
+    // world restored from a checkpoint (which compacts at other moments) keeps
+    // exactly the same values.
     if (this.head > 4096 && this.head * 2 > this.times.length) {
       this.times = this.times.slice(this.head);
       this.cycles = this.cycles.slice(this.head);
       this.head = 0;
-      this.windowCycleSum = this.cycles.reduce((a, b) => a + b, 0);
     }
   }
 
+  save(w: StateWriter): void {
+    w.int(this.created);
+    w.int(this.delivered);
+    w.int(this.deliveredByRobots);
+    w.int(this.shipped);
+    w.int(this.misrouted);
+    w.float(this.cycleSum);
+    w.float(this.windowCycleSum);
+    w.floats64(this.times.slice(this.head));
+    w.floats64(this.cycles.slice(this.head));
+  }
+
+  load(r: StateReader): void {
+    this.created = r.int();
+    this.delivered = r.int();
+    this.deliveredByRobots = r.int();
+    this.shipped = r.int();
+    this.misrouted = r.int();
+    this.cycleSum = r.float();
+    this.windowCycleSum = r.float();
+    this.times = r.floats64();
+    this.cycles = r.floats64();
+    this.head = 0;
+  }
+
   /** Mean time in system over all deliveries, in seconds (NaN before the first one). */
+  /** Cycle times of the last `n` deliveries (still inside the window), oldest first. */
+  lastCycles(n: number): number[] {
+    const from = Math.max(this.head, this.cycles.length - n);
+    return this.cycles.slice(from);
+  }
+
   get meanCycleTime(): number {
     return this.delivered > 0 ? this.cycleSum / this.delivered : NaN;
   }
