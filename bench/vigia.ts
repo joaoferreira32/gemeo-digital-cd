@@ -23,6 +23,7 @@ import {
   brokenGate,
   faceToFace,
   runScenario,
+  swapPlaces,
 } from '../src/sim/scenarios';
 import { World } from '../src/sim/world';
 
@@ -67,6 +68,16 @@ const without = mutualWaits(0, 120);
 const t0 = performance.now();
 const withWatchdog = mutualWaits(PERIOD, 40);
 const cpuWithProof = (performance.now() - t0) / 1000;
+
+// 1b. Swap of places, step-aside requests failing.
+const swap = (watchdogSeconds: number) => {
+  const [w, f] = world(4, false, watchdogSeconds);
+  swapPlaces(f);
+  const r = runScenario(w, 90, [1, 2]);
+  return { arrived: r.arrived.size, longestWait: round(Math.max(...r.wait.values())) };
+};
+const swapWithout = swap(0);
+const swapWith = swap(PERIOD);
 
 // 2. Broken robot inside each gate.
 const broken = SINGLE_ENTRANCE_GATES.map((z) => {
@@ -140,6 +151,7 @@ console.log(
         minDistanceBetweenRobotsM: round(withWatchdog.minDistance, 3),
         brakingViolations: withWatchdog.braking,
       },
+      swapOfPlaces: { withoutWatchdog: swapWithout, withWatchdog: swapWith },
       brokenRobotInGate: { repairSeconds: REPAIR, gates: broken },
       attemptWithoutPath: {
         msWithProof: round(proofMs, 4),

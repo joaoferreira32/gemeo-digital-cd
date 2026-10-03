@@ -6,6 +6,7 @@ import {
   brokenGate,
   faceToFace,
   runScenario as run,
+  swapPlaces,
 } from '../src/sim/scenarios';
 import { World } from '../src/sim/world';
 
@@ -77,11 +78,8 @@ describe('Watchdog: two robots waiting for each other, step-aside requests faili
   });
 
   it('also breaks a swap: each robot wants the cell the other stands on', () => {
-    const { w, f, cell } = scene(4, { stepAside: false, watchdogSeconds: PERIOD });
-    f.place(1, cell(8, -6), 1);
-    f.place(2, cell(8, 0), 3);
-    f.sendTo(1, cell(8, 0));
-    f.sendTo(2, cell(8, -6));
+    const { w, f } = scene(4, { stepAside: false, watchdogSeconds: PERIOD });
+    swapPlaces(f);
     const r = run(w, 40, [1, 2]);
     expect(r.arrived.size).toBe(2);
     expect(Math.max(...r.wait.values())).toBeLessThanOrEqual(PERIOD + 1);

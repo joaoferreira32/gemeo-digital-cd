@@ -70,6 +70,19 @@ export function brokenGate(fleet: Fleet, z: GateZ, repairAt: number): void {
   fleet.deliver(3, DOCK_INSIDE[z][1], 2);
 }
 
+/**
+ * Robots 1 and 2 swap places across line A (gate at (8, -3), with its twin at
+ * (10, -3)): each one's goal is the cell the other stands on, so neither goal
+ * can be held until the other robot leaves.
+ */
+export function swapPlaces(fleet: Fleet): void {
+  const cell = (x: number, z: number) => fleet.grid.cellOf(x, z);
+  fleet.place(1, cell(8, -6), 1);
+  fleet.place(2, cell(8, 0), 3);
+  fleet.sendTo(1, cell(8, 0));
+  fleet.sendTo(2, cell(8, -6));
+}
+
 export interface ScenarioRun {
   /** Longest stretch each watched robot spent unable to plan (seconds). */
   wait: Map<number, number>;
