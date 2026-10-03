@@ -1,0 +1,120 @@
+{
+  "tests": ["tests/recorder.test.ts", "tests/host.test.ts", "tests/snapshot.test.ts"],
+  "mutations": [
+    {
+      "name": "não aplica as entradas do tick do checkpoint",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "      this.viewInput = this.firstInputFrom(cp.tick);\n      this.applyViewInputs(view);",
+          "replace": "      this.viewInput = this.firstInputFrom(cp.tick + 1);\n      this.applyViewInputs(view);"
+        }
+      ]
+    },
+    {
+      "name": "ramificação descarta a entrada do próprio tick",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    this.inputs.length = this.firstInputFrom(t + 1);",
+          "replace": "    this.inputs.length = this.firstInputFrom(t);"
+        }
+      ]
+    },
+    {
+      "name": "ramificação mantém eventos do futuro",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "time > time + 1e-9) e--;",
+          "replace": "time > time + 1e9) e--;"
+        }
+      ]
+    },
+    {
+      "name": "continua do mundo mostrado mesmo à frente do alvo",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "this.viewWorld !== null && view.tick <= target && view.tick >= cp.tick",
+          "replace": "this.viewWorld !== null && view.tick >= cp.tick"
+        }
+      ]
+    },
+    {
+      "name": "não limpa o feed do mundo da ramificação",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    view.events.length = 0;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "diário de estados não é cortado",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    this.journal.truncate(t);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "amostras por segundo não são cortadas",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    this.series.truncate(Math.floor(t / ticksPerSecond));\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "checkpoint tirado depois das entradas do tick",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    if (w.tick % this.every === 0) this.checkpoints.push(w.saveState());",
+          "replace": "    if (w.tick % this.every === 0) this.pendingCp = true;"
+        },
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "  private lastDelivered = 0;",
+          "replace": "  private lastDelivered = 0;\n  private pendingCp = false;"
+        },
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    applyInput(w, input);",
+          "replace": "    applyInput(w, input);\n    if (this.pendingCp) {\n      this.checkpoints.push(w.saveState());\n      this.pendingCp = false;\n    }"
+        },
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    const w = this.liveWorld;\n    w.step();",
+          "replace": "    const w = this.liveWorld;\n    if (this.pendingCp) {\n      this.checkpoints.push(w.saveState());\n      this.pendingCp = false;\n    }\n    w.step();"
+        }
+      ]
+    },
+    {
+      "name": "p95 pega o posto errado",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "  const k = Math.min(n - 1, Math.max(0, Math.ceil(p * n) - 1));",
+          "replace": "  const k = Math.min(n - 1, Math.max(0, Math.floor(p * n)));"
+        }
+      ]
+    },
+    {
+      "name": "reinício perde o teste de carga",
+      "edits": [
+        {
+          "file": "src/worker/host.ts",
+          "find": "    if (stress) this.recorder.input({ type: 'stress', on: true });\n",
+          "replace": ""
+        }
+      ]
+    }
+  ]
+}

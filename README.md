@@ -29,6 +29,7 @@ npm run bench        # benchmark curto do motor (o mesmo do CI)
 npm run bench:mapf   # estatísticas do planejamento multiagente
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e latência do seek (~3 min)
+npm run mutate       # conferência por mutação, numa cópia temporária (~5 min)
 ```
 
 `?sim=main` na URL roda a simulação na thread da página em vez do worker
