@@ -29,6 +29,8 @@ export interface Packet {
   blocked: boolean;
   /** Simulation time when it reached the dock staging area, -1 before that. */
   deliveredAt: number;
+  /** Belt chosen at the junction the packet waits at (-1 until chosen; cleared when it moves). */
+  next: number;
 }
 
 export function createPacket(
@@ -48,5 +50,6 @@ export function createPacket(
     prevS: 0,
     blocked: true,
     deliveredAt: -1,
+    next: -1,
   };
 }

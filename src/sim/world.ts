@@ -21,7 +21,8 @@ import { createDefaultLayout, type WarehouseLayout } from './layout';
 import { Metrics } from './metrics';
 import { createPacket, type Packet, type PacketState } from './packet';
 import { deriveSeed, Rng } from './rng';
-import { ShortestPathRouter, type Router } from './router';
+import type { Router } from './router';
+import { SplitRouter } from './routing';
 import { StateReader, StateWriter, type EncodedState } from './state';
 
 export interface SimConfig {
@@ -76,7 +77,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 4;
+const CHECKPOINT_VERSION = 5;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -183,6 +184,8 @@ export class World implements FleetHost, FailureHost {
   tick = 0;
 
   private router: Router;
+  /** The routing the operations layer adjusts (the default router). */
+  readonly routing: SplitRouter;
   private readonly orderRng: Rng;
   private readonly destinationWeights: readonly number[];
   /** Round-robin pointer over incoming edges, per node, so merges are fair. */
@@ -222,7 +225,8 @@ export class World implements FleetHost, FailureHost {
     this.conveyorExits = new Int32Array(this.conveyors.length);
     this.dockDeliveries = new Int32Array(this.docks.length);
     this.metrics = new Metrics(this.config.metricsWindow);
-    this.router = new ShortestPathRouter(graph, layout.dockNodes);
+    this.routing = new SplitRouter(graph, layout.dockNodes);
+    this.router = this.routing;
     if (this.config.robots > 0) {
       const fleetConfig: FleetConfig = {
         ...DEFAULT_FLEET,
@@ -317,6 +321,7 @@ export class World implements FleetHost, FailureHost {
       w.float(p.prevS);
       w.bool(p.blocked);
       w.float(p.deliveredAt);
+      w.int(p.next);
     }
     const ids = (list: readonly Packet[]) => w.ints32(list.map((p) => p.id));
 
@@ -355,6 +360,7 @@ export class World implements FleetHost, FailureHost {
       ids(lane.drop);
     }
     this.metrics.save(w);
+    this.routing.save(w);
     this.failures.save(w);
     this.fleet?.save(w);
     return { tick: this.tick, state: w.finish() };
@@ -390,6 +396,7 @@ export class World implements FleetHost, FailureHost {
         prevS: r.float(),
         blocked: r.bool(),
         deliveredAt: r.float(),
+        next: r.int(),
       };
       byId.set(p.id, p);
     }
@@ -435,6 +442,7 @@ export class World implements FleetHost, FailureHost {
       fill(lane.drop);
     }
     this.metrics.load(r);
+    this.routing.load(r);
     this.failures.load(r);
     this.fleet?.load(r, packet);
     r.end();
@@ -761,7 +769,18 @@ export class World implements FleetHost, FailureHost {
    * null) from `nodeId` onto its next belt or into a bypass. False: it waits.
    */
   private forward(nodeId: number, p: Packet, from: Conveyor | null): boolean {
-    const outEdge = this.router.nextEdge(nodeId, p);
+    // The choice is made once per packet (at a decision junction it advances
+    // the split) and kept while the packet waits; if the chosen belt breaks
+    // in the meantime and robots are not bridging it, it chooses again.
+    if (
+      p.next >= 0 &&
+      this.conveyors[p.next]?.status !== 'ok' &&
+      !this.laneByEdge.get(p.next)?.active
+    ) {
+      p.next = -1;
+    }
+    if (p.next < 0) p.next = this.router.nextEdge(nodeId, p);
+    const outEdge = p.next;
     const to = outEdge >= 0 ? this.conveyors[outEdge] : undefined;
     if (!to) return false;
     if (canAccept(to)) {
@@ -780,6 +799,7 @@ export class World implements FleetHost, FailureHost {
       p.edge = -1;
       p.state = 'bypass';
       p.blocked = true;
+      p.next = -1;
       lane.pickup.push(p);
       return true;
     }
@@ -883,7 +903,8 @@ function isAsCreated(p: Packet, origin: number): boolean {
     Object.is(p.s, 0) &&
     Object.is(p.prevS, 0) &&
     p.blocked &&
-    p.deliveredAt === -1
+    p.deliveredAt === -1 &&
+    p.next === -1
   );
 }
 

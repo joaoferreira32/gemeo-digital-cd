@@ -46,6 +46,7 @@ export function pushPacket(c: Conveyor, p: Packet): void {
   p.s = 0;
   p.prevS = 0;
   p.blocked = false;
+  p.next = -1;
   c.packets.push(p);
 }
 
