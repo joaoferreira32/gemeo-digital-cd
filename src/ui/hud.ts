@@ -1,6 +1,7 @@
 import type { FloorGrid } from '../sim/floor';
 import type { SimEvent } from '../sim/failures';
 import type { RobotStage } from '../sim/fleet';
+import { STAGE_LABEL } from '../sim/labels';
 import { HEADER, JOBS, ROBOT, ROBOT_STRIDE, STAGES } from '../sim/snapshot';
 import type { SimFrame } from '../link/frames';
 import { QUALITY_LABEL, type QualityLevel } from '../render/quality';
@@ -12,18 +13,7 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T {
   return node as T;
 }
 
-export const STAGE_LABEL: Record<RobotStage, string> = {
-  parked: 'Estacionado',
-  toPark: 'Voltando à vaga',
-  toPickup: 'Indo buscar caixas',
-  loading: 'Carregando caixas',
-  toDrop: 'Indo entregar',
-  unloading: 'Descarregando',
-  toCharger: 'Indo recarregar',
-  charging: 'Recarregando',
-  defect: 'Com defeito',
-  toPoint: 'Em deslocamento',
-};
+export { STAGE_LABEL };
 
 export interface RenderStats {
   fps: number;
@@ -139,7 +129,14 @@ export class Hud {
     const load = r[o + ROBOT.load] as number;
     const waiting = r[o + ROBOT.waiting] as number;
     this.set(this.rName, `Robô ${index + 1}`);
-    const note = waiting === 1 ? ' · aguardando a estação' : waiting === 2 ? ' · replanejando' : '';
+    const note =
+      waiting === 1
+        ? ' · aguardando a estação'
+        : waiting === 2
+          ? ' · replanejando'
+          : waiting === 3
+            ? ' · travado, sem caminho'
+            : '';
     this.set(this.rState, STAGE_LABEL[stage] + note);
     this.rState.dataset.stage = stage;
     this.set(this.rBattery, `${formatInt(battery)}%`);

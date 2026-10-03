@@ -76,7 +76,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 3;
+const CHECKPOINT_VERSION = 4;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -601,13 +601,34 @@ export class World implements FleetHost, FailureHost {
   }
 
   emit(kind: SimEventKind, text: string, failure?: FailureKind, target?: number): void {
+    const entity =
+      failure === 'conveyor' || failure === 'robot' || failure === 'dock'
+        ? [`${failure}:${target}`]
+        : undefined;
+    this.push(kind, text, { failure, target, about: entity });
+  }
+
+  notify(kind: SimEventKind, text: string, robots: readonly number[]): void {
+    this.push(kind, text, { about: robots.map((r) => `robot:${r}`) });
+  }
+
+  private push(
+    kind: SimEventKind,
+    text: string,
+    extra: {
+      failure?: FailureKind | undefined;
+      target?: number | undefined;
+      about?: readonly string[] | undefined;
+    },
+  ): void {
     const e: SimEvent = {
       id: this.nextEventId++,
       time: this.time,
       kind,
       text,
-      ...(failure !== undefined ? { failure } : {}),
-      ...(target !== undefined ? { target } : {}),
+      ...(extra.failure !== undefined ? { failure: extra.failure } : {}),
+      ...(extra.target !== undefined ? { target: extra.target } : {}),
+      ...(extra.about?.length ? { about: extra.about } : {}),
     };
     this.events.push(e);
     if (this.events.length > MAX_EVENTS) this.events.splice(0, this.events.length - MAX_EVENTS);
@@ -642,11 +663,14 @@ export class World implements FleetHost, FailureHost {
       if (!this.fleet || !this.config.robotBypass) continue;
       if (active) {
         lane.carried = 0;
-        this.emit('bypass-start', `Robôs assumem o desvio ${lane.label}`);
+        this.push('bypass-start', `Robôs assumem o desvio ${lane.label}`, {
+          about: [`conveyor:${lane.edgeId}`],
+        });
       } else {
-        this.emit(
+        this.push(
           'bypass-end',
           `Desvio ${lane.label} encerrado: ${lane.carried} pacotes levados por robôs`,
+          { about: [`conveyor:${lane.edgeId}`] },
         );
       }
     }

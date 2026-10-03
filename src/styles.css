@@ -501,6 +501,14 @@ button#btn-stress[aria-pressed='true'] {
   border-left-color: var(--amber);
 }
 
+.hud--events li[data-kind='robot-stuck'] {
+  border-left-color: var(--alert);
+}
+
+.hud--events li[data-kind='watchdog'] {
+  border-left-color: var(--amber);
+}
+
 @keyframes event-in {
   from {
     opacity: 0;

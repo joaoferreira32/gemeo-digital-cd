@@ -365,7 +365,8 @@ export class SnapshotWriter {
       a[o + ROBOT.routeOffset] = routeOffset;
       a[o + ROBOT.routeLength] = route.length;
       a[o + ROBOT.planEnd] = r.planStart + r.cells.length - 1;
-      a[o + ROBOT.waiting] = r.waitingFor ? 1 : r.failures > 0 ? 2 : 0;
+      // 0 moving · 1 queued at a station · 2 no path · 3 no path for STUCK_SECONDS.
+      a[o + ROBOT.waiting] = r.waitingFor ? 1 : fleet?.isStuck(r) ? 3 : r.failures > 0 ? 2 : 0;
       for (const cell of route) {
         v.routes[routeOffset * 2] = fleet!.grid.x(cell);
         v.routes[routeOffset * 2 + 1] = fleet!.grid.z(cell);

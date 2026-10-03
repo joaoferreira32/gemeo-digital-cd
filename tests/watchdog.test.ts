@@ -130,6 +130,19 @@ describe('Watchdog: robot broken inside a narrow corridor', () => {
     60_000,
   );
 
+  it('reports the robot shut in as stuck after 20 s, and again when it moves', () => {
+    const { w, f } = scene(6, { watchdogSeconds: PERIOD });
+    brokenGate(f, -6, REPAIR);
+    run(w, 120, [1]);
+    const texts = w.events.filter((e) => e.kind.startsWith('robot-')).map((e) => e.text);
+    const stuck = w.events.find((e) => e.kind === 'robot-stuck');
+    expect(texts).toEqual(['Robô 2 sem caminho há 20 s', 'Robô 2 voltou a andar após 60 s']);
+    expect(stuck!.time).toBeGreaterThanOrEqual(20);
+    expect(stuck!.time).toBeLessThanOrEqual(22);
+    // Robots with another drop never get there.
+    expect(w.events.filter((e) => e.kind === 'robot-stuck')).toHaveLength(1);
+  }, 60_000);
+
   it('without the watchdog everyone waits for the repair', () => {
     const { f, r } = broken(-6, 0);
     for (const id of [1, 2, 3]) expect(r.wait.get(id)).toBeGreaterThan(REPAIR - 2);

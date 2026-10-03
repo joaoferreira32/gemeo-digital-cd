@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { eventLogCsv } from '../src/sim/export';
 import { fingerprint } from '../src/sim/fingerprint';
 import { ROBOT_STAGES } from '../src/sim/fleet';
 import { Recorder, quantile, type RunReport, type SimInput } from '../src/sim/recorder';
@@ -168,5 +169,62 @@ describe('KPIs', () => {
     expect(Math.max(...k.robotUse)).toBeGreaterThan(0.1);
     expect(k.chart.waiting.at(-1)).toBe(w.stats.waiting);
     expect(k.chart.throughput.length).toBe(120);
+  });
+});
+
+describe('Event log export', () => {
+  /** Minimal CSV reader for the format we write: ';', quotes doubled inside quoted cells. */
+  function parse(csv: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let cell = '';
+    let quoted = false;
+    for (let i = 0; i < csv.length; i++) {
+      const c = csv[i] as string;
+      if (quoted) {
+        if (c === '"' && csv[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else if (c === '"') quoted = false;
+        else cell += c;
+      } else if (c === '"') quoted = true;
+      else if (c === ';') {
+        row.push(cell);
+        cell = '';
+      } else if (c === '\r') continue;
+      else if (c === '\n') {
+        row.push(cell);
+        rows.push(row);
+        row = [];
+        cell = '';
+      } else cell += c;
+    }
+    return rows;
+  }
+
+  it('lists every event and every robot stage change, in time order, for a spreadsheet in Portuguese', () => {
+    const rec = record(120);
+    const csv = eventLogCsv(rec);
+    expect(csv.startsWith('﻿')).toBe(true);
+    const rows = parse(csv.slice(1));
+    expect(rows[0]).toEqual(['tempo_s', 'tipo', 'entidade', 'descricao']);
+    const body = rows.slice(1);
+    expect(body).toHaveLength(rec.events.length + rec.journal.length);
+    expect(body.every((r) => r.length === 4)).toBe(true);
+    const times = body.map((r) => Number((r[0] as string).replace(',', '.')));
+    expect(times.every((t, i) => i === 0 || t >= (times[i - 1] as number))).toBe(true);
+    expect(body.filter((r) => r[1] === 'Estado do robô')).toHaveLength(rec.journal.length);
+    // The conveyor failure of the script names its belt in the entity column.
+    const failure = body.find((r) => r[1] === 'Falha' && (r[3] as string).includes('quebrou'));
+    expect(failure?.[2]).toBe(rec.live.conveyorLabel(3));
+    expect(rec.events.find((e) => e.kind === 'failure-start')?.about).toEqual(['conveyor:3']);
+  });
+
+  it('quotes cells that contain the separator or quotes', () => {
+    const rec = record(1);
+    rec.live.emit('watchdog', 'texto com ; e "aspas"');
+    rec.step();
+    const rows = parse(eventLogCsv(rec).slice(1));
+    expect(rows.find((r) => r[1] === 'Vigia')?.[3]).toBe('texto com ; e "aspas"');
   });
 });

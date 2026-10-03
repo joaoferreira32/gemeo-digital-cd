@@ -9,7 +9,7 @@ import {
 } from 'three';
 import { pointOnEdge, type EdgePoint } from '../sim/graph';
 import type { WarehouseLayout } from '../sim/layout';
-import { FAILURE_KINDS, FAILURE_STRIDE, HEADER } from '../sim/snapshot';
+import { FAILURE_KINDS, FAILURE_STRIDE, HEADER, ROBOT, ROBOT_STRIDE } from '../sim/snapshot';
 import type { SimFrame } from '../link/frames';
 import { PALETTE } from './palette';
 import type { RobotPoses } from './poses';
@@ -19,8 +19,8 @@ const MAX = 16;
 
 /**
  * Pulsing alerts where something failed: an expanding ring on the floor and a
- * column of light, red for breakdowns and amber for an order surge. With
- * reduced motion they stay lit without pulsing.
+ * column of light, red for breakdowns and robots stuck without a path, amber
+ * for an order surge. With reduced motion they stay lit without pulsing.
  */
 export class AlertView {
   readonly rings: InstancedMesh;
@@ -82,6 +82,11 @@ export class AlertView {
         for (const a of this.layout.inboundAreas) {
           this.spots.push({ x: (a.minX + a.maxX) / 2, z: (a.minZ + a.maxZ) / 2, kind });
         }
+      }
+    }
+    for (let i = 0; i < poses.count; i++) {
+      if (s.robots[i * ROBOT_STRIDE + ROBOT.waiting] === 3) {
+        this.spots.push({ x: poses.x[i] as number, z: poses.z[i] as number, kind: 'stuck' });
       }
     }
     const n = Math.min(this.spots.length, MAX);

@@ -108,7 +108,8 @@ export interface FleetHost {
   takeFromLane(lane: BypassLane, max: number): Packet[];
   /** False when the lane's drop buffer has no room. */
   dropIntoLane(lane: BypassLane, packets: Packet[]): boolean;
-  emit(kind: SimEventKind, text: string): void;
+  /** Tells the viewer something about these robots. */
+  notify(kind: SimEventKind, text: string, robots: readonly number[]): void;
 }
 
 export type RobotStage =
@@ -179,6 +180,8 @@ export interface Robot {
   /** Last time the watchdog acted on this robot, and the failing episode it last reported. */
   watchedAt: number;
   reportedEpisode: number;
+  /** Failing episode (its start) already reported as stuck, or -1. */
+  stuckSince: number;
   defectUntil: number;
   stageBeforeDefect: RobotStage;
   dwellLeftAtDefect: number;
@@ -206,6 +209,8 @@ export interface FleetStats {
 }
 
 const QUEUE_SPOTS = 3;
+/** Seconds without a path before a robot is reported stuck. */
+export const STUCK_SECONDS = 20;
 
 export class Fleet {
   readonly grid: FloorGrid;
@@ -311,6 +316,7 @@ export class Fleet {
         resumeAt: 0,
         watchedAt: -Infinity,
         reportedEpisode: -1,
+        stuckSince: -1,
         defectUntil: -1,
         stageBeforeDefect: 'parked',
         dwellLeftAtDefect: 0,
@@ -338,6 +344,11 @@ export class Fleet {
     const r = this.robots[robotId];
     if (!r) throw new Error(`Unknown robot ${robotId}`);
     r.defectUntil = until;
+  }
+
+  /** True while a robot is reported stuck (no path for STUCK_SECONDS, not repaired yet). */
+  isStuck(r: Robot): boolean {
+    return r.failures > 0 && r.stuckSince === r.failingSince;
   }
 
   /** Remaining cells of a robot's route from step `step` on (consecutive duplicates removed). */
@@ -425,6 +436,7 @@ export class Fleet {
     w.float(r.resumeAt);
     w.float(r.watchedAt);
     w.float(r.reportedEpisode);
+    w.float(r.stuckSince);
     w.float(r.defectUntil);
     w.pick(r.stageBeforeDefect, ROBOT_STAGES);
     w.float(r.dwellLeftAtDefect);
@@ -479,6 +491,7 @@ export class Fleet {
     r.resumeAt = rd.float();
     r.watchedAt = rd.float();
     r.reportedEpisode = rd.float();
+    r.stuckSince = rd.float();
     r.defectUntil = rd.float();
     r.stageBeforeDefect = rd.pick(ROBOT_STAGES);
     r.dwellLeftAtDefect = rd.float();
@@ -844,6 +857,16 @@ export class Fleet {
     for (const r of this.robots) {
       if (r.failures > 0) {
         this.stats.maxFailingSeconds = Math.max(this.stats.maxFailingSeconds, now - r.failingSince);
+        if (
+          r.stage !== 'defect' &&
+          r.stuckSince !== r.failingSince &&
+          now - r.failingSince >= STUCK_SECONDS - 1e-9
+        ) {
+          r.stuckSince = r.failingSince;
+          this.host.notify('robot-stuck', `Robô ${r.id + 1} sem caminho há ${STUCK_SECONDS} s`, [
+            r.id,
+          ]);
+        }
         if (this.config.stepAside && r.failures >= 4 && r.failures % 2 === 0) {
           this.requestEvasion(r, k);
         }
@@ -885,6 +908,12 @@ export class Fleet {
       r.modes = replayModes(this.grid, plan.cells, startMode(commit.start));
       r.modeStart = plan.startStep;
       r.needsPlan = false;
+      if (r.failures > 0 && r.stuckSince === r.failingSince) {
+        const waited = Math.round(k * this.stepSeconds - r.failingSince);
+        this.host.notify('robot-moving', `Robô ${r.id + 1} voltou a andar após ${waited} s`, [
+          r.id,
+        ]);
+      }
       r.failures = 0;
       if (r.evadeFrom) {
         r.evading = true;
@@ -1255,7 +1284,11 @@ export class Fleet {
     const names = listRobots(cycle);
     if (!best) {
       this.stats.cyclesStalled++;
-      this.host.emit('watchdog', `Vigia: ${names} esperam um pelo outro e nenhum consegue recuar`);
+      this.host.notify(
+        'watchdog',
+        `Vigia: ${names} esperam um pelo outro e nenhum consegue recuar`,
+        cycle.map((r) => r.id),
+      );
       return;
     }
     const v = best.r;
@@ -1267,9 +1300,10 @@ export class Fleet {
     v.evadeFrom = best.avoid;
     this.drain([v, ...others], k);
     this.stats.cyclesBroken++;
-    this.host.emit(
+    this.host.notify(
       'watchdog',
       `Vigia: ${names} esperavam um pelo outro; o Robô ${v.id + 1} recuou para abrir passagem`,
+      cycle.map((r) => r.id),
     );
   }
 
@@ -1284,19 +1318,21 @@ export class Fleet {
         this.goTo(r, alt, 'toDrop', now);
         this.drain([r], k);
         this.stats.reroutes++;
-        this.host.emit(
+        this.host.notify(
           'watchdog',
           `Vigia: Robô ${r.id + 1} vai pela outra baia da Doca ${job.order.dock + 1}; ` +
             `o Robô ${broken.id + 1}, com defeito, fecha o caminho`,
+          [r.id, broken.id],
         );
         return;
       }
     }
     if (r.reportedEpisode !== r.failingSince) {
       r.reportedEpisode = r.failingSince;
-      this.host.emit(
+      this.host.notify(
         'watchdog',
         `Vigia: Robô ${r.id + 1} sem caminho; o Robô ${broken.id + 1}, com defeito, está na rota dele`,
+        [r.id, broken.id],
       );
     }
   }

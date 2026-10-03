@@ -25,7 +25,10 @@ export type SimEventKind =
   | 'bypass-start'
   | 'bypass-end'
   /** The fleet watchdog broke a wait or rerouted a robot. */
-  | 'watchdog';
+  | 'watchdog'
+  /** A robot has had no path for STUCK_SECONDS, and when it moves again. */
+  | 'robot-stuck'
+  | 'robot-moving';
 
 /** Something worth telling the viewer; the text is ready to show (pt-BR). */
 export interface SimEvent {
@@ -35,6 +38,8 @@ export interface SimEvent {
   readonly failure?: FailureKind;
   readonly target?: number;
   readonly text: string;
+  /** Entities the event is about, as "robot:3", "conveyor:7", "dock:2" (history panels). */
+  readonly about?: readonly string[];
 }
 
 /** What the injector can do to the world. */
