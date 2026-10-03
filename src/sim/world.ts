@@ -76,7 +76,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 1;
+const CHECKPOINT_VERSION = 2;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -167,6 +167,9 @@ export class World implements FleetHost, FailureHost {
     rackPending: 0,
   };
   readonly lanes: BypassLane[] = [];
+  /** Packets that left each conveyor, and packets delivered to each dock, since the start. */
+  readonly conveyorExits: Int32Array;
+  readonly dockDeliveries: Int32Array;
   /** null when the world runs without robots. */
   readonly fleet: Fleet | null;
   /** Lane by conveyor edge id. */
@@ -216,6 +219,8 @@ export class World implements FleetHost, FailureHost {
       blockedUntil: 0,
     }));
     this.roundRobin = new Int32Array(graph.nodes.length);
+    this.conveyorExits = new Int32Array(this.conveyors.length);
+    this.dockDeliveries = new Int32Array(this.docks.length);
     this.metrics = new Metrics(this.config.metricsWindow);
     this.router = new ShortestPathRouter(graph, layout.dockNodes);
     if (this.config.robots > 0) {
@@ -290,6 +295,8 @@ export class World implements FleetHost, FailureHost {
     w.float(this.arrivalRate);
     w.int(this.orderRng.getState());
     w.ints32(this.roundRobin);
+    w.ints32(this.conveyorExits);
+    w.ints32(this.dockDeliveries);
 
     const packets = this.livePackets();
     w.int(packets.size);
@@ -351,6 +358,8 @@ export class World implements FleetHost, FailureHost {
     this.arrivalRate = r.float();
     this.orderRng.setState(r.int());
     this.roundRobin.set(r.ints32());
+    this.conveyorExits.set(r.ints32());
+    this.dockDeliveries.set(r.ints32());
 
     const byId = new Map<number, Packet>();
     for (let n = r.int(); n > 0; n--) {
@@ -459,6 +468,7 @@ export class World implements FleetHost, FailureHost {
       dock.staged.push(p);
       this.metrics.recordDelivery(now, now - p.createdAt);
       this.metrics.deliveredByRobots++;
+      this.dockDeliveries[dockIndex]!++;
     }
     return true;
   }
@@ -490,6 +500,11 @@ export class World implements FleetHost, FailureHost {
 
   get currentArrivalRate(): number {
     return this.arrivalRate;
+  }
+
+  /** Order rate before any surge (what the load test switches). */
+  get baseRate(): number {
+    return this.baseArrivalRate;
   }
 
   setRouter(router: Router): void {
@@ -643,6 +658,8 @@ export class World implements FleetHost, FailureHost {
         const conveyor = this.conveyors[inEdges[idx] as number] as Conveyor;
         if (!readyHead(conveyor)) continue;
         const p = popHead(conveyor);
+        this.conveyorExits[conveyor.edgeId]!++;
+        this.dockDeliveries[dock.index]!++;
         if (p.destination !== dock.nodeId) this.metrics.misrouted++;
         p.state = 'staged';
         p.blocked = false;
@@ -696,7 +713,7 @@ export class World implements FleetHost, FailureHost {
     const to = outEdge >= 0 ? this.conveyors[outEdge] : undefined;
     if (!to) return false;
     if (canAccept(to)) {
-      if (from) popHead(from);
+      if (from) this.leave(from);
       pushPacket(to, p);
       return true;
     }
@@ -707,7 +724,7 @@ export class World implements FleetHost, FailureHost {
       lane?.active &&
       lane.pickup.length < lane.capacity
     ) {
-      if (from) popHead(from);
+      if (from) this.leave(from);
       p.edge = -1;
       p.state = 'bypass';
       p.blocked = true;
@@ -715,6 +732,11 @@ export class World implements FleetHost, FailureHost {
       return true;
     }
     return false;
+  }
+
+  private leave(c: Conveyor): void {
+    popHead(c);
+    this.conveyorExits[c.edgeId]!++;
   }
 
   /** Moves the oldest backlog packet of each inbound onto its first conveyor. */

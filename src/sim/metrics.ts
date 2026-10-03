@@ -75,6 +75,12 @@ export class Metrics {
   }
 
   /** Mean time in system over all deliveries, in seconds (NaN before the first one). */
+  /** Cycle times of the last `n` deliveries (still inside the window), oldest first. */
+  lastCycles(n: number): number[] {
+    const from = Math.max(this.head, this.cycles.length - n);
+    return this.cycles.slice(from);
+  }
+
   get meanCycleTime(): number {
     return this.delivered > 0 ? this.cycleSum / this.delivered : NaN;
   }

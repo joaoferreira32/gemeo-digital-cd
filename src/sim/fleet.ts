@@ -229,6 +229,8 @@ export class Fleet {
     reroutes: 0,
   };
   readonly ticksPerStep: number;
+  /** Called on every stage change (the recorder keeps them for the history panels). */
+  onStage: ((robot: number, stage: RobotStage, time: number) => void) | null = null;
   private readonly stationOwner: Int32Array;
   private readonly spotOwner = new Map<number, number>();
   private readonly queueSpots: number[][];
@@ -633,8 +635,10 @@ export class Fleet {
   }
 
   private setStage(r: Robot, stage: RobotStage, now: number): void {
-    if (r.stage !== stage) r.lastStageChange = now;
+    if (r.stage === stage) return;
+    r.lastStageChange = now;
     r.stage = stage;
+    this.onStage?.(r.id, stage, now);
   }
 
   private arrive(r: Robot, now: number): void {
