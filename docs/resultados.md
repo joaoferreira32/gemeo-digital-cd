@@ -245,6 +245,10 @@ seed 2026, Node 24, mesma máquina das outras medições):
 | Voltar a um instante sorteado (60 sorteios)  | mediana 253 ms, p95 484 ms, máximo 580 ms                 |
 | Mesmo instante refazendo tudo desde o tick 0 | 34 s na meia hora, 65 s no fim da hora (≈255× mais lento) |
 
+Numa execução curta e caótica (120 s, falhas automáticas, 0,6 pedido de estoque/s
+e 4,5 pedidos/s nas entradas), um checkpoint tem 82 KB (`tests/checkpoint.test.ts`);
+numa hora com falhas, as filas crescem e com elas o checkpoint.
+
 Antes da codificação compacta das filas de entrada, os checkpoints tinham 211 KB
 em média (326 KB no máximo) e a gravação ocupava 26 MB por hora: 3.595 dos 4.833
 pacotes do maior checkpoint esperavam nas entradas, ainda com os valores de
@@ -293,6 +297,56 @@ uma amostra por segundo com contadores acumulados: uma janela é uma subtração
   buscando, carregando, entregando ou descarregando.
 - **Alerta de robô travado:** 20 s sem caminho geram um evento e o alerta
   vermelho na cena; quando ele volta a planejar, outro evento diz quanto esperou.
+  No robô preso atrás de um robô quebrado no portão, o alerta sai entre 20 e 22 s
+  depois da primeira falha de planejamento e o retorno diz "voltou a andar após
+  60 s" (`tests/watchdog.test.ts`).
+
+**Cores dos gráficos.** Os estados dos robôs usam os tons da cena (ciano
+trabalhando, âmbar recarregando, vermelho com defeito, cinza ocioso), escurecidos
+para a faixa de luminosidade de gráficos sobre o painel escuro (`#10161d`) e
+conferidos com o validador de paleta (simulação de daltonismo): na ordem defeito,
+trabalhando, recarregando, ociosos, o par vizinho mais parecido fica a ΔE 10,3
+para daltonismo (mínimo recomendado 8) e 19,6 para visão normal (mínimo 15). As
+cores da marca, sem escurecer, saíam da faixa de luminosidade; na ordem com âmbar
+ao lado do vermelho, o par caía para ΔE 13,7 (visão normal), abaixo do mínimo. O
+cinza dos ociosos tem croma baixo de propósito (é o tom de fundo). Os três
+indicadores dos últimos 5 minutos têm escalas diferentes e ficam em três gráficos
+pequenos, cada um com o próprio eixo.
+
+### Conferência por mutação
+
+`npm run mutate` (todas as especificações de `mutations/`)
+aplica cada mutação numa cópia temporária do código (nunca nos arquivos do
+repositório) e roda os testes daquela parte:
+
+| Especificação | O que muda de propósito                                                                                         | Pegas pelos testes |
+| ------------- | --------------------------------------------------------------------------------------------------------------- | ------------------ |
+| vigia         | ciclos e desvios do vigia, escolha de quem recua, pedido de passagem, alerta de travado, prova de "sem caminho" | 9 de 9             |
+| checkpoint    | um campo esquecido na codificação                                                                               | 11 de 11           |
+| gravador      | entradas no tick do checkpoint, cortes da ramificação, p95, teste de carga no reinício                          | 10 de 10           |
+
+A execução completa leva cerca de 5 min. Interrompida à força no meio de uma
+mutação, a árvore de trabalho ficou idêntica (`git status` e `git diff`); só a
+cópia temporária sobrou, e a primeira execução depois de uma hora a apaga.
+
+### No CI e no navegador
+
+**Benchmark do motor no PR da Fase 3** (mesmo runner, base = `main` da Fase 2):
+
+| Caso                                 | Base    | Fase 3  | Diferença            |
+| ------------------------------------ | ------- | ------- | -------------------- |
+| Motor sem robôs (passos/s)           | 645.579 | 642.207 | −0,5%                |
+| Motor com 40 robôs (passos/s)        | 3.347   | 3.403   | +1,7%                |
+| Motor gravando, 40 robôs (passos/s)  | —       | 3.396   | caso novo            |
+| Teste de carga + 40 robôs (passos/s) | 3.266   | 3.309   | +1,3%                |
+| Snapshot com 40 robôs (ms)           | 0,343   | 0,352   | −2,7% (só relatório) |
+
+**Chromium:** ao vivo → passado (efeito aplicado por completo, "Revendo o
+passado") → histórico por clique → continuar daqui, também com a simulação na
+thread da página (`?sim=main`), sem erros no console. O único aviso de shader
+(compilador do Direct3D) já aparecia na Fase 2.
+
+**Testes:** 141 em 18 arquivos ao fim da fase (103 ao fim da Fase 2).
 
 ---
 
@@ -323,6 +377,7 @@ npm run bench        # benchmark do motor
 npm run bench:mapf   # planejamento e episódios sem caminho
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e seek (cerca de 3 min)
+npm run mutate       # conferência por mutação numa cópia temporária (~5 min)
 npm run dev          # depois, no console do navegador: __gemeo.benchHeat()
 ```
 
