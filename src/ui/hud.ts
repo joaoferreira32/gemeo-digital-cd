@@ -22,6 +22,7 @@ export const STAGE_LABEL: Record<RobotStage, string> = {
   toCharger: 'Indo recarregar',
   charging: 'Recarregando',
   defect: 'Com defeito',
+  toPoint: 'Em deslocamento',
 };
 
 export interface RenderStats {
@@ -161,9 +162,11 @@ export class Hud {
             ? target
             : job === 'park'
               ? `Voltar à ${target.toLowerCase()}`
-              : stage === 'parked'
-                ? 'Sem tarefa'
-                : '—';
+              : job === 'goto'
+                ? 'Deslocamento programado'
+                : stage === 'parked'
+                  ? 'Sem tarefa'
+                  : '—';
     this.set(this.rTask, task);
     const cells = r[o + ROBOT.routeLength] as number;
     const stepSeconds = frame.s.header[HEADER.stepSeconds] as number;

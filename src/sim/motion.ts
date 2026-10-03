@@ -419,6 +419,16 @@ export class RobotMotion {
     }
   }
 
+  /** Puts the robot at rest on `cell` (scenario setup). */
+  teleport(cell: number, heading: number): void {
+    this.x = this.grid.x(cell);
+    this.z = this.grid.z(cell);
+    this.heading = heading;
+    this.v = 0;
+    this.s = 0;
+    this.timeline = null;
+  }
+
   /** Stops following any path (the robot stays where it is). */
   clearPlan(): void {
     this.timeline = null;

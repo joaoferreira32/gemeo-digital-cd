@@ -109,13 +109,16 @@ export type RobotStage =
   | 'unloading'
   | 'toCharger'
   | 'charging'
-  | 'defect';
+  | 'defect'
+  /** Scripted move to a cell (scenarios). */
+  | 'toPoint';
 
 export type Job =
   | { kind: 'rack'; order: RackOrder }
   | { kind: 'bypass'; lane: BypassLane }
   | { kind: 'charge' }
-  | { kind: 'park' };
+  | { kind: 'park' }
+  | { kind: 'goto'; cell: number };
 
 export interface Robot {
   readonly id: number;
@@ -309,6 +312,70 @@ export class Fleet {
     return out;
   }
 
+  // ---------------------------------------------------------------- scenarios
+
+  /**
+   * Scenario setup (tests, scenario lab, cinema mode): moves an idle robot to
+   * `cell`, at rest and facing `heading`, without driving there.
+   */
+  place(robotId: number, cell: number, heading: number): void {
+    const r = this.robot(robotId);
+    if (r.stage !== 'parked' && r.stage !== 'toPark')
+      throw new Error('only idle robots can be placed');
+    if (!this.grid.passable(cell)) throw new Error(`cell ${cell} is not floor`);
+    const holder = this.table.holder(cell);
+    if (holder >= 0 && holder !== r.id) throw new Error(`cell ${cell} is taken by robot ${holder}`);
+    this.releaseStation(r);
+    this.table.release(r.id, -1);
+    this.table.hold(cell, this.k, r.id);
+    r.motion.teleport(cell, (heading * Math.PI) / 2);
+    r.cells = [cell];
+    r.planStart = this.k;
+    r.modes = [];
+    r.goalCell = cell;
+    r.needsPlan = false;
+    r.job = null;
+    this.setStage(r, 'toPark', this.k * this.stepSeconds);
+  }
+
+  /** Scenario setup: sends a robot to `cell`; it stops there and is free again. */
+  sendTo(robotId: number, cell: number): void {
+    const r = this.robot(robotId);
+    if (r.stage === 'defect') throw new Error('a broken robot cannot move');
+    if (!this.grid.passable(cell)) throw new Error(`cell ${cell} is not floor`);
+    this.releaseStation(r);
+    r.job = { kind: 'goto', cell };
+    this.setStage(r, 'toPoint', this.k * this.stepSeconds);
+    r.goalCell = cell;
+    r.needsPlan = true;
+  }
+
+  /** Scenario setup: loads `count` new packets on a robot and sends it to deliver them to a dock. */
+  deliver(robotId: number, dock: number, count: number): void {
+    const r = this.robot(robotId);
+    if (r.stage === 'defect') throw new Error('a broken robot cannot move');
+    const now = this.k * this.stepSeconds;
+    const packets = Array.from({ length: count }, () => this.host.createRackPacket(dock, now));
+    for (const p of packets) p.state = 'robot';
+    const order: RackOrder = {
+      id: this.nextOrderId++,
+      face: this.racks[0] as Station,
+      dock,
+      packets,
+    };
+    this.stats.rackOrdersCreated++;
+    this.releaseStation(r);
+    r.job = { kind: 'rack', order };
+    r.load = packets.slice();
+    this.goTo(r, this.pickDock(r, dock), 'toDrop', now);
+  }
+
+  private robot(id: number): Robot {
+    const r = this.robots[id];
+    if (!r) throw new Error(`Unknown robot ${id}`);
+    return r;
+  }
+
   update(tick: number, now: number, dt: number): void {
     this.generateRackOrders(now);
     for (const r of this.robots) this.updateRobot(r, now, dt);
@@ -357,7 +424,8 @@ export class Fleet {
       r.stage === 'toPark' ||
       r.stage === 'toPickup' ||
       r.stage === 'toDrop' ||
-      r.stage === 'toCharger';
+      r.stage === 'toCharger' ||
+      r.stage === 'toPoint';
     const target = r.evading ? r.evadeGoal : r.goalCell;
     if (
       !r.needsPlan &&
@@ -413,6 +481,9 @@ export class Fleet {
         this.setStage(r, 'parked', now);
         r.job = null;
         return;
+      case 'toPoint':
+        this.finishJob(r, now);
+        return;
       default:
         return;
     }
@@ -457,7 +528,7 @@ export class Fleet {
   }
 
   private finishJob(r: Robot, now: number): void {
-    if (r.job && r.job.kind !== 'park') {
+    if (r.job && r.job.kind !== 'park' && r.job.kind !== 'goto') {
       r.jobsDone++;
       this.stats.jobsDone++;
     }

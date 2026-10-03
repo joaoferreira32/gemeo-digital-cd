@@ -92,8 +92,9 @@ export const STAGES: readonly RobotStage[] = [
   'toCharger',
   'charging',
   'defect',
+  'toPoint',
 ];
-export const JOBS = ['none', 'rack', 'bypass', 'charge', 'park'] as const;
+export const JOBS = ['none', 'rack', 'bypass', 'charge', 'park', 'goto'] as const;
 export const TRUCK_STATES = ['docked', 'loading', 'away'] as const;
 export const FAILURE_KINDS = ['conveyor', 'surge', 'robot', 'dock'] as const;
 
