@@ -165,6 +165,97 @@ describe('CooperativePlanner', () => {
     expect(plan.cells[plan.cells.length - 1]).toBe(at(grid, 9, 0));
   });
 
+  it('proves that a robot shut in by a stopped robot has no path, without searching', () => {
+    const { grid, table, planner } = setup(['....#....', '.........', '....#....']);
+    table.hold(at(grid, 4, 1), 0, 1); // the only opening in the wall
+    const before = planner.stats.expansions;
+    expect(planner.plan(0, rest(at(grid, 0, 1), E), { cell: at(grid, 8, 1) })).toBeNull();
+    expect(planner.stats.provedUnreachable).toBe(1);
+    expect(planner.stats.expansions).toBe(before);
+    // Getting out of the way: the only holdable cells it reaches are avoided.
+    grid.holdable[at(grid, 1, 1)] = 1;
+    grid.holdable[at(grid, 7, 1)] = 1;
+    const avoid = new Set([at(grid, 1, 1)]);
+    expect(planner.plan(0, rest(at(grid, 0, 1), E), { cell: -1, avoid })).toBeNull();
+    expect(planner.stats.provedUnreachable).toBe(2);
+    expect(planner.stats.expansions).toBe(before);
+    // A hold that only starts later does not close the opening yet.
+    table.hold(at(grid, 4, 1), 30, 1);
+    expect(planner.plan(0, rest(at(grid, 0, 1), E), { cell: at(grid, 8, 1) })).not.toBeNull();
+  });
+
+  it('never rejects a path the space-time search would find (proof on vs off)', () => {
+    // Two rooms joined by three one-cell openings: random stopped robots shut
+    // them often, so both answers (path / no path) come up many times.
+    const art = [
+      '.........#.........',
+      '.hhh.....#.....hhh.',
+      '.hhh...........hhh.',
+      '.........#.........',
+      '.hhh...........hhh.',
+      '.hhh.....#.....hhh.',
+      '.........#.........',
+      '...............hhh.',
+      '.........#.........',
+    ];
+    const rng = new Rng(99);
+    let found = 0;
+    let none = 0;
+    // The same budget for both (smaller than the fleet's, to keep the test
+    // fast): the answers must match for any budget.
+    const limits = { maxExpansions: 8_000, maxSteps: 320 };
+    for (let trial = 0; trial < 400; trial++) {
+      const grid = gridFrom(art);
+      const table = new ReservationTable(grid.cellCount, 8, 256);
+      const withProof = new CooperativePlanner(grid, table, limits);
+      const without = new CooperativePlanner(grid, table, { ...limits, precheck: false });
+      const openings = [at(grid, 9, 2), at(grid, 9, 4), at(grid, 9, 7)];
+      const free = [...Array(grid.cellCount).keys()].filter(
+        (c) => !grid.blocked[c] && !openings.includes(c),
+      );
+      const take = (side: (x: number) => boolean) => {
+        const options = free.filter((c) => side(grid.x(c)));
+        const c = options[rng.int(options.length)] as number;
+        free.splice(free.indexOf(c), 1);
+        return c;
+      };
+      const anywhere = () => take(() => true);
+      // Robots 1..3 often stop in an opening, from now or only from a later step.
+      openings.forEach((cell, i) => {
+        if (rng.next() < 0.8) table.hold(cell, rng.next() < 0.8 ? 0 : 1 + rng.int(6), i + 1);
+      });
+      // Robots 4..7 stand still somewhere or pass by.
+      for (let r = 4; r < 8; r++) {
+        if (rng.next() < 0.6) table.hold(anywhere(), rng.next() < 0.7 ? 0 : 1 + rng.int(6), r);
+        else {
+          const a = anywhere();
+          const p = without.plan(r, rest(a, rng.int(4)), { cell: anywhere() });
+          if (p) without.commit(r, p);
+          else table.hold(a, 0, r);
+        }
+      }
+      const start = rest(
+        take((x) => x < 9),
+        rng.int(4),
+      );
+      const right = Array.from({ length: 12 }, () => take((x) => x > 9));
+      const goal =
+        rng.next() < 0.75
+          ? { cell: right[0] as number }
+          : { cell: -1, avoid: new Set(free.filter((c) => grid.x(c) < 9)) };
+      const a = withProof.plan(0, start, goal);
+      const b = without.plan(0, start, goal);
+      expect(a?.cells ?? null, `trial ${trial}`).toEqual(b?.cells ?? null);
+      if (a) found++;
+      else none++;
+    }
+    console.info(
+      `prova ligada x desligada: ${found} com caminho, ${none} sem caminho, 0 diferenças`,
+    );
+    expect(found).toBeGreaterThan(50);
+    expect(none).toBeGreaterThan(50);
+  }, 60_000);
+
   it('is deterministic', () => {
     const run = () => {
       const { grid, planner } = setup(['.....', '.#.#.', '.....', '.#.#.', '.....']);

@@ -162,6 +162,16 @@ export class ReservationTable {
     return [...out].sort((a, b) => a - b);
   }
 
+  /**
+   * True when another robot holds `cell` from `step + 1` or earlier: since
+   * holds have no end, `canOccupy` then fails for `robot` at `step` and at
+   * every later step.
+   */
+  closedFrom(cell: number, step: number, robot: number): boolean {
+    const h = this.holdBy[cell] as number;
+    return h !== 0 && h !== robot + 1 && (this.holdFrom[cell] as number) <= step + 1;
+  }
+
   /** Robot holding `cell` (forever), or -1. */
   holder(cell: number): number {
     return (this.holdBy[cell] as number) - 1;
