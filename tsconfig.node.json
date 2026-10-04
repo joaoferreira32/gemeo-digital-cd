@@ -1,0 +1,10 @@
+{
+  // Code that runs in Node (training environment server, benchmarks, the tests
+  // that start it): Node types here only, so the browser code cannot use them.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["ai", "bench", "tests/env-server.test.ts"]
+}
