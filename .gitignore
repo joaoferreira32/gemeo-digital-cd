@@ -5,3 +5,8 @@ coverage/
 .DS_Store
 .env
 .env.*
+
+# Python environment and training runs of the operations AI (phase 4)
+ai/.venv/
+ai/runs/
+__pycache__/
