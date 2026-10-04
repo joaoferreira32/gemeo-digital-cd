@@ -23,6 +23,13 @@ import { createPacket, type Packet, type PacketState } from './packet';
 import { deriveSeed, Rng } from './rng';
 import type { Router } from './router';
 import { SplitRouter } from './routing';
+import {
+  DEFAULT_HEURISTIC,
+  HeuristicRouting,
+  ROUTING_POLICIES,
+  type HeuristicParams,
+  type RoutingPolicy,
+} from './policy';
 import { StateReader, StateWriter, type EncodedState } from './state';
 
 export interface SimConfig {
@@ -54,6 +61,8 @@ export interface SimConfig {
   readonly fleet?: Partial<FleetConfig>;
   /** Robots bridge broken conveyors without alternative (off = packets just wait). */
   readonly robotBypass: boolean;
+  /** Parameters of the congestion heuristic (calibrated on the validation seeds). */
+  readonly heuristic?: Partial<HeuristicParams>;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -186,6 +195,11 @@ export class World implements FleetHost, FailureHost {
   private router: Router;
   /** The routing the operations layer adjusts (the default router). */
   readonly routing: SplitRouter;
+  readonly heuristic: HeuristicRouting;
+  /** Who sets the routing shares now. */
+  policy: RoutingPolicy = 'static';
+  /** Called on every delivery to a dock (evaluations); not part of the state. */
+  onDelivery: ((packet: Packet, byRobot: boolean) => void) | null = null;
   private readonly orderRng: Rng;
   private readonly destinationWeights: readonly number[];
   /** Round-robin pointer over incoming edges, per node, so merges are fair. */
@@ -227,6 +241,10 @@ export class World implements FleetHost, FailureHost {
     this.metrics = new Metrics(this.config.metricsWindow);
     this.routing = new SplitRouter(graph, layout.dockNodes);
     this.router = this.routing;
+    this.heuristic = new HeuristicRouting(graph, this.routing, {
+      ...DEFAULT_HEURISTIC,
+      ...this.config.heuristic,
+    });
     if (this.config.robots > 0) {
       const fleetConfig: FleetConfig = {
         ...DEFAULT_FLEET,
@@ -360,6 +378,7 @@ export class World implements FleetHost, FailureHost {
       ids(lane.drop);
     }
     this.metrics.save(w);
+    w.pick(this.policy, ROUTING_POLICIES);
     this.routing.save(w);
     this.failures.save(w);
     this.fleet?.save(w);
@@ -442,6 +461,7 @@ export class World implements FleetHost, FailureHost {
       fill(lane.drop);
     }
     this.metrics.load(r);
+    this.policy = r.pick(ROUTING_POLICIES);
     this.routing.load(r);
     this.failures.load(r);
     this.fleet?.load(r, packet);
@@ -504,6 +524,7 @@ export class World implements FleetHost, FailureHost {
       dock.staged.push(p);
       this.metrics.recordDelivery(now, now - p.createdAt);
       this.metrics.deliveredByRobots++;
+      this.onDelivery?.(p, true);
       this.dockDeliveries[dockIndex]!++;
     }
     return true;
@@ -545,6 +566,19 @@ export class World implements FleetHost, FailureHost {
 
   setRouter(router: Router): void {
     this.router = router;
+  }
+
+  /** Changes who sets the routing shares; back to static, every share returns to 0. */
+  setPolicy(policy: RoutingPolicy): void {
+    this.policy = policy;
+    if (policy === 'static') this.routing.share.fill(0);
+  }
+
+  /** Shares given from outside (the learning agent); ignored unless the policy is external. */
+  setShares(shares: readonly number[]): void {
+    if (this.policy !== 'external') return;
+    const s = this.routing.share;
+    for (let i = 0; i < s.length; i++) s[i] = Math.min(1, Math.max(0, shares[i] ?? 0));
   }
 
   setConveyorStatus(edgeId: number, status: ConveyorStatus): void {
@@ -647,6 +681,9 @@ export class World implements FleetHost, FailureHost {
     const now = this.time;
     const dt = this.config.dt;
     this.failures.update(now);
+    if (this.policy === 'heuristic' && this.tick % Math.round(1 / dt) === 0) {
+      this.heuristic.update(this.conveyors, this.lanes);
+    }
     this.generateOrders(now);
     this.updateLanes();
     for (const c of this.conveyors) advanceConveyor(c, dt);
@@ -727,6 +764,7 @@ export class World implements FleetHost, FailureHost {
         dock.staged.push(p);
         dock.serviceProgress -= 1;
         this.metrics.recordDelivery(now, now - p.createdAt);
+        this.onDelivery?.(p, false);
         this.roundRobin[dock.nodeId] = (idx + 1) % inEdges.length;
         break;
       }

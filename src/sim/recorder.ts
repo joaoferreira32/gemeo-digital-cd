@@ -1,4 +1,5 @@
 import type { FailureKind, SimEvent } from './failures';
+import type { RoutingPolicy } from './policy';
 import { ROBOT_STAGES, type RobotStage } from './fleet';
 import { fingerprint } from './fingerprint';
 import { World, type Checkpoint, type SimConfig } from './world';
@@ -14,7 +15,11 @@ export const STRESS_ARRIVAL_RATE = 40;
 export type SimInput =
   | { type: 'inject'; kind: FailureKind; target?: number }
   | { type: 'auto'; on: boolean }
-  | { type: 'stress'; on: boolean };
+  | { type: 'stress'; on: boolean }
+  /** Who sets the routing shares (static, heuristic, external agent). */
+  | { type: 'policy'; policy: RoutingPolicy }
+  /** Routing shares chosen outside the simulation (the learning agent). */
+  | { type: 'shares'; shares: number[] };
 
 export function applyInput(world: World, input: SimInput): void {
   switch (input.type) {
@@ -26,6 +31,12 @@ export function applyInput(world: World, input: SimInput): void {
       return;
     case 'stress':
       world.setArrivalRate(input.on ? STRESS_ARRIVAL_RATE : world.config.arrivalRate);
+      return;
+    case 'policy':
+      world.setPolicy(input.policy);
+      return;
+    case 'shares':
+      world.setShares(input.shares);
       return;
   }
 }
