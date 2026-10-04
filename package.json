@@ -17,6 +17,7 @@
     "bench:mapf": "tsx bench/mapf.ts",
     "bench:vigia": "tsx bench/vigia.ts",
     "bench:tempo": "tsx --expose-gc bench/tempo.ts",
+    "bench:rotas": "tsx bench/rotas.ts",
     "mutate": "node scripts/mutate.mjs"
   },
   "dependencies": {
