@@ -1,0 +1,95 @@
+{
+  "tests": ["tests/health.test.ts"],
+  "mutations": [
+    {
+      "name": "quebras automáticas sem desgaste",
+      "edits": [
+        {
+          "file": "src/sim/failures.ts",
+          "find": "if (kind === 'conveyor' && this.rng.next() >= SUDDEN_SHARE) this.degrade(now);",
+          "replace": "if (kind === 'conveyor' && this.rng.next() >= SUDDEN_SHARE) this.inject('conveyor', now);"
+        }
+      ]
+    },
+    {
+      "name": "desgaste quebra na hora",
+      "edits": [
+        {
+          "file": "src/sim/failures.ts",
+          "find": "    const breaksAt = now + a + (b - a) * this.rng.next();",
+          "replace": "    const breaksAt = now + 0 * (a + (b - a) * this.rng.next());"
+        }
+      ]
+    },
+    {
+      "name": "desgaste não aparece nos sinais",
+      "edits": [
+        {
+          "file": "src/sim/health.ts",
+          "find": "        wear = Math.min(1, Math.max(0, (now - d.onset) / (d.breaksAt - d.onset)));",
+          "replace": "        wear = 0 * Math.min(1, Math.max(0, (now - d.onset) / (d.breaksAt - d.onset)));"
+        }
+      ]
+    },
+    {
+      "name": "sem ressincronizar a temperatura quando o motor religa",
+      "edits": [
+        {
+          "file": "src/sim/health.ts",
+          "find": "        this.thermalOffset[i] = yt - this.temperatureFilter.predict(i, lagRun, lagLoad);",
+          "replace": "        this.thermalOffset[i] = 0;"
+        }
+      ]
+    },
+    {
+      "name": "filtro aprende com qualquer leitura (absorve o desgaste)",
+      "edits": [
+        {
+          "file": "src/sim/health.ts",
+          "find": "const LEARN_WITHIN = 3;",
+          "replace": "const LEARN_WITHIN = Infinity;"
+        }
+      ]
+    },
+    {
+      "name": "z sem teto (uma pancada sozinha pesa demais)",
+      "edits": [
+        {
+          "file": "src/sim/health.ts",
+          "find": "const Z_CAP = 4;",
+          "replace": "const Z_CAP = Infinity;"
+        }
+      ]
+    },
+    {
+      "name": "alarme nunca desce",
+      "edits": [
+        {
+          "file": "src/sim/health.ts",
+          "find": "      } else if (this.alarm[i] && sum === 0) {\n        this.alarm[i] = 0;",
+          "replace": "      } else if (this.alarm[i] && sum === -1) {\n        this.alarm[i] = 0;"
+        }
+      ]
+    },
+    {
+      "name": "motor parado não zera a soma",
+      "edits": [
+        {
+          "file": "src/sim/health.ts",
+          "find": "        this.score[i] = 0;\n        this.sum[i] = 0;\n        this.alarm[i] = 0;",
+          "replace": "        this.score[i] = 0;\n        this.alarm[i] = 0;"
+        }
+      ]
+    },
+    {
+      "name": "checkpoint esquece o filtro de vibração",
+      "edits": [
+        {
+          "file": "src/sim/health.ts",
+          "find": "    this.vibrationFilter.save(w);",
+          "replace": ""
+        }
+      ]
+    }
+  ]
+}
