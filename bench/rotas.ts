@@ -3,7 +3,8 @@
  *
  *   npm run bench:rotas                     static × heuristic, validation seeds
  *   npm run bench:rotas -- --rl rodada1     also the trained agent (ai/models/rodada1.onnx)
- *                                           against the heuristic, with the success criterion
+ *                                           against the heuristic, with the success criterion;
+ *                                           several agents at once: --rl a,b (one pass over the seeds)
  *   npm run bench:rotas -- --teacher        also the heuristic in the agent's five levels
  *                                           (what the imitation start teaches)
  *   npm run bench:rotas -- --calibrate      heuristic parameter grid, validation seeds
@@ -155,13 +156,15 @@ if (flag('--calibrate')) {
   const out = value('--out');
   if (out) writeFileSync(out, JSON.stringify({ set, seeds, rows, results }, null, 1));
 } else {
-  const agent = value('--rl');
+  const agents = (value('--rl') ?? '').split(',').filter(Boolean);
   const jobs: Job[] = [];
   for (const seed of seeds)
     for (const scenario of SCENARIOS) {
       for (const policy of ['static', 'heuristic'] as const)
         jobs.push({ seed, scenario, policy, heuristic: DEFAULT_HEURISTIC, tag: policy });
-      if (agent) jobs.push({ seed, scenario, policy: 'external', agent, tag: 'rl' });
+      for (const agent of agents) {
+        jobs.push({ seed, scenario, policy: 'external', agent, tag: `rl:${agent}` });
+      }
       if (flag('--teacher')) {
         jobs.push({ seed, scenario, policy: 'external', agent: '@teacher', tag: 'teacher' });
       }
@@ -195,28 +198,31 @@ if (flag('--calibrate')) {
       ['heurística', 'em níveis'],
     );
   }
-  let rl: { cmp: ReturnType<typeof compare>; check: ReturnType<typeof criterion> } | null = null;
-  if (agent) {
-    const vsHeuristic = table(`Agente ${agent} contra a heurística`, 'heuristic', 'rl', [
+  const rl: Record<
+    string,
+    { cmp: ReturnType<typeof compare>; check: ReturnType<typeof criterion> }
+  > = {};
+  for (const agent of agents) {
+    const tag = `rl:${agent}`;
+    const vsHeuristic = table(`Agente ${agent} contra a heurística`, 'heuristic', tag, [
       'heurística',
       'agente',
     ]);
-    table(`Agente ${agent} contra o roteamento estático`, 'static', 'rl', ['estática', 'agente']);
+    table(`Agente ${agent} contra o roteamento estático`, 'static', tag, ['estática', 'agente']);
     const pairs = seeds.flatMap((seed) =>
       SCENARIOS.map((scenario) => {
-        const find = (tag: string) =>
-          results.find(
-            (r) => r.tag === tag && r.seed === seed && r.scenario === scenario,
-          ) as Result;
-        return { scenario, base: find('heuristic'), cand: find('rl') };
+        const find = (t: string) =>
+          results.find((r) => r.tag === t && r.seed === seed && r.scenario === scenario) as Result;
+        return { scenario, base: find('heuristic'), cand: find(tag) };
       }),
     );
     const check = criterion(pairs);
     console.log(
-      `Critério de sucesso do agente (contra a heurística): ${check.ok ? 'CUMPRIDO' : 'NÃO cumprido'}`,
+      `Critério de sucesso do agente ${agent} (contra a heurística): ${check.ok ? 'CUMPRIDO' : 'NÃO cumprido'}`,
     );
     for (const c of check.checks) console.log(`  ${c.ok ? 'ok ' : 'NÃO'}  ${c.label}: ${c.detail}`);
-    rl = { cmp: vsHeuristic, check };
+    console.log('');
+    rl[agent] = { cmp: vsHeuristic, check };
   }
   const out = value('--out');
   if (out) writeFileSync(out, JSON.stringify({ set, seeds, cmp, rl, results }, null, 1));
