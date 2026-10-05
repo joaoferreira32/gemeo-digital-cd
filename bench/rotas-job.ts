@@ -7,8 +7,9 @@
 import { readFileSync } from 'node:fs';
 import * as ort from 'onnxruntime-web';
 import { createAgent, type Agent, type AgentInfo } from '../src/ai/agent';
-import { evaluateAgentAsync } from '../src/ai/env';
+import { evaluateAgentAsync, RoutingEnv } from '../src/ai/env';
 import { evaluate, type ScenarioName } from '../src/ai/evaluate';
+import { HeuristicTeacher } from '../src/ai/teacher';
 import type { HeuristicParams, RoutingPolicy } from '../src/sim/policy';
 
 interface Job {
@@ -32,15 +33,27 @@ async function agentOf(name: string): Promise<Agent> {
   return a;
 }
 
+/** The heuristic in the agent's terms (levels), as the imitation start teaches it. */
+function teacherEpisode(seed: number, scenario: ScenarioName) {
+  const env = new RoutingEnv();
+  env.reset(seed, scenario);
+  const teacher = new HeuristicTeacher(env.world);
+  while (!env.step(teacher.levels(env.world)).done);
+  return env.result();
+}
+
 const jobs = JSON.parse(process.argv[2] ?? '[]') as Job[];
 for (const job of jobs) {
-  const r = job.agent
-    ? await evaluateAgentAsync(job.seed, job.scenario, await agentOf(job.agent))
-    : evaluate(
-        job.seed,
-        job.scenario,
-        job.policy,
-        job.heuristic ? { heuristic: job.heuristic } : {},
-      );
+  const r =
+    job.agent === '@teacher'
+      ? teacherEpisode(job.seed, job.scenario)
+      : job.agent
+        ? await evaluateAgentAsync(job.seed, job.scenario, await agentOf(job.agent))
+        : evaluate(
+            job.seed,
+            job.scenario,
+            job.policy,
+            job.heuristic ? { heuristic: job.heuristic } : {},
+          );
   process.stdout.write(`${JSON.stringify({ ...r, tag: job.tag ?? '' })}\n`);
 }

@@ -4,6 +4,8 @@
  *   npm run bench:rotas                     static × heuristic, validation seeds
  *   npm run bench:rotas -- --rl rodada1     also the trained agent (ai/models/rodada1.onnx)
  *                                           against the heuristic, with the success criterion
+ *   npm run bench:rotas -- --teacher        also the heuristic in the agent's five levels
+ *                                           (what the imitation start teaches)
  *   npm run bench:rotas -- --calibrate      heuristic parameter grid, validation seeds
  *   npm run bench:rotas -- --set test --final   the test seeds (used once, at the end)
  *
@@ -160,6 +162,9 @@ if (flag('--calibrate')) {
       for (const policy of ['static', 'heuristic'] as const)
         jobs.push({ seed, scenario, policy, heuristic: DEFAULT_HEURISTIC, tag: policy });
       if (agent) jobs.push({ seed, scenario, policy: 'external', agent, tag: 'rl' });
+      if (flag('--teacher')) {
+        jobs.push({ seed, scenario, policy: 'external', agent: '@teacher', tag: 'teacher' });
+      }
     }
   const results = await runAll(jobs);
   const table = (title: string, base: string, cand: string, names: [string, string]) => {
@@ -182,6 +187,14 @@ if (flag('--calibrate')) {
     'estática',
     'heurística',
   ]);
+  if (flag('--teacher')) {
+    table(
+      'Heurística em cinco níveis (o professor da imitação) contra a heurística',
+      'heuristic',
+      'teacher',
+      ['heurística', 'em níveis'],
+    );
+  }
   let rl: { cmp: ReturnType<typeof compare>; check: ReturnType<typeof criterion> } | null = null;
   if (agent) {
     const vsHeuristic = table(`Agente ${agent} contra a heurística`, 'heuristic', 'rl', [

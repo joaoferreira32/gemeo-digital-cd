@@ -1,17 +1,25 @@
 """Trains the routing agent with PPO on the headless TypeScript engine.
 
     ai/.venv/Scripts/python ai/train.py --name rodada1 --steps 2000000
+    ai/.venv/Scripts/python ai/train.py --name rodada2 --imitate 400 --lr 1e-4 --ent 0.001 --clip 0.1
 
 Writes ai/runs/<name>/ (training log, model.zip; not versioned) and
 ai/models/<name>.onnx with ai/models/<name>.json (versioned: what the app and
 the benchmark load). Seeds come from the training set only; the tuning
 rounds are judged on the validation seeds by `npm run bench:rotas -- --rl`.
+
+--imitate N starts from the heuristic instead of from random weights: N
+episodes of the heuristic teacher (ai/dataset.ts, training seeds) teach the
+policy network by plain supervised learning, then PPO trains only the value
+network for the first --warmup updates (a critic that knows nothing yet
+would push the policy around) and goes on with both.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -23,7 +31,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.vec_env import VecNormalize
 
-from gemeo_env import ROOT, GemeoVecEnv
+from gemeo_env import ROOT, GemeoVecEnv, build_engine, node_executable
 
 
 class EpisodeLog(BaseCallback):
@@ -38,6 +46,85 @@ class EpisodeLog(BaseCallback):
             if "episode" in info:
                 self.episodes.append({**info["episode"], "step": int(self.num_timesteps)})
         return True
+
+
+def actor_parameters(policy) -> list[torch.nn.Parameter]:
+    return list(policy.mlp_extractor.policy_net.parameters()) + list(policy.action_net.parameters())
+
+
+class CriticWarmup(BaseCallback):
+    """Trains only the value network for the first updates (the policy stays frozen)."""
+
+    def __init__(self, updates: int) -> None:
+        super().__init__()
+        self.left = updates
+
+    def _set(self, trainable: bool) -> None:
+        for q in actor_parameters(self.model.policy):
+            q.requires_grad_(trainable)
+
+    def _on_training_start(self) -> None:
+        if self.left > 0:
+            self._set(False)
+
+    def _on_rollout_end(self) -> None:
+        if self.left > 0:
+            self.left -= 1
+            if self.left == 0:
+                self._set(True)
+
+    def _on_step(self) -> bool:
+        return True
+
+
+def demonstrations(episodes: int, out: Path, seed: int, observation_size: int,
+                   decisions: int, procs: int = 14) -> dict[str, np.ndarray]:
+    """Episodes of the heuristic teacher on training seeds, in parallel shards (ai/dataset.ts)."""
+    build_engine()
+    out.mkdir(parents=True, exist_ok=True)
+    per = -(-episodes // procs)
+    first = 15_001  # any training seeds; PPO draws its own from the whole set
+    shards = []
+    for k in range(procs):
+        n = min(per, episodes - k * per)
+        if n <= 0:
+            break
+        cfg = {"from": first + k * per, "episodes": n, "seed": seed * 1000 + k, "out": str(out / str(k))}
+        shards.append(subprocess.Popen([node_executable(), "build/headless/ai/dataset.js", json.dumps(cfg)],
+                                       cwd=ROOT))
+    for proc in shards:
+        if proc.wait() != 0:
+            raise RuntimeError("a demonstration shard failed")
+    read = lambda k, ext, dtype: np.fromfile(out / f"{k}.{ext}", dtype=dtype)
+    return {
+        "obs": np.concatenate([read(k, "obs", "<f4") for k in range(len(shards))]).reshape(-1, observation_size),
+        "act": np.concatenate([read(k, "act", "u1") for k in range(len(shards))]).reshape(-1, decisions),
+        "done": np.concatenate([read(k, "done", "u1") for k in range(len(shards))]),
+    }
+
+
+def imitate(policy, data: dict[str, np.ndarray], epochs: int = 8, batch: int = 1024,
+            lr: float = 1e-3, seed: int = 0) -> dict[str, float]:
+    """Supervised start: the policy network learns the teacher's levels (cross-entropy)."""
+    obs = torch.from_numpy(data["obs"])
+    act = torch.from_numpy(data["act"].astype(np.int64))
+    # Hold out the last tenth of the episodes (whole episodes: steps of one episode are alike).
+    ends = np.flatnonzero(data["done"])
+    cut = int(ends[int(len(ends) * 0.9) - 1]) + 1
+    rng = np.random.default_rng(seed)
+    opt = torch.optim.Adam(actor_parameters(policy), lr=lr)
+    for _ in range(epochs):
+        for i in np.array_split(rng.permutation(cut), max(1, cut // batch)):
+            loss = -policy.get_distribution(obs[i]).log_prob(act[i]).mean()
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+    with torch.no_grad():
+        logits = Logits(policy)(obs[cut:])
+        guess = logits.reshape(len(logits), act.shape[1], -1).argmax(dim=2)
+        right = guess == act[cut:]
+    return {"samples": int(cut), "heldOut": int(len(obs) - cut),
+            "levelAccuracy": float(right.float().mean()), "allFiveAccuracy": float(right.all(dim=1).float().mean())}
 
 
 class Logits(torch.nn.Module):
@@ -90,6 +177,9 @@ def main() -> None:
     ap.add_argument("--per-old-packet", type=float, default=None)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--ent", type=float, default=0.01)
+    ap.add_argument("--clip", type=float, default=0.2)
+    ap.add_argument("--imitate", type=int, default=0, help="episodes of heuristic demonstrations (0: random start)")
+    ap.add_argument("--warmup", type=int, default=10, help="updates of the value network alone after imitation")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")  # the Windows console defaults to cp1252
     # The engines are separate processes; one PyTorch thread leaves the cores to them.
@@ -111,14 +201,23 @@ def main() -> None:
     model = PPO(
         "MlpPolicy", env, n_steps=n_steps, batch_size=n_steps * args.envs // 4, n_epochs=10,
         learning_rate=args.lr,
-        gamma=0.99, gae_lambda=0.95, clip_range=0.2, ent_coef=args.ent,
+        gamma=0.99, gae_lambda=0.95, clip_range=args.clip, ent_coef=args.ent,
         policy_kwargs={"net_arch": {"pi": [128, 128], "vf": [128, 128]}},
         seed=args.seed, device="cpu", verbose=0,
     )
     model.set_logger(configure(str(run_dir), ["csv", "stdout"]))
-    log = EpisodeLog()
+    imitation = None
+    callbacks: list[BaseCallback] = [log := EpisodeLog()]
+    if args.imitate:
+        t = time.time()
+        data = demonstrations(args.imitate, run_dir / "demos", args.seed, info["observationSize"],
+                              info["decisions"])
+        imitation = {"episodes": args.imitate, **imitate(model.policy, data, seed=args.seed),
+                     "seconds": round(time.time() - t), "warmupUpdates": args.warmup}
+        print(f"imitação: {json.dumps(imitation)}", flush=True)
+        callbacks.append(CriticWarmup(args.warmup))
     t0 = time.time()
-    model.learn(total_timesteps=args.steps, callback=log)
+    model.learn(total_timesteps=args.steps, callback=callbacks)
     wall = time.time() - t0
     model.save(run_dir / "model.zip")
     env.close()
@@ -131,6 +230,8 @@ def main() -> None:
         "seed": args.seed,
         "learningRate": args.lr,
         "entropy": args.ent,
+        "clip": args.clip,
+        "imitation": imitation,
         "reward": reward or info["reward"],
         "trainingSeeds": info["trainingSeeds"],
         "scenarios": info["scenarios"],

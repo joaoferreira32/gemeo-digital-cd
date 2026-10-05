@@ -16,7 +16,12 @@
 import { build } from 'esbuild';
 
 await build({
-  entryPoints: ['ai/env-server.ts', 'bench/rotas-job.ts', 'bench/manutencao-job.ts'],
+  entryPoints: [
+    'ai/env-server.ts',
+    'ai/dataset.ts',
+    'bench/rotas-job.ts',
+    'bench/manutencao-job.ts',
+  ],
   // Loaded from node_modules at run time: it ships WebAssembly next to its code.
   external: ['onnxruntime-web'],
   outdir: 'build/headless',
