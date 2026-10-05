@@ -1,6 +1,6 @@
 /**
- * Builds the headless entry points (training environment server, routing
- * benchmark jobs) into build/headless/ with esbuild.
+ * Builds the headless entry points (training environment server, routing and
+ * maintenance benchmark jobs) into build/headless/ with esbuild.
  *
  *   node scripts/build-headless.mjs
  *
@@ -16,7 +16,7 @@
 import { build } from 'esbuild';
 
 await build({
-  entryPoints: ['ai/env-server.ts', 'bench/rotas-job.ts'],
+  entryPoints: ['ai/env-server.ts', 'bench/rotas-job.ts', 'bench/manutencao-job.ts'],
   outdir: 'build/headless',
   bundle: true,
   platform: 'node',
