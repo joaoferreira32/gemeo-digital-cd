@@ -64,6 +64,9 @@ export class SimHost {
   /** Tick of the last decision of the network, and whether one is on its way. */
   private decidedTick = -1;
   private pending = false;
+  /** Decisions of the network so far and the time they took (observation, inference, answer). */
+  private decisions = 0;
+  private decisionMs = 0;
   private readonly shadow = new StaticShadow();
 
   constructor(
@@ -277,9 +280,12 @@ export class SimHost {
     if (tick % Math.round(1 / rec.config.dt) !== 0 || this.decidedTick === tick) return false;
     if (!this.pending) {
       this.pending = true;
+      const started = this.clock();
       agent(observe(rec.live)).then(
         (levels) => {
           this.pending = false;
+          this.decisions++;
+          this.decisionMs += this.clock() - started;
           // Moved on meanwhile (a seek, a restart): the answer is for another moment.
           if (this.recorder !== rec || rec.viewing || rec.headTick !== tick) return;
           rec.input({ type: 'shares', shares: levels.map((l) => l / (ACTION_LEVELS - 1)) });
@@ -376,6 +382,8 @@ export class SimHost {
       wanted: this.wanted ?? this.choice,
       agent: this.agent.state,
       agentError: this.agent.error,
+      decisionMs: this.decisions ? this.decisionMs / this.decisions : NaN,
+      decisions: this.decisions,
       compare: rec.viewing ? null : this.shadow.compare(rec.live),
     };
     this.post(

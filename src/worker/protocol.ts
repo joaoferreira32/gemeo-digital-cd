@@ -56,6 +56,9 @@ export interface RoutingStatus {
   readonly wanted: PolicyChoice;
   readonly agent: AgentState;
   readonly agentError: string;
+  /** Mean time of a decision of the network (observation, inference, answer), ms; NaN before the first. */
+  readonly decisionMs: number;
+  readonly decisions: number;
   /** Live run against a copy that kept the static routing; null when static or in the past. */
   readonly compare: Comparison | null;
 }

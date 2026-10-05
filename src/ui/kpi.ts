@@ -208,6 +208,16 @@ export class KpiPanel {
     if (r.wanted !== r.shown && r.agent === 'loading') {
       head.append(html('span', 'muted', ' · carregando a IA…'));
     }
+    if (r.decisions > 0) {
+      const ms = r.decisionMs.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+      head.append(
+        html(
+          'span',
+          'muted',
+          ` · ${formatInt(r.decisions)} decisões da IA, ${ms} ms cada em média`,
+        ),
+      );
+    }
     const c = r.compare;
     if (!c) {
       const why =
