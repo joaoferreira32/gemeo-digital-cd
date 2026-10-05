@@ -20,6 +20,7 @@ await build({
     'ai/env-server.ts',
     'ai/dataset.ts',
     'bench/retornos.ts',
+    'bench/oscilacao-job.ts',
     'bench/rotas-job.ts',
     'bench/manutencao-job.ts',
   ],
