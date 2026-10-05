@@ -350,6 +350,151 @@ thread da página (`?sim=main`), sem erros no console. O único aviso de shader
 
 ---
 
+## Fase 4 — IA de operações
+
+### Como as políticas de roteamento foram comparadas
+
+Quatro cenários de 10 minutos simulados, o primeiro minuto descartado (o
+galpão enchendo): **normal**; **esteira com alternativa quebrada** (Esteira 3,
+A2→A3, aos 120 s e Esteira 8, B2→B3, aos 330 s, 60 a 90 s cada); **pico de
+pedidos** (demanda 22% acima do normal e dois picos de 2,5× por 45 s); **falhas
+automáticas**. Só contam os pacotes que entram pelas esteiras: os pedidos de
+estoque vão do rack à doca por robô, sem passar por nenhuma escolha, e o ciclo
+deles (p95 de 128 s contra 37 s nas esteiras) esconderia o efeito. Cada
+política roda as mesmas seeds com os mesmos pedidos; os ganhos são pareados
+seed a seed, com intervalo de confiança de 95% (t de Student, 9 graus de
+liberdade). "Idade máxima" é a idade do pacote mais velho ainda no galpão, no
+pior momento do episódio.
+
+Seeds: treino 10.001 a 19.999 (episódios do PPO e demonstrações da imitação),
+validação 20.001 a 20.010 (calibração da heurística e do detector, julgamento
+das rodadas da IA), teste 30.001 a 30.010 (uma única vez, no resultado final;
+os benchmarks recusam sem `--final`).
+
+### Heurística contra o roteamento estático (seeds de validação)
+
+`npm run bench:rotas`, parâmetros da heurística: peso da fila 0,5, escala 0,5 s,
+suavização 0,3.
+
+| Cenário                          | p95 do ciclo (estática → heurística) | ganho no p95 (IC 95%)    | seeds melhores | ganho no p99 | idade máxima (estática → heurística) | vazão  |
+| -------------------------------- | ------------------------------------ | ------------------------ | -------------- | ------------ | ------------------------------------ | ------ |
+| Normal                           | 37,4 s → 36,7 s                      | +1,7% (+1,2% a +2,1%)    | 10 de 10       | +3,3%        | 42,7 s → 41,0 s                      | +0,0%  |
+| Esteira com alternativa quebrada | 107,6 s → 46,5 s                     | +56,6% (+53,7% a +59,5%) | 10 de 10       | +11,0%       | 120,1 s → 115,8 s                    | +4,1%  |
+| Pico de pedidos                  | 184,3 s → 121,6 s                    | +34,0% (+31,0% a +36,9%) | 10 de 10       | +28,9%       | 211,0 s → 151,8 s                    | +11,5% |
+| Falhas automáticas               | 210,1 s → 163,6 s                    | +21,5% (+13,7% a +29,2%) | 10 de 10       | +17,2%       | 340,8 s → 337,0 s                    | +9,5%  |
+
+**Calibração** (`npm run bench:rotas -- --calibrate`, grade 3 × 3): ganho médio
+no p95 entre +26,9% e +28,4% em todas as combinações; a escolhida (peso 0,5,
+escala 0,5 s) foi a melhor. O ótimo é plano, então a escolha não é frágil.
+
+**A heurística nos cinco níveis do agente** (`--teacher`: frações arredondadas
+para 0, ¼, ½, ¾ ou 1, como o agente decide). É o professor da imitação da
+rodada 2, e mede igual à heurística contínua (todos os intervalos incluem 0):
+o espaço de ação do agente não é o que limita.
+
+| Cenário                          | ganho no p95 sobre a heurística (IC 95%) | seeds melhores |
+| -------------------------------- | ---------------------------------------- | -------------- |
+| Normal                           | −0,0% (−0,1% a +0,1%)                    | 5 de 10        |
+| Esteira com alternativa quebrada | +0,1% (−0,4% a +0,5%)                    | 4 de 10        |
+| Pico de pedidos                  | −0,4% (−1,9% a +1,1%)                    | 4 de 10        |
+| Falhas automáticas               | +1,0% (−1,0% a +3,0%)                    | 7 de 10        |
+
+<!-- AGENTE -->
+
+### Manutenção preditiva (sinais simulados)
+
+> Vibração e temperatura vêm de um modelo simples, não de máquinas reais.
+> Os números abaixo medem o detector nesse modelo.
+
+`npm run bench:manutencao`: cada seed roda 30 minutos de falhas automáticas uma
+vez; os escores de cada segundo ficam guardados, e a grade de k e h reaplica o
+CUSUM sobre eles sem simular de novo. Os alarmes que o próprio motor levantou
+batem exatamente com essa reaplicação (o benchmark confere e falha se não
+baterem). Um alarme é verdadeiro quando sobe enquanto aquela esteira está se
+desgastando; uma quebra conta como detectada quando um alarme subiu durante o
+desgaste dela (alarme já aceso antes do início não conta).
+
+**Seeds de validação, k = 3, h = 48** (10 seeds × 30 min = 5 h simuladas, 24
+motores):
+
+| O que                                 | Resultado                                                                                            |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Precisão                              | 98% (50 de 51 alarmes)                                                                               |
+| Recall das quebras com desgaste       | 77% (48 de 62)                                                                                       |
+| Recall de todas as quebras de esteira | 56% (48 de 86; 24 foram súbitas, sem aviso)                                                          |
+| Antecedência (do alarme à quebra)     | mediana 36 s, p10 10 s                                                                               |
+| Alarmes falsos                        | 1 em 5 h simuladas: 0,2 por hora no CD inteiro (≈ 0,01 por motor-hora); aconteceu durante um enrosco |
+
+**Calibração** (grade 7 × 8, ordenada por F1): k = 3, h = 48 deu F1 0,87; com
+k = 2 e h = 64, recall 94% mas precisão 77%; com k = 4 e h = 24, precisão 98%,
+recall 73%. k e h grandes fazem o alarme esperar a anomalia durar mais que um
+enrosco típico, que é o que mantém os alarmes falsos raros.
+
+**O que fica sem aviso** (as 14 quebras com desgaste não detectadas): desgastes
+que aparecem forte em **um sinal só** (vibração sem aquecimento, ou o contrário)
+e em geral **rápidos**. Com k = 3 e o z de cada sinal limitado a 4, um sinal
+sozinho soma no máximo 4/√2 ≈ 2,83 por segundo, abaixo de k: a soma nunca
+acumula. É o preço de ignorar pancadas (só vibração) e enroscos curtos.
+
+| Força do desgaste no sinal mais fraco | Detectadas | Duração do desgaste | Detectadas |
+| ------------------------------------- | ---------- | ------------------- | ---------- |
+| menor que 0,4                         | 20 de 34   | 60 a 100 s          | 13 de 22   |
+| de 0,4 a 0,8                          | 15 de 15   | 100 a 140 s         | 19 de 23   |
+| 0,8 ou mais                           | 13 de 13   | 140 a 180 s         | 16 de 17   |
+
+Mediana da força no sinal mais fraco: 0,14 nas perdidas, 0,50 nas detectadas;
+duração mediana: 84 s nas perdidas, 128 s nas detectadas.
+
+**Medido ao construir o detector** (mesmas seeds):
+
+| Versão do detector                                     | Resultado                                                                                            |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Modelo nominal fixo do motor                           | melhor F1 0,75 (precisão 64%), ótimo na borda da grade                                               |
+| + filtro de Kalman que aprende o normal de cada motor  | precisão até 69%: todos os 29 alarmes falsos (k = 1, h = 8, 4 seeds) de 2 a 16 s depois de um reparo |
+| + ressincronizar a temperatura quando o motor religa   | 100% de precisão e de recall: o problema tinha ficado fácil demais                                   |
+| + quebras súbitas, desgaste fraco, pancadas e enroscos | o compromisso real acima (ótimo no meio da grade)                                                    |
+
+### Treino no mesmo motor
+
+| O que                                                   | Resultado                                                                              |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Episódio de 10 min (40 robôs), motor compilado pelo tsx | 11 s                                                                                   |
+| O mesmo, build do esbuild sem `keepNames`               | 1,9 s (5,7×), mesmos resultados bit a bit                                              |
+| Ida e volta do protocolo binário (Python ↔ Node)        | 0,05 ms                                                                                |
+| Decisões por segundo no treino (16 ambientes)           | cerca de 490                                                                           |
+| Fidelidade Python ↔ TypeScript                          | mesma impressão digital, medidas e recompensas (cenários esteira e falhas automáticas) |
+
+Por que não escala mais: 8 processos simulando ao mesmo tempo ficam 2,4× mais
+lentos cada (cache e memória da máquina), e o passo em lote espera o ambiente
+mais lento a cada decisão.
+
+### O agente no app
+
+| O que                                        | Resultado                                                       |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| Uma decisão no Node (onnxruntime-web, WASM)  | 0,03 ms de inferência + 0,003 ms para montar a observação       |
+| Código do worker                             | 101 kB (89 kB na Fase 3)                                        |
+| Runtime da rede, baixado só ao escolher a IA | 71 kB de JavaScript + 14,2 MB de WebAssembly (3,7 MB com gzip)  |
+| Paridade ONNX × PyTorch                      | mesmos logits até 1e-4 e mesmas ações em 8 observações de prova |
+
+O WebAssembly é a variante só de CPU: a variante com WebGPU tinha 28 MB, e uma
+rede de 128 × 128 não precisa de GPU. O worker passou a ser um módulo ES; antes
+ele embutia o runtime inteiro (510 kB) porque o formato IIFE não separa
+importações dinâmicas.
+
+### Conferência por mutação
+
+| Especificação | O que muda de propósito                                                                                   | Pegas pelos testes |
+| ------------- | --------------------------------------------------------------------------------------------------------- | ------------------ |
+| manutenção    | desgaste antes das quebras, sinais, ressincronização, aprendizado do filtro, teto do z, CUSUM, checkpoint | 9 de 9             |
+
+Com as especificações anteriores: 39 de 39, em 14 minutos (com o treino da IA
+rodando ao mesmo tempo). Uma rodada que passa de 5× o tempo da linha de base é
+encerrada e conta como pega: um mutante tinha transformado uma espera num laço
+infinito.
+
+---
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                          |
@@ -368,6 +513,12 @@ thread da página (`?sim=main`), sem erros no console. O único aviso de shader
 | 3    | Robô restaurado divergindo no último bit                           | a soma da janela de métricas era recalculada ao compactar        | compactação sem recálculo: idêntico bit a bit               |
 | 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas      | pacotes parados nas entradas gravados com todos os campos        | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB    |
 | 3    | Teste de carga perdido ao reiniciar (teste do worker)              | a carga virou entrada gravada e o reinício criava gravação nova  | a carga volta como entrada no tick 0 da nova gravação       |
+| 4    | Treino a 170 decisões/s (2M em 3,3 h)                              | o tsx (keepNames) gastava ~75% do episódio num ajudante          | build com esbuild: ~490/s, 2M em cerca de 70 min            |
+| 4    | Detector com 20% a 69% de precisão                                 | modelo fixo do motor: viés de cada motor e da carga              | filtro de Kalman aprende o normal de cada motor             |
+| 4    | 29 de 29 alarmes falsos logo depois de um reparo                   | o motor que quebrou gasto volta quente (memória térmica)         | o gêmeo ressincroniza a temperatura quando o motor religa   |
+| 4    | 100% de precisão e de recall                                       | desgaste sempre forte e nenhum distúrbio no modelo dos sinais    | quebras súbitas, desgaste fraco, pancadas e enroscos        |
+| 4    | Conferência por mutação parada por mais de 7 min                   | mutante transformou "espere um desgaste" em laço infinito        | teste com limite; rodada encerrada em 5× a linha de base    |
+| 4    | Worker de 89 kB → 510 kB                                           | o formato IIFE embutia o runtime da rede no import dinâmico      | worker em módulo ES: 101 kB, runtime baixado sob demanda    |
 
 ## Como reproduzir
 
@@ -377,7 +528,11 @@ npm run bench        # benchmark do motor
 npm run bench:mapf   # planejamento e episódios sem caminho
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e seek (cerca de 3 min)
-npm run mutate       # conferência por mutação numa cópia temporária (~5 min)
+npm run bench:rotas  # roteamento: estática × heurística (--rl <modelo> inclui o agente, --teacher o professor)
+npm run bench:manutencao  # detector de manutenção preditiva (--calibrate: grade de k e h)
+npm run mutate       # conferência por mutação numa cópia temporária (~10 min)
+ai/.venv/Scripts/python ai/test_fidelity.py   # o Python e o TypeScript simulam igual
+ai/.venv/Scripts/python ai/train.py --name x  # treino PPO (ver o README)
 npm run dev          # depois, no console do navegador: __gemeo.benchHeat()
 ```
 

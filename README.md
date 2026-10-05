@@ -9,11 +9,15 @@ Simulação 3D em tempo real, no navegador, de um galpão logístico: esteiras,
 pacotes, docas, caminhões e uma frota de 40 robôs (AGVs) que se coordenam por
 planejamento multiagente, com falhas injetadas e mapa de calor. Toda a execução
 é gravada: dá para voltar a qualquer instante, ver o estado exato daquele
-momento, continuar dali por outro caminho e exportar o log de eventos. O motor
-de simulação é determinístico, roda num Web Worker e é testado sem navegador.
+momento, continuar dali por outro caminho e exportar o log de eventos. Uma
+camada de IA de operações escolhe por onde os pacotes seguem (heurística ou
+rede treinada por reforço, comparadas ao vivo com o roteamento estático) e
+avisa antes de uma esteira quebrar (manutenção preditiva sobre sinais
+simulados). O motor de simulação é determinístico, roda num Web Worker e é
+testado sem navegador.
 
-> **Status:** Fase 3 de 6 concluída (viagem no tempo e observabilidade). IA de
-> operações, laboratório de cenários e modo cinema vêm depois.
+> **Status:** Fase 4 de 6 concluída (IA de operações). Laboratório de cenários e
+> modo cinema vêm depois.
 
 ## Como rodar
 
@@ -29,7 +33,20 @@ npm run bench        # benchmark curto do motor (o mesmo do CI)
 npm run bench:mapf   # estatísticas do planejamento multiagente
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e latência do seek (~3 min)
-npm run mutate       # conferência por mutação, numa cópia temporária (~5 min)
+npm run bench:rotas  # roteamento estático × heurística (× IA com --rl <modelo>), seeds de validação
+npm run bench:manutencao  # detector de manutenção preditiva, seeds de validação
+npm run mutate       # conferência por mutação, numa cópia temporária (~10 min)
+```
+
+Treino da IA de roteamento (opcional; o app já traz a rede treinada). Python
+3.12 num ambiente virtual próprio, nunca no Python global:
+
+```bash
+python -m venv ai/.venv
+ai/.venv/Scripts/python -m pip install -r ai/requirements.txt   # Windows (Linux/macOS: ai/.venv/bin/python)
+ai/.venv/Scripts/python ai/test_fidelity.py                     # Python e TypeScript simulam igual
+ai/.venv/Scripts/python ai/train.py --name teste --steps 100000
+npm run bench:rotas -- --rl teste
 ```
 
 `?sim=main` na URL roda a simulação na thread da página em vez do worker
@@ -47,6 +64,8 @@ npm run mutate       # conferência por mutação, numa cópia temporária (~5 m
 | Pausar / velocidade    | <kbd>Espaço</kbd> · <kbd>,</kbd> <kbd>.</kbd> (1×, 4×, 16×)                                             |
 | Falhas                 | <kbd>5</kbd> esteira · <kbd>6</kbd> pico de pedidos · <kbd>7</kbd> robô · <kbd>8</kbd> doca             |
 | Falhas automáticas     | <kbd>9</kbd>                                                                                            |
+| Desgaste numa esteira  | <kbd>0</kbd> (quebra em 1 a 3 min; o halo do motor e o alarme de manutenção avisam antes)               |
+| Roteamento             | <kbd>P</kbd> estático → heurística → IA (PPO); o painel <kbd>K</kbd> compara com o estático ao vivo     |
 | Mapa de calor          | <kbd>M</kbd> ocupação → tempo de espera → tráfego de robôs → desligado                                  |
 | Teste de carga         | <kbd>T</kbd> (taxa de pedidos muito acima da capacidade)                                                |
 | Qualidade gráfica      | <kbd>G</kbd> (desliga o ajuste automático)                                                              |
@@ -78,13 +97,20 @@ npm run mutate       # conferência por mutação, numa cópia temporária (~5 m
 src/sim/     motor: TypeScript puro, sem Three.js, determinístico
              world, conveyor, graph/router, fleet, planner, reservations,
              motion, floor, failures, snapshot, state (checkpoints),
-             recorder (viagem no tempo, KPIs), export, scenarios
-src/worker/  SimHost (roda a gravação no tempo real), protocolo e visões
-             (linha do tempo, histórico)
+             recorder (viagem no tempo, KPIs), export, scenarios,
+             policy (heurística de roteamento), routing (divisor), health
+             (sinais simulados dos motores e detector)
+src/ai/      avaliação pareada, seeds, ambiente de treino, agente (onnxruntime-web),
+             professor (heurística em níveis), manutenção preditiva, critério do RL
+src/worker/  SimHost (roda a gravação no tempo real), protocolo, visões
+             (linha do tempo, histórico) e roteamento (agente sob demanda, cópia
+             estática para comparar)
+ai/          servidor do motor para o Python, cliente, treino PPO e teste de fidelidade
 src/link/    conexão com o worker e buffer de snapshots com interpolação
-src/render/  cena Three.js: pacotes, robôs, rastros, rotas, alertas, mapa de calor, bloom
+src/render/  cena Three.js: pacotes, robôs, rastros, rotas, alertas, mapa de calor, bloom,
+             halos dos motores, setas de fluxo
 src/ui/      HUD e painéis (HTML/CSS próprios)
-bench/       benchmark do motor (CI) e estatísticas do planejamento
+bench/       benchmark do motor (CI), planejamento, roteamento e manutenção preditiva
 tests/       Vitest: motor, frota, planejador, cinemática, falhas, snapshots
 ```
 
@@ -214,6 +240,90 @@ mapeia o canal escolhido em verde → âmbar → vermelho:
 - **tráfego de robôs** (memória de 25 s, para os corredores mais usados
   aparecerem).
 
+## IA de operações
+
+### Roteamento: cinco escolhas, três políticas
+
+Em cinco entroncamentos (A1 e B2 para as docas 1–3 e 4–6, A3 para as docas
+1–3), os pacotes têm dois caminhos até as docas de destino. A cada segundo
+simulado, uma política decide a **fração** que segue pelo caminho alternativo;
+um divisor determinístico (difusão de erro, sem sorteio) cumpre a fração exata.
+Três políticas, trocadas ao vivo com <kbd>P</kbd>:
+
+- **Estático:** sempre o caminho mais curto (o comportamento das Fases 1 a 3).
+- **Heurística:** estima o tempo de cada caminho até onde ele junta com o
+  outro (percurso + fila parada em cada esteira; infinito numa esteira quebrada
+  que os robôs não cobrem) e move a fração aos poucos em direção à logística da
+  diferença. Quando um caminho é cortado, troca na hora. Os dois parâmetros
+  foram calibrados nas seeds de validação.
+- **IA (PPO):** uma rede neural treinada por reforço decide a fração de cada
+  escolha em cinco níveis (0, ¼, ½, ¾, 1). Roda no navegador com
+  onnxruntime-web, carregada só quando escolhida.
+
+Setas animadas nos entroncamentos mostram quanto do fluxo segue cada caminho
+agora. Ao sair do estático, uma **cópia da simulação** continua com o
+roteamento estático e as mesmas entradas (falhas, teste de carga), e o painel
+<kbd>K</kbd> mostra as duas lado a lado: ciclo médio, vazão, fila e entregas
+desde a troca. As decisões da IA viram entradas gravadas, então a viagem no
+tempo e os relatórios reproduzem tudo sem precisar da rede.
+
+A comparação usa 4 cenários de 10 minutos (o primeiro minuto não conta): normal,
+esteira com alternativa quebrada, pico de pedidos e falhas automáticas. Só contam
+os pacotes que entram pelas esteiras (os pedidos de estoque vão do rack à doca
+por robô e não passam por nenhuma escolha), pareados seed a seed, com intervalo
+de confiança de 95% (t de Student).
+
+### Conjuntos de seeds
+
+| Conjunto  | Seeds           | Uso                                                                            |
+| --------- | --------------- | ------------------------------------------------------------------------------ |
+| Treino    | 10.001 a 19.999 | episódios do PPO e demonstrações da imitação                                   |
+| Validação | 20.001 a 20.010 | calibração da heurística e do detector; julgamento das rodadas de ajuste da IA |
+| Teste     | 30.001 a 30.010 | usadas uma única vez, no resultado final (os benchmarks exigem `--final`)      |
+
+### Treino em Python, no mesmo motor
+
+O ambiente de treino não reimplementa nada em Python: cada ambiente é um
+processo Node com o motor TypeScript do app (sem interface), falando um
+protocolo binário curto pela entrada e saída padrão (`ai/env-server.ts`). O
+Stable-Baselines3 manda as ações para os 16 processos antes de ler qualquer
+resposta, então eles simulam em paralelo. Um teste de fidelidade roda o mesmo
+episódio pelo servidor e direto no motor e exige a mesma impressão digital do
+estado, as mesmas medidas e as mesmas recompensas. As dependências Python ficam
+num ambiente virtual próprio (`ai/.venv`), fora do build web e do CI.
+
+<!-- AGENTE -->
+
+### Manutenção preditiva
+
+> **Os sinais são simulados.** Vibração e temperatura vêm de um modelo simples
+> (linha de base e resposta à carga de cada motor, desgaste, pancadas, enroscos e
+> ruído), não de máquinas reais. Os números medem o detector nesse modelo, não em
+> campo, e a escala de tempo é comprimida (minutos em vez de dias).
+
+Três de cada quatro quebras automáticas de esteira vêm depois de 1 a 3 minutos
+de desgaste escondido; a quarta é súbita (pense numa falha elétrica). Cada motor
+reporta vibração (mm/s) e temperatura (°C) por segundo simulado. O desgaste
+aparece com força diferente em cada sinal, às vezes fraca; pancadas (uma caixa
+batendo) e enroscos (uma caixa raspando de 5 a 30 s) não têm nada a ver com
+desgaste e são o que o detector não pode confundir. O ruído vem de um fluxo
+aleatório próprio: o monitoramento nunca muda o fluxo de pacotes (teste).
+
+O detector, por motor:
+
+1. Um filtro de Kalman pequeno aprende quanto aquele motor foge do modelo
+   nominal (um desvio e uma inclinação com a carga, para cada sinal) e prevê a
+   próxima leitura. Só aprende com leituras a menos de 3 desvios da previsão, e
+   devagar depois de assentar, para não absorver o desgaste.
+2. z = quanto as duas leituras estão acima do previsto, em desvios, cada uma
+   limitada a 4 (uma pancada sozinha não dispara nada).
+3. CUSUM: soma acumulada de (z − k), nunca abaixo de 0; o alarme sobe quando
+   passa de h. Calibrados nas seeds de validação: **k = 3, h = 48**.
+
+O halo do motor vai de ciano (normal) a âmbar (soma subindo) e vermelho
+pulsando (alarme), e o alarme entra no log e na linha do tempo.
+<kbd>0</kbd> inicia um desgaste numa esteira para ver o processo inteiro.
+
 ## Números medidos
 
 Todos os números de cada fase, com método e forma de reproduzir, estão em
@@ -288,6 +398,26 @@ Bugs encontrados medindo, não supondo:
   estático, a esteira E9 opera a ~81%; A4→S1, B3→B4 e B4→S2 não têm
   alternativa por esteira. Os robôs cobrem essas três; o rebalanceamento é
   tarefa da IA (Fase 4).
+- **O treino passava 75% do tempo num ajudante do compilador** (Fase 4). O
+  `tsx` compila com `keepNames`, que embrulha cada função criada em tempo de
+  execução para guardar o nome; o código de movimento cria funções pequenas nos
+  laços internos. Um episódio de 10 minutos levava 11 s; compilado com esbuild
+  sem essa opção (como o Vite já faz no app), 1,9 s, com resultado idêntico.
+- **Detector de manutenção com 20% a 69% de precisão** (Fase 4). Um modelo fixo
+  do motor errava o viés de cada motor e a resposta à carga; um filtro de
+  Kalman por motor passou a aprender o "normal" de cada um. Depois, todos os 29
+  alarmes falsos restantes (com k = 1 e h = 8, antes de calibrar) aconteciam de 2
+  a 16 s depois de um reparo: o motor que quebrou gasto volta quente (memória
+  térmica). O gêmeo passou a ressincronizar a temperatura quando o motor religa.
+- **Bom demais para ser verdade** (Fase 4). Com o desgaste sempre forte e sem
+  distúrbios, o detector acertava 100%. Entraram quebras súbitas, desgaste
+  fraco, pancadas e enroscos, e a calibração passou a ter um compromisso real
+  (ótimo no meio da grade, não na borda).
+- **Conferência por mutação parada para sempre** (Fase 4). Um mutante
+  transformou um "espere um desgaste começar" num laço infinito, e o Vitest não
+  interrompe código síncrono. O teste ganhou limite e o executor de mutação
+  passou a encerrar a rodada que passa de 5× o tempo da linha de base (conta
+  como pega).
 
 ## Limitações honestas
 
@@ -299,8 +429,14 @@ Bugs encontrados medindo, não supondo:
   provada.
 - Os robôs carregam 6 caixas por viagem. O desvio alivia a fila, mas não
   substitui a esteira (cerca de 0,45 pacote/s contra 1,8 pacote/s da esteira).
-- Esteiras quebradas que têm alternativa não são contornadas ainda: o
-  roteamento dos pacotes é estático até a IA da Fase 4.
+- **Os sinais de manutenção são simulados**, de um modelo simples; os números
+  medem o detector nesse modelo, não em máquinas reais. O detector precisa que o
+  desgaste apareça nos dois sinais: desgaste forte num sinal só, em geral rápido
+  (60 a 100 s), passa despercebido (14 das 62 quebras com desgaste nas seeds de
+  validação). Quebras súbitas não têm aviso por definição.
+- A cópia estática do painel recebe as mesmas entradas, mas as falhas
+  automáticas são sorteadas de novo nela (mesma semente): os alvos podem
+  divergir quando os dois mundos ficam diferentes.
 - Os FPS foram medidos numa GPU dedicada. A contagem de tarefas longas usa uma
   API que só existe no Chromium.
 - A gravação vive na memória do worker (cerca de 15 MB por hora simulada) e se
