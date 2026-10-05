@@ -10,7 +10,7 @@ import type { Recorder } from '../sim/recorder';
  * Pure functions of the recorder, so they are tested without a browser.
  */
 
-export type MarkerKind = FailureKind | 'stuck' | 'watchdog';
+export type MarkerKind = FailureKind | 'stuck' | 'watchdog' | 'maintenance';
 
 export interface TimelineMarker {
   readonly kind: MarkerKind;
@@ -58,7 +58,7 @@ export function timeline(rec: Recorder, buckets = 400): Timeline {
   };
 }
 
-/** Failures and stuck robots as intervals (start event paired with its end), watchdog actions as points. */
+/** Failures and stuck robots as intervals (start event paired with its end); watchdog actions and maintenance alarms as points. */
 export function markers(events: readonly SimEvent[]): TimelineMarker[] {
   const out: TimelineMarker[] = [];
   const open = new Map<string, number>();
@@ -79,8 +79,8 @@ export function markers(events: readonly SimEvent[]): TimelineMarker[] {
       out.push({ kind: 'stuck', start: e.time, end: null, label: e.text });
     } else if (e.kind === 'robot-moving') {
       close(`stuck:${e.about?.[0]}`, e.time);
-    } else if (e.kind === 'watchdog') {
-      out.push({ kind: 'watchdog', start: e.time, end: e.time, label: e.text });
+    } else if (e.kind === 'watchdog' || e.kind === 'maintenance') {
+      out.push({ kind: e.kind, start: e.time, end: e.time, label: e.text });
     }
   }
   return out;
@@ -146,9 +146,13 @@ export function history(rec: Recorder, entity: string, window = 300): EntityHist
     use = k.conveyorUse[id] ?? 0;
     let blocked = 0;
     for (const p of c.packets) if (p.blocked) blocked++;
+    const one = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const h = w.health;
     status =
       `${c.status === 'ok' ? 'Funcionando' : 'Quebrada'} · ${c.packets.length} pacotes` +
-      (blocked ? `, ${blocked} parados` : '');
+      (blocked ? `, ${blocked} parados` : '') +
+      ` · motor ${one(h.vibration[id] as number)} mm/s, ${one(h.temperature[id] as number)} °C` +
+      (h.alarm[id] ? ' · alarme de manutenção' : '');
     for (let x = 0; x < window; x++) {
       const sec = at - window + 1 + x;
       if (sec < 1) continue;

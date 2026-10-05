@@ -19,7 +19,9 @@ export type SimInput =
   /** Who sets the routing shares (static, heuristic, external agent). */
   | { type: 'policy'; policy: RoutingPolicy }
   /** Routing shares chosen outside the simulation (the learning agent). */
-  | { type: 'shares'; shares: number[] };
+  | { type: 'shares'; shares: number[] }
+  /** A conveyor starts wearing out (drawn when no target is given) and breaks 1 to 3 minutes later. */
+  | { type: 'wear'; target?: number };
 
 export function applyInput(world: World, input: SimInput): void {
   switch (input.type) {
@@ -37,6 +39,9 @@ export function applyInput(world: World, input: SimInput): void {
       return;
     case 'shares':
       world.setShares(input.shares);
+      return;
+    case 'wear':
+      world.failures.degrade(world.time, input.target);
       return;
   }
 }

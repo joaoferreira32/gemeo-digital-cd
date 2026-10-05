@@ -2,7 +2,7 @@ import type { Timeline, TimelineMarker } from '../worker/views';
 import { formatInt } from './format';
 import { formatMinSec } from './viz';
 
-/** Marker colors: the scene's alert red for breakdowns, amber for surges, cyan for the watchdog. */
+/** Marker colors: the scene's alert red for breakdowns, amber for surges and maintenance alarms, cyan for the watchdog. */
 const MARKER_COLOR: Record<TimelineMarker['kind'], string> = {
   conveyor: '#ff4d5e',
   robot: '#ff4d5e',
@@ -10,6 +10,7 @@ const MARKER_COLOR: Record<TimelineMarker['kind'], string> = {
   stuck: '#ff4d5e',
   surge: '#f2a541',
   watchdog: '#38e1d6',
+  maintenance: '#f2a541',
 };
 
 export interface TimelineActions {
@@ -162,11 +163,11 @@ export class TimelineBar {
       g.lineWidth = 1;
       g.stroke();
     }
-    // Failures and stuck robots as bars along the top; watchdog actions as dots.
+    // Failures and stuck robots as bars along the top; watchdog actions and maintenance alarms as dots.
     for (const m of t.markers) {
       g.fillStyle = MARKER_COLOR[m.kind];
       const x0 = xOf(m.start);
-      if (m.kind === 'watchdog') {
+      if (m.kind === 'watchdog' || m.kind === 'maintenance') {
         g.beginPath();
         g.arc(x0, 4, 2.5, 0, Math.PI * 2);
         g.fill();

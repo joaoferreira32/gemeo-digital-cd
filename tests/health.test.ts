@@ -8,6 +8,8 @@ import {
 } from '../src/ai/maintenance';
 import { WEAR_LEAD } from '../src/sim/failures';
 import { fingerprint } from '../src/sim/fingerprint';
+import { Recorder } from '../src/sim/recorder';
+import { CONVEYOR, CONVEYOR_STRIDE, readSnapshot, SnapshotWriter } from '../src/sim/snapshot';
 import { World } from '../src/sim/world';
 
 const SECOND = 60;
@@ -141,6 +143,36 @@ describe('Motor monitoring (predictive maintenance, simulated signals)', () => {
     expect(score.leads[Math.floor(score.leads.length / 2)]).toBeGreaterThanOrEqual(15);
     expect(score.falsePerMotorHour).toBeLessThan(0.2);
   }, 120_000);
+});
+
+describe('Motor monitoring in the recording and on screen', () => {
+  it('a wear asked for by the viewer is a recorded input: a report replays it bit for bit', () => {
+    const rec = new Recorder({ seed: 10_037 });
+    rec.stepMany(MINUTE);
+    rec.input({ type: 'wear' });
+    expect(rec.live.failures.degrading.length).toBe(1);
+    rec.stepMany(4 * MINUTE);
+    const again = Recorder.replay(rec.report());
+    expect(fingerprint(again.live)).toBe(fingerprint(rec.live));
+    expect(Array.from(again.live.health.sum)).toEqual(Array.from(rec.live.health.sum));
+  }, 60_000);
+
+  it('every snapshot carries the readings, the alarm level and the routing shares', () => {
+    const w = new World({ seed: 10_037 });
+    w.setPolicy('heuristic');
+    w.stepMany(2 * MINUTE);
+    w.failures.degrade(w.time, 2);
+    w.stepMany(MINUTE);
+    const s = readSnapshot(new SnapshotWriter(w).write({ speed: 1, stress: false }));
+    for (let i = 0; i < w.conveyors.length; i++) {
+      const o = i * CONVEYOR_STRIDE;
+      expect(s.conveyors[o + CONVEYOR.vibration]).toBe(Math.fround(w.health.vibration[i]!));
+      expect(s.conveyors[o + CONVEYOR.temperature]).toBe(Math.fround(w.health.temperature[i]!));
+      expect(s.conveyors[o + CONVEYOR.risk]).toBe(Math.fround(w.health.risk(i)));
+      expect(s.conveyors[o + CONVEYOR.alarm]).toBe(w.health.alarm[i]);
+    }
+    expect(Array.from(s.shares)).toEqual(Array.from(w.routing.share, (v) => Math.fround(v)));
+  }, 60_000);
 });
 
 describe('CUSUM rule', () => {
