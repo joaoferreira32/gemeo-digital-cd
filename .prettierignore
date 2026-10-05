@@ -1,3 +1,6 @@
 dist
 node_modules
 package-lock.json
+# Exported networks and their metadata (written by ai/train.py)
+ai/models/
+public/models/
