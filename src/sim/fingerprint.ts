@@ -44,6 +44,10 @@ export function fingerprint(world: World): string {
     for (const p of lane.pickup) mix(p.id);
     for (const p of lane.drop) mix(p.id);
   }
+  for (let i = 0; i < world.conveyors.length; i++) {
+    mix(world.health.sum[i] as number);
+    mix(world.health.temperature[i] as number);
+  }
   if (world.fleet) {
     for (const r of world.fleet.robots) {
       mix(r.motion.x);

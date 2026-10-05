@@ -6,6 +6,12 @@ import type { StateReader, StateWriter } from './state';
  * blocked docks. Each can be triggered on demand or by the automatic mode,
  * which draws from its own random stream (same seed → same chaos), so
  * enabling failures never shifts the order stream of a scenario.
+ *
+ * Three in four conveyor breakdowns of the automatic mode do not come out of
+ * the blue: the belt first wears out for one to three minutes (a
+ * Degradation), which the motor monitoring can notice (health.ts), and then
+ * breaks. The fourth is sudden (think of an electrical fault), like the
+ * breakdowns injected on demand.
  */
 
 export type FailureKind = 'conveyor' | 'surge' | 'robot' | 'dock';
@@ -19,6 +25,16 @@ export interface ActiveFailure {
   readonly endsAt: number;
 }
 
+/** A conveyor wearing out: it breaks at `breaksAt`. Hidden from the viewer, like real wear. */
+export interface Degradation {
+  readonly id: number;
+  readonly target: number;
+  readonly onset: number;
+  readonly breaksAt: number;
+  /** How long the breakdown that follows lasts (drawn with the rest, at the onset). */
+  readonly duration: number;
+}
+
 export type SimEventKind =
   | 'failure-start'
   | 'failure-end'
@@ -28,7 +44,9 @@ export type SimEventKind =
   | 'watchdog'
   /** A robot has had no path for STUCK_SECONDS, and when it moves again. */
   | 'robot-stuck'
-  | 'robot-moving';
+  | 'robot-moving'
+  /** The motor monitoring raised an alarm on a conveyor (predictive maintenance). */
+  | 'maintenance';
 
 /** Something worth telling the viewer; the text is ready to show (pt-BR). */
 export interface SimEvent {
@@ -75,6 +93,11 @@ const DURATION: Record<FailureKind, readonly [number, number]> = {
   dock: [40, 60],
 };
 
+/** Seconds from the onset of wear to the breakdown. */
+export const WEAR_LEAD: readonly [number, number] = [60, 180];
+/** Share of the automatic conveyor breakdowns that come without wear. */
+export const SUDDEN_SHARE = 0.25;
+
 const AUTO_WEIGHTS: Record<FailureKind, number> = {
   conveyor: 0.4,
   surge: 0.2,
@@ -85,6 +108,8 @@ const KINDS: readonly FailureKind[] = ['conveyor', 'surge', 'robot', 'dock'];
 
 export class FailureInjector {
   readonly active: ActiveFailure[] = [];
+  /** Conveyors wearing out toward a breakdown, in the order they started. */
+  readonly degrading: Degradation[] = [];
   private auto = false;
   private readonly rng: Rng;
   private nextAutoAt = Infinity;
@@ -117,6 +142,14 @@ export class FailureInjector {
       w.float(f.startedAt);
       w.float(f.endsAt);
     }
+    w.int(this.degrading.length);
+    for (const d of this.degrading) {
+      w.int(d.id);
+      w.int(d.target);
+      w.float(d.onset);
+      w.float(d.breaksAt);
+      w.float(d.duration);
+    }
   }
 
   load(r: StateReader): void {
@@ -135,6 +168,17 @@ export class FailureInjector {
         endsAt: r.float(),
       });
     }
+    this.degrading.length = 0;
+    const m = r.int();
+    for (let i = 0; i < m; i++) {
+      this.degrading.push({
+        id: r.int(),
+        target: r.int(),
+        onset: r.float(),
+        breaksAt: r.float(),
+        duration: r.float(),
+      });
+    }
   }
 
   setAuto(on: boolean, now: number): void {
@@ -151,7 +195,38 @@ export class FailureInjector {
     if (t === null || this.isActive(kind, t)) return null;
     const [lo, hi] = DURATION[kind];
     const endsAt = now + lo + (hi - lo) * this.rng.next();
-    const f: ActiveFailure = { id: this.nextId++, kind, target: t, startedAt: now, endsAt };
+    // A sudden breakdown of a belt that was wearing out ends its wear (it gets repaired).
+    if (kind === 'conveyor') this.cancelWear(t);
+    return this.start(kind, t, now, endsAt, this.nextId++);
+  }
+
+  /**
+   * Starts the wear of a conveyor, which breaks one to three minutes later
+   * (WEAR_LEAD). Without `target` one is drawn from the failure stream, like
+   * for a breakdown. Returns null when the conveyor cannot wear (broken,
+   * already wearing) or none can.
+   */
+  degrade(now: number, target?: number): Degradation | null {
+    const t = target ?? this.pickTarget('conveyor');
+    if (t === null || this.host.isConveyorBroken(t) || this.isWearing(t)) return null;
+    if (this.isActive('conveyor', t)) return null;
+    const [lo, hi] = DURATION.conveyor;
+    const duration = lo + (hi - lo) * this.rng.next();
+    const [a, b] = WEAR_LEAD;
+    const breaksAt = now + a + (b - a) * this.rng.next();
+    const d: Degradation = { id: this.nextId++, target: t, onset: now, breaksAt, duration };
+    this.degrading.push(d);
+    return d;
+  }
+
+  private start(
+    kind: FailureKind,
+    t: number,
+    now: number,
+    endsAt: number,
+    id: number,
+  ): ActiveFailure {
+    const f: ActiveFailure = { id, kind, target: t, startedAt: now, endsAt };
     const h = this.host;
     switch (kind) {
       case 'conveyor':
@@ -187,15 +262,35 @@ export class FailureInjector {
       this.active.splice(i, 1);
       this.end(f);
     }
+    for (let i = 0; i < this.degrading.length;) {
+      const d = this.degrading[i] as Degradation;
+      if (now < d.breaksAt) {
+        i++;
+        continue;
+      }
+      this.degrading.splice(i, 1);
+      this.start('conveyor', d.target, now, now + d.duration, d.id);
+    }
     if (this.auto && now >= this.nextAutoAt) {
-      if (this.active.length < this.maxConcurrent) {
+      // A belt wearing out counts: it will be a failure, so the limit holds when it breaks.
+      if (this.active.length + this.degrading.length < this.maxConcurrent) {
         const kind = KINDS[
           this.rng.weightedIndex(KINDS.map((k) => AUTO_WEIGHTS[k]))
         ] as FailureKind;
-        this.inject(kind, now);
+        if (kind === 'conveyor' && this.rng.next() >= SUDDEN_SHARE) this.degrade(now);
+        else this.inject(kind, now);
       }
       this.nextAutoAt = now + this.rng.exponential(1 / this.autoMeanInterval);
     }
+  }
+
+  private isWearing(target: number): boolean {
+    return this.degrading.some((d) => d.target === target);
+  }
+
+  private cancelWear(target: number): void {
+    const i = this.degrading.findIndex((d) => d.target === target);
+    if (i >= 0) this.degrading.splice(i, 1);
   }
 
   private end(f: ActiveFailure): void {
@@ -229,7 +324,8 @@ export class FailureInjector {
       candidates.length ? (candidates[this.rng.int(candidates.length)] as number) : null;
     switch (kind) {
       case 'conveyor': {
-        const ok = (e: number) => !h.isConveyorBroken(e) && !this.isActive('conveyor', e);
+        const ok = (e: number) =>
+          !h.isConveyorBroken(e) && !this.isActive('conveyor', e) && !this.isWearing(e);
         const spof = h.bypassEdges.filter(ok);
         const all = Array.from({ length: h.conveyorCount }, (_, i) => i).filter(ok);
         // 40 % of breakdowns hit a conveyor the robots can bridge.

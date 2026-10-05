@@ -23,6 +23,7 @@ import { createPacket, type Packet, type PacketState } from './packet';
 import { deriveSeed, Rng } from './rng';
 import type { Router } from './router';
 import { SplitRouter } from './routing';
+import { MotorHealth, type DetectorParams } from './health';
 import {
   DEFAULT_HEURISTIC,
   HeuristicRouting,
@@ -63,6 +64,8 @@ export interface SimConfig {
   readonly robotBypass: boolean;
   /** Parameters of the congestion heuristic (calibrated on the validation seeds). */
   readonly heuristic?: Partial<HeuristicParams>;
+  /** Parameters of the motor alarm (CUSUM; calibrated on the validation seeds). */
+  readonly detector?: Partial<DetectorParams>;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -86,7 +89,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 5;
+const CHECKPOINT_VERSION = 6;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -185,6 +188,8 @@ export class World implements FleetHost, FailureHost {
   /** Lane by conveyor edge id. */
   private readonly laneByEdge = new Map<number, BypassLane>();
   readonly failures: FailureInjector;
+  /** Simulated condition monitoring of the conveyor motors (predictive maintenance). */
+  readonly health: MotorHealth;
   /** Latest events, oldest first (bounded). */
   readonly events: SimEvent[] = [];
   private nextEventId = 1;
@@ -258,6 +263,7 @@ export class World implements FleetHost, FailureHost {
       this.fleet = null;
     }
     this.failures = new FailureInjector(this, this.config.seed);
+    this.health = new MotorHealth(this.conveyors.length, this.config.seed, this.config.detector);
   }
 
   private createLanes(fleet: Fleet): void {
@@ -381,6 +387,7 @@ export class World implements FleetHost, FailureHost {
     w.pick(this.policy, ROUTING_POLICIES);
     this.routing.save(w);
     this.failures.save(w);
+    this.health.save(w);
     this.fleet?.save(w);
     return { tick: this.tick, state: w.finish() };
   }
@@ -464,6 +471,7 @@ export class World implements FleetHost, FailureHost {
     this.policy = r.pick(ROUTING_POLICIES);
     this.routing.load(r);
     this.failures.load(r);
+    this.health.load(r);
     this.fleet?.load(r, packet);
     r.end();
     this.events.length = 0;
@@ -680,8 +688,9 @@ export class World implements FleetHost, FailureHost {
     this.tick++;
     const now = this.time;
     const dt = this.config.dt;
+    const second = this.tick % Math.round(1 / dt) === 0;
     this.failures.update(now);
-    if (this.policy === 'heuristic' && this.tick % Math.round(1 / dt) === 0) {
+    if (this.policy === 'heuristic' && second) {
       this.heuristic.update(this.conveyors, this.lanes);
     }
     this.generateOrders(now);
@@ -692,9 +701,21 @@ export class World implements FleetHost, FailureHost {
     this.induct();
     this.fleet?.update(this.tick, now, dt);
     this.updateTrucks(dt);
+    if (second) this.health.update(now, this.conveyors, this.failures.degrading, this.alarm);
     this.metrics.evict(now);
     this.updateStats();
   }
+
+  /** The motor monitoring flagged a conveyor: tell the viewer, with the readings. */
+  private readonly alarm = (edgeId: number): void => {
+    const one = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const h = this.health;
+    this.push(
+      'maintenance',
+      `${this.conveyorLabel(edgeId)}: motor fora do padrão (vibração ${one(h.vibration[edgeId] as number)} mm/s, ${one(h.temperature[edgeId] as number)} °C), risco de quebra`,
+      { target: edgeId, about: [`conveyor:${edgeId}`] },
+    );
+  };
 
   stepMany(steps: number): void {
     for (let i = 0; i < steps; i++) this.step();

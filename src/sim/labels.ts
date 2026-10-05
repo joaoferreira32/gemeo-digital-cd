@@ -23,4 +23,5 @@ export const EVENT_LABEL: Record<SimEventKind, string> = {
   watchdog: 'Vigia',
   'robot-stuck': 'Robô travado',
   'robot-moving': 'Robô voltou a andar',
+  maintenance: 'Manutenção preditiva',
 };
