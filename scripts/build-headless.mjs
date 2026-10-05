@@ -19,6 +19,7 @@ await build({
   entryPoints: [
     'ai/env-server.ts',
     'ai/dataset.ts',
+    'bench/retornos.ts',
     'bench/rotas-job.ts',
     'bench/manutencao-job.ts',
   ],
