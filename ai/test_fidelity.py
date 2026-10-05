@@ -4,7 +4,9 @@
 
 An episode is driven through ai/env-server.ts (as the trainer does) and the
 same actions are run straight on the engine (ai/direct-episode.ts): the final
-fingerprint, the measures and the rewards must match.
+fingerprint, the measures and the rewards must match. The server runs from the
+headless build and the direct episode from the sources through tsx, so this
+also checks that the build simulates exactly like the sources.
 """
 
 import json

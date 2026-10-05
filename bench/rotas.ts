@@ -6,9 +6,10 @@
  *   npm run bench:rotas -- --set test --final   the test seeds (used once, at the end)
  *
  * Every (seed, scenario, policy) runs in a separate Node process from a pool
- * as large as the machine allows; results are paired by seed.
+ * as large as the machine allows; results are paired by seed. The jobs run
+ * the headless build (scripts/build-headless.mjs), rebuilt here first.
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { writeFileSync } from 'node:fs';
 import { SCENARIOS, SCENARIO_LABEL, type EvalResult, type ScenarioName } from '../src/ai/evaluate';
@@ -37,6 +38,9 @@ if (set === 'test' && !flag('--final')) {
   process.exit(2);
 }
 const seeds = seedsOf(set);
+if (spawnSync(process.execPath, ['scripts/build-headless.mjs'], { stdio: 'inherit' }).status) {
+  process.exit(1);
+}
 
 async function runAll(jobs: Job[]): Promise<Result[]> {
   const procs = Math.max(1, Math.min(jobs.length, availableParallelism() - 2));
@@ -49,7 +53,7 @@ async function runAll(jobs: Job[]): Promise<Result[]> {
         new Promise<void>((resolve, reject) => {
           const child = spawn(
             process.execPath,
-            ['--import', 'tsx', 'bench/rotas-job.ts', JSON.stringify(batch)],
+            ['build/headless/bench/rotas-job.js', JSON.stringify(batch)],
             { stdio: ['ignore', 'pipe', 'inherit'] },
           );
           let buf = '';

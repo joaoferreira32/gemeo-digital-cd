@@ -4,7 +4,7 @@ import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'node_modules/', 'coverage/', 'ai/.venv/**'] },
+  { ignores: ['dist/', 'build/', 'node_modules/', 'coverage/', 'ai/.venv/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -14,7 +14,7 @@ export default tseslint.config(
     },
   },
   {
-    // Node scripts (benchmarks, mutation check, the training environment server).
+    // Node scripts (benchmarks, mutation check, headless build, the training environment server).
     files: ['bench/**/*.{ts,mjs}', 'scripts/**/*.mjs', 'ai/**/*.ts'],
     languageOptions: { globals: { ...globals.node } },
   },

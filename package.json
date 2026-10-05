@@ -29,6 +29,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.19.1",
     "@types/three": "^0.186.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",

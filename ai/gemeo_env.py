@@ -2,7 +2,9 @@
 
 The simulation is the TypeScript engine of the app, headless, behind
 ai/env-server.ts: one Node process per environment, binary messages on its
-stdin/stdout. Nothing of the simulation is reimplemented here.
+stdin/stdout. Nothing of the simulation is reimplemented here. The server
+runs from the headless build (scripts/build-headless.mjs), rebuilt from the
+sources once per Python process before the first engine starts.
 """
 
 from __future__ import annotations
@@ -34,12 +36,24 @@ def node_executable() -> str:
     raise RuntimeError("Node.js not found: set GEMEO_NODE to the node executable")
 
 
+_built = False
+
+
+def build_engine() -> None:
+    """Rebuilds the headless engine from the sources (once per process; about a second)."""
+    global _built
+    if not _built:
+        subprocess.run([node_executable(), "scripts/build-headless.mjs"], cwd=ROOT, check=True)
+        _built = True
+
+
 class EnvServer:
     """One headless engine (a Node process) and its message protocol."""
 
     def __init__(self) -> None:
+        build_engine()
         self.proc = subprocess.Popen(
-            [node_executable(), "--import", "tsx", "ai/env-server.ts"],
+            [node_executable(), "build/headless/ai/env-server.js"],
             cwd=ROOT,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
