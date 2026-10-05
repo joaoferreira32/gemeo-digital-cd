@@ -4,14 +4,16 @@ import { HEADER, readSnapshot } from '../src/sim/snapshot';
 import type { RunReport } from '../src/sim/recorder';
 import { SimHost } from '../src/worker/host';
 import type { SimMessage } from '../src/worker/protocol';
+import type { AgentLoader } from '../src/worker/routing';
 import { markers } from '../src/worker/views';
 
-function makeHost() {
+function makeHost(agentLoader?: AgentLoader) {
   let now = 0;
   const posted: SimMessage[] = [];
   const host = new SimHost(
     (msg) => posted.push(msg),
     () => now,
+    agentLoader,
   );
   const pump = (ms: number, times = 1) => {
     for (let i = 0; i < times; i++) {
@@ -122,6 +124,86 @@ describe('SimHost time travel', () => {
     ]);
     host.handle({ type: 'history', entity: 'robot:999' });
     expect(posted.at(-1)?.type).toBe('error');
+  });
+});
+
+describe('SimHost routing (key P)', () => {
+  const routingOf = (posted: SimMessage[]) => {
+    const s = posted.filter((m) => m.type === 'status').at(-1);
+    if (s?.type !== 'status') throw new Error('no status');
+    return s.routing;
+  };
+  /** Lets the promises of the agent settle. */
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it('switches who routes; the past keeps its own; a static copy runs from the switch', () => {
+    const { host, posted, pump, header } = makeHost();
+    host.handle({ type: 'init', config: { seed: 5 } });
+    host.handle({ type: 'advance', seconds: 30 });
+    expect(header()[HEADER.policy]).toBe(0);
+    host.handle({ type: 'policy', policy: 'heuristic' });
+    host.handle({ type: 'advance', seconds: 60 });
+    pump(600);
+    expect(header()[HEADER.policy]).toBe(1);
+    let r = routingOf(posted);
+    expect(r.shown).toBe('heuristic');
+    expect(r.compare?.since).toBeCloseTo(30, 6);
+    // The copy took the same 60 s with the static routing.
+    expect(r.compare!.live.delivered).toBeGreaterThan(100);
+    expect(r.compare!.shadow.delivered).toBeGreaterThan(100);
+    // Before the switch, the static routing: no comparison in the past.
+    host.handle({ type: 'seek', time: 20 });
+    pump(16, 100);
+    pump(600);
+    expect(header()[HEADER.policy]).toBe(0);
+    r = routingOf(posted);
+    expect(r.shown).toBe('static');
+    expect(r.compare).toBeNull();
+    host.handle({ type: 'live' });
+    pump(600);
+    expect(routingOf(posted).compare).not.toBeNull();
+    host.handle({ type: 'policy', policy: 'static' });
+    pump(600);
+    expect(routingOf(posted).compare).toBeNull();
+  });
+
+  it('the agent decides at every simulated second; its shares are inputs that a report replays', async () => {
+    let calls = 0;
+    const { host, posted, pump, header, advanceClock } = makeHost(async () => async () => {
+      calls++;
+      return [4, 0, 2, 1, 3];
+    });
+    host.handle({ type: 'init', config: { seed: 7 } });
+    host.handle({ type: 'policy', policy: 'rl', model: 'x' });
+    advanceClock(600);
+    host.pump();
+    // Asked for while the network loads: still static until it is ready.
+    expect(routingOf(posted).wanted).toBe('rl');
+    expect(routingOf(posted).agent).toBe('loading');
+    expect(header()[HEADER.policy]).toBe(0);
+    await settle();
+    host.handle({ type: 'speed', speed: 16 });
+    // Each pump runs until the next second, which waits for the agent's answer.
+    for (let i = 0; i < 200; i++) {
+      advanceClock(40);
+      host.pump();
+      await settle();
+    }
+    const rec = host.currentRecorder;
+    const shares = rec.inputs.filter((i) => i.input.type === 'shares');
+    expect(calls).toBeGreaterThan(10);
+    expect(shares.length).toBe(calls);
+    for (const s of shares) expect(s.tick % 60).toBe(0);
+    expect(Array.from(host.currentWorld.routing.share)).toEqual([1, 0, 0.5, 0.25, 0.75]);
+    expect(header()[HEADER.policy]).toBe(2);
+    // The report runs again without the network and ends in the same state.
+    host.handle({ type: 'export', what: 'report' });
+    const file = posted.filter((m) => m.type === 'export').at(-1);
+    const report = JSON.parse(file?.type === 'export' ? file.text : '') as RunReport;
+    host.handle({ type: 'load-report', report });
+    for (let i = 0; i < 400 && !posted.some((m) => m.type === 'replay' && m.done); i++) pump(16);
+    const done = posted.find((m) => m.type === 'replay' && m.done);
+    expect(done?.type === 'replay' && done.ok).toBe(true);
   });
 });
 

@@ -97,6 +97,7 @@
         <button type="button" id="btn-auto" aria-keyshortcuts="9" aria-pressed="false">
           <kbd>9</kbd> Automático
         </button>
+        <button type="button" id="btn-wear" aria-keyshortcuts="0"><kbd>0</kbd> Desgaste</button>
       </div>
       <div class="group" role="group" aria-label="Exibição">
         <button type="button" id="btn-heat" aria-keyshortcuts="M" aria-pressed="false">
@@ -120,6 +121,11 @@
           aria-controls="help"
         >
           <kbd>H</kbd> Atalhos
+        </button>
+      </div>
+      <div class="group" role="group" aria-label="Roteamento">
+        <button type="button" id="btn-policy" aria-keyshortcuts="P">
+          <kbd>P</kbd> Roteamento: <span id="policy-label">Estático</span>
         </button>
       </div>
     </nav>
@@ -239,6 +245,16 @@
         <dd>falhas: esteira quebrada, pico de pedidos, robô com defeito, doca bloqueada</dd>
         <dt><kbd>9</kbd></dt>
         <dd>falhas automáticas</dd>
+        <dt><kbd>0</kbd></dt>
+        <dd>
+          desgaste numa esteira: ela quebra em 1 a 3 minutos, e o halo do motor e o alarme de
+          manutenção avisam antes (sinais simulados)
+        </dd>
+        <dt><kbd>P</kbd></dt>
+        <dd>
+          roteamento: estático, heurística ou IA treinada (PPO); o painel <kbd>K</kbd> compara com o
+          estático ao vivo
+        </dd>
         <dt><kbd>M</kbd></dt>
         <dd>mapa de calor: ocupação, tempo de espera, tráfego de robôs</dd>
         <dt><kbd>T</kbd></dt>
@@ -278,9 +294,14 @@
           <span class="swatch" data-color="ice"></span> Caixas plásticas do estoque (decoração)
         </li>
         <li>
+          Halo no motor de cada esteira: ciano = leituras normais, âmbar = desvio acumulando,
+          vermelho pulsando = alarme de manutenção (vibração e temperatura simuladas)
+        </li>
+        <li>Setas ciano nos entroncamentos: quanto do fluxo segue cada caminho agora</li>
+        <li>
           Linha do tempo: faixa clara = pacotes na fila; barras vermelhas = falhas e robôs travados;
-          âmbar = pico de pedidos; pontos ciano = ações do vigia; traço branco = onde a simulação
-          continuou a partir do passado
+          âmbar = pico de pedidos; pontos ciano = ações do vigia; pontos âmbar = alarmes de
+          manutenção; traço branco = onde a simulação continuou a partir do passado
         </li>
       </ul>
       <p class="muted">

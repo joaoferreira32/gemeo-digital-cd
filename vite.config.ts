@@ -7,6 +7,9 @@ export default defineConfig({
     target: 'es2022',
     chunkSizeWarningLimit: 900,
   },
+  // Module workers, so the worker can load code on demand (the routing network's
+  // runtime is fetched only when the viewer picks it).
+  worker: { format: 'es' },
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
