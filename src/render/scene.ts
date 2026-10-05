@@ -14,9 +14,11 @@ import type { WarehouseLayout } from '../sim/layout';
 import { CONVEYOR_STRIDE, HEADER, ROBOT, ROBOT_STRIDE, STAGES } from '../sim/snapshot';
 import type { SimFrame } from '../link/frames';
 import { AlertView } from './alerts';
+import { FlowView } from './flows';
 import { OrbitCamera, type CameraPreset } from './camera';
 import { ROOF_Y } from './floorplan';
 import { HeatmapView, type HeatLayer } from './heatmap';
+import { MotorView } from './motors';
 import { PacketView } from './packets';
 import { PALETTE, mix } from './palette';
 import { RobotPoses } from './poses';
@@ -51,6 +53,8 @@ export class SceneView {
   readonly heat: HeatmapView;
   readonly poses = new RobotPoses();
   readonly alerts: AlertView;
+  readonly motors: MotorView;
+  readonly flows: FlowView;
   /** Robot followed by the follow camera. */
   followRobot = 0;
   private readonly tracker = new ResourceTracker();
@@ -122,6 +126,10 @@ export class SceneView {
     this.scene.add(this.routes.mesh);
     this.alerts = new AlertView(layout, this.tracker);
     this.scene.add(this.alerts.rings, this.alerts.beams);
+    this.motors = new MotorView(layout, this.tracker);
+    this.scene.add(this.motors.housings, this.motors.halos);
+    this.flows = new FlowView(layout, this.tracker);
+    this.scene.add(this.flows.mesh);
     this.heat = new HeatmapView(renderer, layout, this.tracker);
     this.scene.add(this.heat.overlay);
     this.beltBroken = layout.graph.edges.map(() => false);
@@ -210,6 +218,8 @@ export class SceneView {
     this.trucks.update(frame, this.wallTime, this.reducedMotion);
     if (this.trailsOn && !this.reducedMotion) this.trails.update(this.poses, realDt);
     this.alerts.update(frame, this.poses, this.wallTime, this.reducedMotion);
+    this.motors.update(frame, this.wallTime, this.reducedMotion);
+    this.flows.update(frame, this.wallTime, this.reducedMotion);
     this.heat.update(frame, alpha, this.poses, simDt);
 
     if (this.orbit.preset === 'follow' && this.poses.count > 0) {
@@ -270,6 +280,8 @@ export class SceneView {
     this.packets.mesh.dispose();
     this.robots.dispose();
     this.alerts.dispose();
+    this.motors.dispose();
+    this.flows.dispose();
     this.scene.traverse((o) => {
       if ('isInstancedMesh' in o && o.isInstancedMesh)
         (o as unknown as { dispose(): void }).dispose();
