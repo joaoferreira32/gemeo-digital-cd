@@ -12,7 +12,9 @@ rounds are judged on the validation seeds by `npm run bench:rotas -- --rl`.
 episodes of the heuristic teacher (ai/dataset.ts, training seeds) teach the
 policy network by plain supervised learning, then PPO trains only the value
 network for the first --warmup updates (a critic that knows nothing yet
-would push the policy around) and goes on with both.
+would push the policy around) and goes on with both. The network as it is
+after imitation alone is exported too (<name>-imitacao), so the benchmark
+shows what PPO added on top of it.
 """
 
 from __future__ import annotations
@@ -215,6 +217,9 @@ def main() -> None:
         imitation = {"episodes": args.imitate, **imitate(model.policy, data, seed=args.seed),
                      "seconds": round(time.time() - t), "warmupUpdates": args.warmup}
         print(f"imitação: {json.dumps(imitation)}", flush=True)
+        export(model.policy, f"{args.name}-imitacao", info, {
+            "algorithm": "imitação da heurística, sem PPO", "seed": args.seed, "imitation": imitation,
+        })
         callbacks.append(CriticWarmup(args.warmup))
     t0 = time.time()
     model.learn(total_timesteps=args.steps, callback=callbacks)
