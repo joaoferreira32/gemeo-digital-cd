@@ -136,4 +136,21 @@ export function evaluateAgent(
   return env.result();
 }
 
+/** Same as `evaluateAgent` for an agent that answers asynchronously (the network on onnxruntime-web). */
+export async function evaluateAgentAsync(
+  seed: number,
+  scenario: ScenarioName,
+  agent: (observation: Float32Array) => Promise<ArrayLike<number>>,
+  seconds?: number,
+): Promise<EvalResult> {
+  const env = new RoutingEnv();
+  let obs = env.reset(seed, scenario, seconds);
+  for (;;) {
+    const r = env.step(await agent(obs));
+    obs = r.observation;
+    if (r.done) break;
+  }
+  return env.result();
+}
+
 export type { ScenarioName };
