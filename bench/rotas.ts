@@ -5,6 +5,8 @@
  *   npm run bench:rotas -- --rl rodada1     also the trained agent (ai/models/rodada1.onnx)
  *                                           against the heuristic, with the success criterion;
  *                                           several agents at once: --rl a,b (one pass over the seeds)
+ *   npm run bench:rotas -- --variante '{"smoothing":0.15}'   also a variant of the heuristic
+ *                                           against the calibrated one (analysis only)
  *   npm run bench:rotas -- --teacher        also the heuristic in the agent's five levels
  *                                           (what the imitation start teaches)
  *   npm run bench:rotas -- --calibrate      heuristic parameter grid, validation seeds
@@ -157,6 +159,8 @@ if (flag('--calibrate')) {
   if (out) writeFileSync(out, JSON.stringify({ set, seeds, rows, results }, null, 1));
 } else {
   const agents = (value('--rl') ?? '').split(',').filter(Boolean);
+  const variantText = value('--variante');
+  const variant = variantText ? (JSON.parse(variantText) as Partial<HeuristicParams>) : null;
   const jobs: Job[] = [];
   for (const seed of seeds)
     for (const scenario of SCENARIOS) {
@@ -167,6 +171,10 @@ if (flag('--calibrate')) {
       }
       if (flag('--teacher')) {
         jobs.push({ seed, scenario, policy: 'external', agent: '@teacher', tag: 'teacher' });
+      }
+      if (variant) {
+        const heuristic = { ...DEFAULT_HEURISTIC, ...variant };
+        jobs.push({ seed, scenario, policy: 'heuristic', heuristic, tag: 'variante' });
       }
     }
   const results = await runAll(jobs);
@@ -190,6 +198,14 @@ if (flag('--calibrate')) {
     'estática',
     'heurística',
   ]);
+  if (variant) {
+    table(
+      `Heurística variante ${JSON.stringify(variant)} contra a calibrada`,
+      'heuristic',
+      'variante',
+      ['calibrada', 'variante'],
+    );
+  }
   if (flag('--teacher')) {
     table(
       'Heurística em cinco níveis (o professor da imitação) contra a heurística',

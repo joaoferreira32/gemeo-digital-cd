@@ -9,11 +9,14 @@ import { createAgent, type AgentInfo } from '../src/ai/agent';
 import { ACTION_LEVELS, RoutingEnv } from '../src/ai/env';
 import { Episode, WARMUP_SECONDS, type ScenarioName } from '../src/ai/evaluate';
 import { HeuristicTeacher } from '../src/ai/teacher';
+import type { HeuristicParams } from '../src/sim/policy';
 
 interface Job {
   /** heuristic: continuous shares; teacher: the heuristic in levels; agent: a trained network. */
   policy: 'heuristic' | 'teacher' | 'agent';
   agent?: string;
+  /** Parameters of the heuristic other than the calibrated ones (analysis). */
+  heuristic?: Partial<HeuristicParams>;
   seed: number;
   scenario: ScenarioName;
   tag: string;
@@ -56,7 +59,12 @@ for (const job of jobs) {
   // The shares in effect during each second of the episode.
   const series: number[][] = [];
   if (job.policy === 'heuristic') {
-    const episode = new Episode(job.seed, job.scenario, 'heuristic');
+    const episode = new Episode(
+      job.seed,
+      job.scenario,
+      'heuristic',
+      job.heuristic ? { heuristic: job.heuristic } : {},
+    );
     while (!episode.done) {
       episode.run(1);
       series.push(Array.from(episode.world.routing.share));

@@ -3,6 +3,7 @@
  * per simulated minute, on the validation seeds (after the warm-up):
  *
  *   npm run bench:oscilacao -- --rl rodada2-imitacao,rodada2
+ *   npm run bench:oscilacao -- --variante '{"smoothing":0.15}'   (a variant of the heuristic too)
  *
  *  - level changes: the share rounded to the agent's five levels changed
  *    (the continuous heuristic is rounded the same way, so the count is fair);
@@ -20,10 +21,12 @@ import { writeFileSync } from 'node:fs';
 import { SCENARIOS, SCENARIO_LABEL, type ScenarioName } from '../src/ai/evaluate';
 import { VALIDATION_SEEDS } from '../src/ai/seeds';
 import { tQuantile975 } from '../src/ai/stats';
+import { DEFAULT_HEURISTIC, type HeuristicParams } from '../src/sim/policy';
 
 interface Job {
   policy: 'heuristic' | 'teacher' | 'agent';
   agent?: string;
+  heuristic?: Partial<HeuristicParams>;
   seed: number;
   scenario: ScenarioName;
   tag: string;
@@ -43,6 +46,8 @@ const value = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const agents = (value('--rl') ?? '').split(',').filter(Boolean);
+const variantText = value('--variante');
+const variant = variantText ? (JSON.parse(variantText) as Partial<HeuristicParams>) : null;
 if (spawnSync(process.execPath, ['scripts/build-headless.mjs'], { stdio: 'inherit' }).status) {
   process.exit(1);
 }
@@ -53,6 +58,10 @@ for (const seed of VALIDATION_SEEDS)
     jobs.push({ policy: 'heuristic', seed, scenario, tag: 'heurística' });
     jobs.push({ policy: 'teacher', seed, scenario, tag: 'heurística em níveis' });
     for (const agent of agents) jobs.push({ policy: 'agent', agent, seed, scenario, tag: agent });
+    if (variant) {
+      const heuristic = { ...DEFAULT_HEURISTIC, ...variant };
+      jobs.push({ policy: 'heuristic', heuristic, seed, scenario, tag: 'heurística variante' });
+    }
   }
 const procs = Math.max(1, Math.min(jobs.length, availableParallelism() - 2));
 const batches: Job[][] = Array.from({ length: procs }, () => []);
@@ -82,7 +91,12 @@ await Promise.all(
   ),
 );
 
-const tags = ['heurística', 'heurística em níveis', ...agents];
+const tags = [
+  'heurística',
+  'heurística em níveis',
+  ...agents,
+  ...(variant ? ['heurística variante'] : []),
+];
 const summary = (xs: number[]) => {
   const n = xs.length;
   const m = xs.reduce((a, b) => a + b, 0) / n;
