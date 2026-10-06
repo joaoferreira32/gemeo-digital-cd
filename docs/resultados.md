@@ -506,7 +506,64 @@ limiares.
 para reportar os números finais das 4 políticas e do detector; o resultado do
 teste não muda essa decisão. (Registrado em 2026-10-06, antes de rodar o teste.)
 
-<!-- TESTE -->
+### Resultado final nas seeds de teste (passada única)
+
+Uma única passada nas seeds 30.001 a 30.010, depois dos registros acima, com as 4
+políticas juntas e o detector (`npm run bench:rotas -- --set test --final --rl
+rodada2-imitacao,rodada2` e `npm run bench:manutencao -- --set test --final`).
+
+**Ganho no p95 do ciclo sobre o roteamento estático** (IC 95%; seeds melhores em
+10):
+
+| Cenário                          | Heurística                  | Só imitada                  | Imitação + PPO              |
+| -------------------------------- | --------------------------- | --------------------------- | --------------------------- |
+| Normal                           | +1,7% (+1,2% a +2,2%) 10    | +1,7% (+1,2% a +2,1%) 10    | +1,7% (+1,2% a +2,1%) 10    |
+| Esteira com alternativa quebrada | +54,0% (+52,3% a +55,6%) 10 | +54,1% (+52,4% a +55,7%) 10 | +53,8% (+52,3% a +55,3%) 10 |
+| Pico de pedidos                  | +34,8% (+33,5% a +36,1%) 10 | +37,6% (+35,3% a +39,9%) 10 | +37,9% (+35,5% a +40,3%) 10 |
+| Falhas automáticas               | +21,5% (+13,8% a +29,2%) 10 | +22,9% (+14,9% a +30,9%) 10 | +23,1% (+15,3% a +30,9%) 10 |
+
+p95 do ciclo (estática → heurística): normal 37,4 → 36,8 s; esteira 105,2 → 48,4
+s; pico 185,0 → 120,7 s; falhas 202,8 → 155,1 s. Vazão +0,1%, +3,5%, +11,4% e
++10,0%.
+
+**As redes contra a heurística** (o critério):
+
+| Cenário                          | Só imitada: ganho no p95 (IC 95%) | seeds melhores | Imitação + PPO: ganho no p95 (IC 95%) | seeds melhores |
+| -------------------------------- | --------------------------------- | -------------- | ------------------------------------- | -------------- |
+| Normal                           | −0,0% (−0,1% a +0,1%)             | 4 de 10        | −0,0% (−0,1% a +0,0%)                 | 2 de 10        |
+| Esteira com alternativa quebrada | +0,2% (+0,0% a +0,4%)             | 7 de 10        | −0,4% (−0,9% a +0,2%)                 | 3 de 10        |
+| Pico de pedidos                  | +4,3% (+1,8% a +6,8%)             | 9 de 10        | +4,7% (+1,5% a +7,9%)                 | 9 de 10        |
+| Falhas automáticas               | +1,8% (+0,3% a +3,4%)             | 8 de 10        | +2,0% (+0,2% a +3,9%)                 | 7 de 10        |
+| **Total (40 pares)**             | **+1,6% (+0,7% a +2,4%)**         | **28 de 40**   | **+1,6% (+0,5% a +2,6%)**             | **21 de 40**   |
+
+| Item do critério                        | Só imitada  | Imitação + PPO (a candidata) |
+| --------------------------------------- | ----------- | ---------------------------- |
+| p95 melhor em pelo menos 28 de 40 pares | sim (28)    | não (21)                     |
+| ganho médio ≥ 3% com IC acima de 0      | não (+1,6%) | não (+1,6%)                  |
+| sem perda de vazão                      | sim (+0,1%) | sim (+0,0%)                  |
+| p95 não piora em nenhum cenário         | sim         | sim                          |
+| p99 não piora                           | sim (+1,5%) | sim (+1,3%)                  |
+| idade máxima não piora                  | sim (+1,7%) | sim (+1,9%)                  |
+
+Nenhuma rede cumpre o critério no teste. A candidata cumpre 7 dos 9 itens; a só
+imitada, 8 (falha só no ganho médio de 3%). O padrão da validação se repete: as
+duas ganham da heurística no pico (+4% a +5%) e nas falhas automáticas (+2%), e
+empatam onde a heurística já é quase ótima. **A política oficial continua a
+heurística**, como registrado antes do teste; a rede da rodada 2 fica no app como
+opção experimental da tecla P.
+
+**Detector de manutenção (k = 3, h = 48), seeds de teste** (10 seeds × 30 min):
+
+| O que                                 | Validação        | Teste            |
+| ------------------------------------- | ---------------- | ---------------- |
+| Precisão                              | 98% (50 de 51)   | 95% (38 de 40)   |
+| Recall das quebras com desgaste       | 77% (48 de 62)   | 72% (38 de 53)   |
+| Recall de todas as quebras de esteira | 56% (24 súbitas) | 46% (29 súbitas) |
+| Antecedência mediana (p10)            | 36 s (10 s)      | 32 s (8 s)       |
+| Alarmes falsos por hora no CD inteiro | 0,2              | 0,4              |
+
+Os alarmes que o motor levantou bateram exatamente com a reaplicação do CUSUM
+também no teste.
 
 ### Manutenção preditiva (sinais simulados)
 
@@ -599,6 +656,24 @@ Com as especificações anteriores: 39 de 39, em 14 minutos (com o treino da IA
 rodando ao mesmo tempo). Uma rodada que passa de 5× o tempo da linha de base é
 encerrada e conta como pega: um mutante tinha transformado uma espera num laço
 infinito.
+
+### No navegador e no motor
+
+**Chromium (build de produção):** o app abre com a heurística (rótulo e snapshots
+desde o primeiro segundo) e o painel <kbd>K</kbd> a compara ao vivo com a cópia
+estática desde 0:00; <kbd>P</kbd> passa por IA → estático → heurística; a rede da
+rodada 2 carrega em 0,3 s (servidor local) e decide em 0,8 ms em média no worker
+(observação, inferência e resposta assíncrona); <kbd>0</kbd> mostra o halo do
+motor indo de ciano a vermelho; nenhum erro de console e nenhuma requisição com
+erro.
+
+**Benchmark do motor** (`npm run bench`, mesma máquina): 4.123 passos/s com 40
+robôs (4.231 na Fase 3), dentro do ruído; os sinais dos motores e o detector, uma
+vez por segundo simulado, não pesam.
+
+**Testes:** 184 em 25 arquivos ao fim da fase (141 em 18 ao fim da Fase 3), mais
+2 testes de fidelidade em Python (`ai/test_fidelity.py`) e a conferência da
+imitação (`ai/check_imitation.py`).
 
 ---
 

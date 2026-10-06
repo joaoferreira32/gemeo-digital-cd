@@ -299,7 +299,49 @@ demonstrações da heurística e a imitação (cerca de 3 min) e compara o ONNX
 gerado, byte a byte, com `ai/models/rodada2-imitacao.onnx` (código de saída 1 se
 diferir). Conferido em três execuções independentes, com o mesmo sha256.
 
-<!-- AGENTE -->
+### O agente de reforço (PPO): não passou no critério
+
+O critério foi fixado antes de treinar. Contra a heurística, nas mesmas seeds e
+cenários: p95 do ciclo melhor em pelo menos 7 de cada 10 pares; ganho médio de
+pelo menos 3% com o IC 95% acima de 0; sem perda de vazão; e sem piora
+significativa do p95 em nenhum cenário, nem do p99 ou da idade máxima de um
+pacote (para a média não melhorar à custa de pacotes esquecidos). Prazo: até 3
+rodadas de no máximo 2 milhões de decisões, julgadas nas seeds de validação; as
+de teste usadas uma vez só, no fim.
+
+![Curvas de aprendizado das rodadas 1 e 2: a rodada 1 sobe mas fica abaixo do roteamento estático; a rodada 2 oscila em torno da heurística](docs/curvas-rl.svg)
+
+- **Rodada 1, PPO a partir de pesos aleatórios: falhou.** Em 2M decisões ficou
+  pior até que o roteamento estático (na validação, p95 67,6% pior que a
+  heurística, 0 de 40 pares). A política aleatória do começo espalha pacotes ao
+  acaso a cada segundo, e o treino não chegou nem ao básico.
+- **Rodada 2, imitação da heurística + PPO.** A rede primeiro imita a heurística
+  (400 episódios de demonstração em seeds de treino; acerta 97,7% dos níveis em
+  episódios separados) e depois o PPO ajusta. A rede **só imitada** ficou
+  ligeiramente à frente da heurística nos cenários congestionados (pico +4%,
+  falhas automáticas +2%) e empatou nos outros, **sem passar no critério**: +1,6%
+  no p95 em média, abaixo dos 3%. **O PPO acrescentou pouco**: +0,2 ponto na
+  validação e nada no teste. A curva de treino da rodada 2 oscila em torno da
+  heurística, sem tendência.
+- **Por que a imitada supera o próprio professor: não explicado.** A hipótese era
+  que a rede suaviza as decisões e oscila menos. Ela oscila mesmo cerca de 20%
+  menos no congestionamento, mas isso não acompanha o ganho seed a seed, e uma
+  heurística suavizada de propósito, oscilando ainda menos que a rede, não ganhou
+  nada (teste causal, só como análise). A suavização foi descartada como causa.
+- **A imitação é reproduzível bit a bit** entre execuções (comando acima).
+- Sem rodada 3: em 2M decisões o PPO não se moveu em direção aos limiares.
+
+Resultado final, passada única nas seeds de teste:
+
+| Política                   | ganho no p95 sobre a heurística (IC 95%) | pares melhores | itens do critério |
+| -------------------------- | ---------------------------------------- | -------------- | ----------------- |
+| Só imitada                 | +1,6% (+0,7% a +2,4%)                    | 28 de 40       | 8 de 9            |
+| Imitação + PPO (candidata) | +1,6% (+0,5% a +2,6%)                    | 21 de 40       | 7 de 9            |
+
+**Decisão:** a heurística é a política oficial (decidida na validação e
+registrada antes do teste, que não muda a decisão). O app abre com ela; a rede da
+rodada 2 fica como opção experimental na tecla <kbd>P</kbd>. Números completos, por
+cenário, em [`docs/resultados.md`](docs/resultados.md).
 
 ### Manutenção preditiva
 
@@ -346,6 +388,17 @@ Todos os números de cada fase, com método e forma de reproduzir, estão em
 
 Máquina de desenvolvimento: Chromium com GPU dedicada (RTX 5060 Ti); um
 notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
+
+### Fase 4
+
+| O que                                                   | Resultado                                                                                                                                  | Como reproduzir                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| Heurística × roteamento estático (seeds de teste, p95)  | normal +1,7%, esteira quebrada +54,0%, pico +34,8%, falhas automáticas +21,5%; melhor em 10 de 10 seeds em cada cenário                    | `npm run bench:rotas` (teste: `--set test --final`, uma vez) |
+| Agente de reforço × heurística (seeds de teste)         | não cumpriu o critério: p95 +1,6% (só imitada: 28 de 40 pares; com PPO: 21 de 40); a heurística segue oficial                              | `npm run bench:rotas -- --rl rodada2-imitacao,rodada2`       |
+| Manutenção preditiva (sinais simulados, seeds de teste) | precisão 95%, recall 72% das quebras com desgaste (46% de todas), antecedência mediana 32 s, 0,4 alarme falso por hora no CD inteiro       | `npm run bench:manutencao`                                   |
+| Treino                                                  | 2M decisões em cerca de 70 min (483 decisões/s, 16 motores em paralelo); o motor compilado pelo esbuild roda 5,7× mais rápido que pelo tsx | `ai/train.py`                                                |
+| A IA no navegador                                       | 0,8 ms por decisão no worker; runtime baixado só ao escolher a IA (71 kB + 14,2 MB de WebAssembly)                                         | tecla <kbd>P</kbd> e painel <kbd>K</kbd>                     |
+| Conferência por mutação                                 | 39 de 39 (9 novos, da manutenção preditiva)                                                                                                | `npm run mutate`                                             |
 
 ### Fase 3
 
@@ -444,6 +497,9 @@ Bugs encontrados medindo, não supondo:
   provada.
 - Os robôs carregam 6 caixas por viagem. O desvio alivia a fila, mas não
   substitui a esteira (cerca de 0,45 pacote/s contra 1,8 pacote/s da esteira).
+- **A IA de roteamento treinada por reforço é experimental:** não cumpriu o
+  critério combinado (ganho médio de 3% sobre a heurística). A heurística é a
+  política oficial; a rede fica na tecla <kbd>P</kbd> para comparação.
 - **Os sinais de manutenção são simulados**, de um modelo simples; os números
   medem o detector nesse modelo, não em máquinas reais. O detector precisa que o
   desgaste apareça nos dois sinais: desgaste forte num sinal só, em geral rápido

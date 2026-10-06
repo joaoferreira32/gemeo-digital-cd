@@ -1,5 +1,10 @@
 # Retomada da Fase 4 (IA de operações)
 
+> **Concluída em 2026-10-06.** Todos os passos abaixo foram feitos: rodada 2
+> refeita com checkpoints, avaliação na validação, teste causal da suavização,
+> candidata e política oficial registradas antes do teste, passada única nas seeds
+> de teste, documentação e PR. Este arquivo fica como registro da interrupção.
+
 Parado em 2026-10-05, às 17h45, a pedido (máquina desligada). Retomado em
 2026-10-06: checkpoints no `train.py` feitos (passo 2) e a rodada 2 rodando de
 novo (passo 3). Branch `fase-4`, enviado ao GitHub como backup (ainda sem PR).
