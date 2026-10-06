@@ -181,9 +181,20 @@ class Logits(torch.nn.Module):
         return p.action_net(latent)
 
 
-def export(policy, name: str, info: dict, extra: dict) -> Path:
-    """Writes ai/models/<name>.onnx and <name>.json (sizes, training facts, parity probe)."""
-    models = ROOT / "ai" / "models"
+def new_model(env, envs: int, seed: int, lr: float, ent: float, clip: float) -> PPO:
+    """The PPO model of every run (ai/check_imitation.py builds the same one)."""
+    n_steps = 256
+    return PPO(
+        "MlpPolicy", env, n_steps=n_steps, batch_size=n_steps * envs // 4, n_epochs=10,
+        learning_rate=lr, gamma=0.99, gae_lambda=0.95, clip_range=clip, ent_coef=ent,
+        policy_kwargs={"net_arch": {"pi": [128, 128], "vf": [128, 128]}},
+        seed=seed, device="cpu", verbose=0,
+    )
+
+
+def export(policy, name: str, info: dict, extra: dict, models: Path | None = None) -> Path:
+    """Writes <name>.onnx and <name>.json (sizes, training facts, parity probe) to ai/models/."""
+    models = models or ROOT / "ai" / "models"
     models.mkdir(parents=True, exist_ok=True)
     net = Logits(policy).eval()
     onnx_path = models / f"{name}.onnx"
@@ -263,14 +274,7 @@ def main() -> None:
         venv = GemeoVecEnv(args.envs, seed=args.seed, reward=reward)
         info = venv.servers[0].info
         env = VecNormalize(venv, norm_obs=False, norm_reward=True, gamma=0.99)
-        n_steps = 256
-        model = PPO(
-            "MlpPolicy", env, n_steps=n_steps, batch_size=n_steps * args.envs // 4, n_epochs=10,
-            learning_rate=args.lr,
-            gamma=0.99, gae_lambda=0.95, clip_range=args.clip, ent_coef=args.ent,
-            policy_kwargs={"net_arch": {"pi": [128, 128], "vf": [128, 128]}},
-            seed=args.seed, device="cpu", verbose=0,
-        )
+        model = new_model(env, args.envs, args.seed, args.lr, args.ent, args.clip)
     model.set_logger(configure(str(run_dir), ["csv", "stdout"]))
     callbacks: list[BaseCallback] = [log]
     if args.imitate and not args.resume:
