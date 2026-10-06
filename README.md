@@ -324,6 +324,14 @@ O halo do motor vai de ciano (normal) a âmbar (soma subindo) e vermelho
 pulsando (alarme), e o alarme entra no log e na linha do tempo.
 <kbd>0</kbd> inicia um desgaste numa esteira para ver o processo inteiro.
 
+**Próximo passo (fora da Fase 4): um CUSUM por sinal.** Com k = 3 e o z de cada
+sinal limitado a 4, um sinal sozinho soma no máximo 4/√2 ≈ 2,83 por segundo,
+abaixo de k: o desgaste que aparece forte só na vibração ou só na temperatura
+nunca acumula, e é a maior parte das quebras com desgaste sem aviso (14 de 62
+nas seeds de validação). Dois CUSUMs extras, um por sinal e com limiar próprio,
+pegariam parte delas, em troca de mais alarmes falsos com pancadas (só vibram) e
+enroscos, e de uma nova calibração.
+
 ## Números medidos
 
 Todos os números de cada fase, com método e forma de reproduzir, estão em
