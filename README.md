@@ -398,7 +398,7 @@ notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
 | Manutenção preditiva (sinais simulados, seeds de teste) | precisão 95%, recall 72% das quebras com desgaste (46% de todas), antecedência mediana 32 s, 0,4 alarme falso por hora no CD inteiro       | `npm run bench:manutencao`                                   |
 | Treino                                                  | 2M decisões em cerca de 70 min (483 decisões/s, 16 motores em paralelo); o motor compilado pelo esbuild roda 5,7× mais rápido que pelo tsx | `ai/train.py`                                                |
 | A IA no navegador                                       | 0,8 ms por decisão no worker; runtime baixado só ao escolher a IA (71 kB + 14,2 MB de WebAssembly)                                         | tecla <kbd>P</kbd> e painel <kbd>K</kbd>                     |
-| Conferência por mutação                                 | 39 de 39 (9 novos, da manutenção preditiva)                                                                                                | `npm run mutate`                                             |
+| Conferência por mutação                                 | 40 de 40 (9 da manutenção preditiva, 1 dos agregados)                                                                                      | `npm run mutate`                                             |
 
 ### Fase 3
 

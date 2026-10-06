@@ -170,7 +170,7 @@ export class World implements FleetHost, FailureHost {
   readonly inbounds: Inbound[];
   readonly docks: Dock[];
   readonly metrics: Metrics;
-  readonly stats: WorldStats = {
+  private readonly statsCache: WorldStats = {
     backlog: 0,
     onConveyors: 0,
     staged: 0,
@@ -179,6 +179,8 @@ export class World implements FleetHost, FailureHost {
     onRobots: 0,
     rackPending: 0,
   };
+  /** Tick the cached aggregates belong to (-1: recompute on the next read). */
+  private statsTick = -1;
   readonly lanes: BypassLane[] = [];
   /** Packets that left each conveyor, and packets delivered to each dock, since the start. */
   readonly conveyorExits: Int32Array;
@@ -203,6 +205,8 @@ export class World implements FleetHost, FailureHost {
   readonly heuristic: HeuristicRouting;
   /** Who sets the routing shares now. */
   policy: RoutingPolicy = 'static';
+  /** Steps in one simulated second (the heuristic and the motor readings run once a second). */
+  private readonly ticksPerSecond: number;
   /** Called on every delivery to a dock (evaluations); not part of the state. */
   onDelivery: ((packet: Packet, byRobot: boolean) => void) | null = null;
   private readonly orderRng: Rng;
@@ -264,6 +268,7 @@ export class World implements FleetHost, FailureHost {
     }
     this.failures = new FailureInjector(this, this.config.seed);
     this.health = new MotorHealth(this.conveyors.length, this.config.seed, this.config.detector);
+    this.ticksPerSecond = Math.round(1 / this.config.dt);
   }
 
   private createLanes(fleet: Fleet): void {
@@ -475,7 +480,7 @@ export class World implements FleetHost, FailureHost {
     this.fleet?.load(r, packet);
     r.end();
     this.events.length = 0;
-    this.updateStats();
+    this.statsTick = -1;
   }
 
   /**
@@ -559,6 +564,20 @@ export class World implements FleetHost, FailureHost {
   }
 
   /** Simulation time in seconds (derived from the integer tick, so it never drifts). */
+  /**
+   * Aggregates of the current tick (the HUD, the recorder and the tests read
+   * them). Counted on the first read after a step, not on every step: nothing
+   * changes these lists between two steps, and most steps nobody reads them
+   * (in fast forward, or a world without robots, the count was a fifth of a step).
+   */
+  get stats(): WorldStats {
+    if (this.statsTick !== this.tick) {
+      this.updateStats();
+      this.statsTick = this.tick;
+    }
+    return this.statsCache;
+  }
+
   get time(): number {
     return this.tick * this.config.dt;
   }
@@ -688,7 +707,7 @@ export class World implements FleetHost, FailureHost {
     this.tick++;
     const now = this.time;
     const dt = this.config.dt;
-    const second = this.tick % Math.round(1 / dt) === 0;
+    const second = this.tick % this.ticksPerSecond === 0;
     this.failures.update(now);
     if (this.policy === 'heuristic' && second) {
       this.heuristic.update(this.conveyors, this.lanes);
@@ -703,7 +722,6 @@ export class World implements FleetHost, FailureHost {
     this.updateTrucks(dt);
     if (second) this.health.update(now, this.conveyors, this.failures.degrading, this.alarm);
     this.metrics.evict(now);
-    this.updateStats();
   }
 
   /** The motor monitoring flagged a conveyor: tell the viewer, with the readings. */
@@ -943,13 +961,14 @@ export class World implements FleetHost, FailureHost {
       }
       for (const o of this.fleet.orders) rackPending += o.packets.length;
     }
-    this.stats.backlog = backlog;
-    this.stats.onConveyors = onConveyors;
-    this.stats.staged = staged;
-    this.stats.inBypass = inBypass;
-    this.stats.onRobots = onRobots;
-    this.stats.rackPending = rackPending;
-    this.stats.waiting = backlog + blocked + waitingBypass;
+    const stats = this.statsCache;
+    stats.backlog = backlog;
+    stats.onConveyors = onConveyors;
+    stats.staged = staged;
+    stats.inBypass = inBypass;
+    stats.onRobots = onRobots;
+    stats.rackPending = rackPending;
+    stats.waiting = backlog + blocked + waitingBypass;
   }
 }
 

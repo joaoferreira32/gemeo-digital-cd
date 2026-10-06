@@ -652,10 +652,11 @@ importações dinâmicas.
 | ------------- | --------------------------------------------------------------------------------------------------------- | ------------------ |
 | manutenção    | desgaste antes das quebras, sinais, ressincronização, aprendizado do filtro, teto do z, CUSUM, checkpoint | 9 de 9             |
 
-Com as especificações anteriores: 39 de 39, em 14 minutos (com o treino da IA
-rodando ao mesmo tempo). Uma rodada que passa de 5× o tempo da linha de base é
-encerrada e conta como pega: um mutante tinha transformado uma espera num laço
-infinito.
+Com as especificações anteriores: 39 de 39 na execução completa, em 14 minutos,
+com o treino da IA rodando ao mesmo tempo; a mutação dos agregados, criada
+depois, foi pega à parte (40 de 40). Uma rodada que passa de 5× o tempo da linha
+de base é encerrada e conta como pega: um mutante tinha transformado uma espera
+num laço infinito.
 
 ### No navegador e no motor
 
@@ -667,9 +668,23 @@ rodada 2 carrega em 0,3 s (servidor local) e decide em 0,8 ms em média no worke
 motor indo de ciano a vermelho; nenhum erro de console e nenhuma requisição com
 erro.
 
-**Benchmark do motor** (`npm run bench`, mesma máquina): 4.123 passos/s com 40
-robôs (4.231 na Fase 3), dentro do ruído; os sinais dos motores e o detector, uma
-vez por segundo simulado, não pesam.
+**Benchmark do motor** (`npm run bench`, mesma máquina): 4.187 passos/s com 40
+robôs (4.231 na Fase 3), dentro do ruído; sem robôs, 1,10 milhão de passos/s.
+
+**O gate do CI pegou uma regressão real.** No PR, o motor sem robôs ficou 12,0%
+mais lento que a `main` (10,2% na rodada de confirmação; o limite é 10%). Medido
+por partes, numa cópia descartável: era o monitoramento dos motores (24 motores,
+uma vez por segundo simulado, cerca de 185 ns cada), invisível com robôs mas 7% a
+9% de um passo sem robôs, que leva cerca de 1 µs. Ele não podia ficar mais barato
+sem mudar os sinais (e invalidar a calibração e o teste do detector). A
+correção foi em outro ponto do mesmo caminho: as agregações do mundo (fila,
+pacotes nas esteiras etc.) eram recontadas a cada passo, percorrendo todos os
+pacotes, e só são lidas pelo gravador, pelo snapshot e pelos testes; agora são
+contadas na primeira leitura de cada passo. Resultado: sem robôs, cerca de 15% mais
+rápido que a `main` na mesma máquina (1,07 milhão contra 0,93 milhão de passos/s),
+com impressões digitais idênticas bit a bit em três mundos de referência (com e sem
+robôs, política externa, falhas automáticas e desgaste) e uma mutação nova pega
+(agregados não recontados depois de restaurar um checkpoint).
 
 **Testes:** 184 em 25 arquivos ao fim da fase (141 em 18 ao fim da Fase 3), mais
 2 testes de fidelidade em Python (`ai/test_fidelity.py`) e a conferência da
@@ -679,28 +694,29 @@ imitação (`ai/check_imitation.py`).
 
 ## Bugs que só apareceram medindo
 
-| Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                          |
-| ---- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------- |
-| 1    | Fila de entrada crescendo em regime normal (297 pacotes em 15 min) | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46        | esteiras a 2,0 m/s: E9 a 81%, fila estável                  |
-| 1    | +1 textura na GPU a cada reinício                                  | só a textura do ambiente era liberada, não o render target       | memória estável em 5 reinícios                              |
-| 1    | 433 chamadas de desenho por quadro                                 | um objeto por anel e por peça de caminhão                        | 284                                                         |
-| 1    | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade        | alvo do ajuste automático em 50 FPS                              | alvo 55: cai para média e volta a 60 FPS                    |
-| 2    | Frenagens acima do limite ao alcançar a referência                 | curva de frenagem contínua avaliada tick a tick                  | curva discreta e checagem da referência futura: 0 violações |
-| 2    | Frenagem brusca logo após replanejar                               | o novo plano mudava a curva na célula seguinte                   | compromisso 2 passos à frente: 0 violações em 8 seeds       |
-| 2    | Exceção "célula já reservada"                                      | robô precisando parar numa célula que outro reservaria no futuro | esse outro também replaneja                                 |
-| 2    | 31% das tentativas de planejamento sem caminho                     | estação liberada com o robô ainda em cima                        | 1,3%, e plano 10× mais rápido                               |
-| 3    | Os dois robôs de um par recuavam ao mesmo tempo                    | cada um pedia passagem ao outro na mesma rodada                  | só um recua (teste)                                         |
-| 3    | Robôs saindo da frente à toa atrás de um robô com defeito          | o pedido de passagem passava por quem não podia se mover         | nenhum pedido nesses casos (teste)                          |
-| 3    | 36 casos de impasse custando 11,8 s de CPU                         | cada tentativa sem caminho esgotava 60 mil estados da busca      | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa      |
-| 3    | Robô restaurado divergindo no último bit                           | a soma da janela de métricas era recalculada ao compactar        | compactação sem recálculo: idêntico bit a bit               |
-| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas      | pacotes parados nas entradas gravados com todos os campos        | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB    |
-| 3    | Teste de carga perdido ao reiniciar (teste do worker)              | a carga virou entrada gravada e o reinício criava gravação nova  | a carga volta como entrada no tick 0 da nova gravação       |
-| 4    | Treino a 170 decisões/s (2M em 3,3 h)                              | o tsx (keepNames) gastava ~75% do episódio num ajudante          | build com esbuild: ~490/s, 2M em cerca de 70 min            |
-| 4    | Detector com 20% a 69% de precisão                                 | modelo fixo do motor: viés de cada motor e da carga              | filtro de Kalman aprende o normal de cada motor             |
-| 4    | 29 de 29 alarmes falsos logo depois de um reparo                   | o motor que quebrou gasto volta quente (memória térmica)         | o gêmeo ressincroniza a temperatura quando o motor religa   |
-| 4    | 100% de precisão e de recall                                       | desgaste sempre forte e nenhum distúrbio no modelo dos sinais    | quebras súbitas, desgaste fraco, pancadas e enroscos        |
-| 4    | Conferência por mutação parada por mais de 7 min                   | mutante transformou "espere um desgaste" em laço infinito        | teste com limite; rodada encerrada em 5× a linha de base    |
-| 4    | Worker de 89 kB → 510 kB                                           | o formato IIFE embutia o runtime da rede no import dinâmico      | worker em módulo ES: 101 kB, runtime baixado sob demanda    |
+| Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                               |
+| ---- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1    | Fila de entrada crescendo em regime normal (297 pacotes em 15 min) | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46        | esteiras a 2,0 m/s: E9 a 81%, fila estável                       |
+| 1    | +1 textura na GPU a cada reinício                                  | só a textura do ambiente era liberada, não o render target       | memória estável em 5 reinícios                                   |
+| 1    | 433 chamadas de desenho por quadro                                 | um objeto por anel e por peça de caminhão                        | 284                                                              |
+| 1    | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade        | alvo do ajuste automático em 50 FPS                              | alvo 55: cai para média e volta a 60 FPS                         |
+| 2    | Frenagens acima do limite ao alcançar a referência                 | curva de frenagem contínua avaliada tick a tick                  | curva discreta e checagem da referência futura: 0 violações      |
+| 2    | Frenagem brusca logo após replanejar                               | o novo plano mudava a curva na célula seguinte                   | compromisso 2 passos à frente: 0 violações em 8 seeds            |
+| 2    | Exceção "célula já reservada"                                      | robô precisando parar numa célula que outro reservaria no futuro | esse outro também replaneja                                      |
+| 2    | 31% das tentativas de planejamento sem caminho                     | estação liberada com o robô ainda em cima                        | 1,3%, e plano 10× mais rápido                                    |
+| 3    | Os dois robôs de um par recuavam ao mesmo tempo                    | cada um pedia passagem ao outro na mesma rodada                  | só um recua (teste)                                              |
+| 3    | Robôs saindo da frente à toa atrás de um robô com defeito          | o pedido de passagem passava por quem não podia se mover         | nenhum pedido nesses casos (teste)                               |
+| 3    | 36 casos de impasse custando 11,8 s de CPU                         | cada tentativa sem caminho esgotava 60 mil estados da busca      | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa           |
+| 3    | Robô restaurado divergindo no último bit                           | a soma da janela de métricas era recalculada ao compactar        | compactação sem recálculo: idêntico bit a bit                    |
+| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas      | pacotes parados nas entradas gravados com todos os campos        | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB         |
+| 3    | Teste de carga perdido ao reiniciar (teste do worker)              | a carga virou entrada gravada e o reinício criava gravação nova  | a carga volta como entrada no tick 0 da nova gravação            |
+| 4    | Treino a 170 decisões/s (2M em 3,3 h)                              | o tsx (keepNames) gastava ~75% do episódio num ajudante          | build com esbuild: ~490/s, 2M em cerca de 70 min                 |
+| 4    | Detector com 20% a 69% de precisão                                 | modelo fixo do motor: viés de cada motor e da carga              | filtro de Kalman aprende o normal de cada motor                  |
+| 4    | 29 de 29 alarmes falsos logo depois de um reparo                   | o motor que quebrou gasto volta quente (memória térmica)         | o gêmeo ressincroniza a temperatura quando o motor religa        |
+| 4    | 100% de precisão e de recall                                       | desgaste sempre forte e nenhum distúrbio no modelo dos sinais    | quebras súbitas, desgaste fraco, pancadas e enroscos             |
+| 4    | Conferência por mutação parada por mais de 7 min                   | mutante transformou "espere um desgaste" em laço infinito        | teste com limite; rodada encerrada em 5× a linha de base         |
+| 4    | Worker de 89 kB → 510 kB                                           | o formato IIFE embutia o runtime da rede no import dinâmico      | worker em módulo ES: 101 kB, runtime baixado sob demanda         |
+| 4    | Motor sem robôs 12% mais lento que a `main` (gate do CI)           | monitoramento dos 24 motores a cada segundo simulado             | agregados contados só quando lidos: 15% mais rápido que a `main` |
 
 ## Como reproduzir
 
