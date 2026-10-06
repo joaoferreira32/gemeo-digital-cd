@@ -292,6 +292,12 @@ episódio pelo servidor e direto no motor e exige a mesma impressão digital do
 estado, as mesmas medidas e as mesmas recompensas. As dependências Python ficam
 num ambiente virtual próprio (`ai/.venv`), fora do build web e do CI.
 
+A rede só imitada da rodada 2 é **reproduzível bit a bit** entre execuções:
+`ai/.venv/Scripts/python ai/check_imitation.py` refaz do zero as 400
+demonstrações da heurística e a imitação (cerca de 3 min) e compara o ONNX
+gerado, byte a byte, com `ai/models/rodada2-imitacao.onnx` (código de saída 1 se
+diferir). Conferido em três execuções independentes, com o mesmo sha256.
+
 <!-- AGENTE -->
 
 ### Manutenção preditiva

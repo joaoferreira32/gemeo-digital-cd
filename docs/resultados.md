@@ -399,7 +399,110 @@ o espaço de ação do agente não é o que limita.
 | Pico de pedidos                  | −0,4% (−1,9% a +1,1%)                    | 4 de 10        |
 | Falhas automáticas               | +1,0% (−1,0% a +3,0%)                    | 7 de 10        |
 
-<!-- AGENTE -->
+### Agente de reforço (PPO): rodadas de ajuste nas seeds de validação
+
+**Critério de sucesso, fixado antes de treinar** (contra a heurística, pares
+seed × cenário): p95 do ciclo melhor em pelo menos 7 de cada 10 pares; ganho
+médio no p95 de pelo menos 3% com o IC 95% acima de 0; sem perda de vazão; em
+nenhum cenário o p95 significativamente pior; nem o p99 nem a idade máxima de um
+pacote significativamente piores, no total ou em algum cenário. Prazo: até 3
+rodadas de ajuste de no máximo 2 milhões de decisões cada. Recompensa por
+segundo: −(0,01 × pacotes no galpão + 0,05 × pacotes com mais de 60 s); ação: um
+nível de 0 a 4 por escolha (fração = nível ÷ 4); observação: 93 valores
+(ocupação e fila de cada esteira, desvios por robô, filas de entrada, frações
+atuais, pico de pedidos, docas bloqueadas).
+
+Retorno médio de referência por episódio (a mesma recompensa, 40 seeds de
+treino por cenário, `bench/retornos.ts`): estática −4.450, heurística −2.671.
+
+![Curvas de aprendizado](curvas-rl.svg)
+
+**Rodada 1: PPO a partir de pesos aleatórios** (2M decisões, 69,7 min, 478
+decisões/s, 16 ambientes, taxa 3e-4, entropia 0,01). Retorno de treino nos últimos
+200 episódios: −5.827, pior que o estático. A política aleatória do começo espalha pacotes ao
+acaso a cada segundo, e 2M decisões não bastaram nem para chegar ao estático.
+
+| Cenário                          | p95 (heurística → agente) | ganho no p95 (IC 95%)       | seeds melhores |
+| -------------------------------- | ------------------------- | --------------------------- | -------------- |
+| Normal                           | 36,7 s → 45,2 s           | −23,0% (−24,0% a −22,0%)    | 0 de 10        |
+| Esteira com alternativa quebrada | 46,5 s → 116,6 s          | −152,0% (−176,7% a −127,3%) | 0 de 10        |
+| Pico de pedidos                  | 121,6 s → 194,2 s         | −60,1% (−69,7% a −50,5%)    | 0 de 10        |
+| Falhas automáticas               | 163,6 s → 218,2 s         | −35,5% (−53,8% a −17,2%)    | 0 de 10        |
+
+No total, −67,6% (IC −85,6% a −49,7%), 0 de 40 pares: nenhum item do critério.
+
+**Rodada 2: imitação da heurística + PPO.** A rede começa imitando o professor
+(a heurística nos cinco níveis do agente, que mede igual à heurística): 400
+episódios em seeds de treino, 216 mil passos, 189 s; em episódios separados ela
+acerta 97,7% dos níveis e as cinco escolhas de uma vez em 90,2% dos segundos.
+Depois, 10 atualizações só do crítico e PPO por 2M decisões (69,0 min, 483
+decisões/s; taxa 1e-4, entropia 0,001, clip 0,1). Retorno de treino nos últimos
+200 episódios: −2.746 (heurística: −2.671).
+
+| Cenário                          | Só imitada: ganho no p95 (IC 95%) | seeds melhores | Imitação + PPO: ganho no p95 (IC 95%) | seeds melhores |
+| -------------------------------- | --------------------------------- | -------------- | ------------------------------------- | -------------- |
+| Normal                           | +0,0% (−0,1% a +0,2%)             | 4 de 10        | +0,1% (−0,0% a +0,1%)                 | 7 de 10        |
+| Esteira com alternativa quebrada | +0,4% (−0,1% a +0,8%)             | 7 de 10        | −0,2% (−0,4% a +0,1%)                 | 3 de 10        |
+| Pico de pedidos                  | +4,1% (+2,4% a +5,9%)             | 9 de 10        | +3,9% (+2,3% a +5,6%)                 | 9 de 10        |
+| Falhas automáticas               | +1,8% (+0,2% a +3,5%)             | 7 de 10        | +3,2% (+0,1% a +6,3%)                 | 7 de 10        |
+| **Total (40 pares)**             | **+1,6% (+0,8% a +2,3%)**         | **27 de 40**   | **+1,8% (+0,8% a +2,7%)**             | **26 de 40**   |
+
+| Item do critério                        | Só imitada  | Imitação + PPO |
+| --------------------------------------- | ----------- | -------------- |
+| p95 melhor em pelo menos 28 de 40 pares | não (27)    | não (26)       |
+| ganho médio ≥ 3% com IC acima de 0      | não (+1,6%) | não (+1,8%)    |
+| sem perda de vazão                      | sim (+0,3%) | sim (+0,2%)    |
+| p95 não piora em nenhum cenário         | sim         | sim            |
+| p99 não piora                           | sim (+1,8%) | sim (+2,4%)    |
+| idade máxima não piora                  | sim (+3,0%) | sim (+3,2%)    |
+
+As duas **quase passaram**: cumprem 7 dos 9 itens e ficam abaixo dos dois
+limiares de ganho, que não mudam. O PPO acrescentou +0,2 ponto à imitação no
+ganho médio, dentro do ruído. Os ganhos se concentram nos cenários congestionados
+(pico, falhas automáticas), onde a idade máxima de um pacote também cai (152 → 141
+s no pico, 337 → 303 s nas falhas).
+
+**A rede só imitada é reproduzível bit a bit.** Refazer as demonstrações e a
+imitação do zero dá o mesmo ONNX, byte a byte (sha256 `c5e09a8c37a33bf2`), o
+que foi conferido em três execuções independentes:
+`ai/.venv/Scripts/python ai/check_imitation.py` (cerca de 3 min, código de saída
+1 se diferir). Paridade ONNX × PyTorch das três redes: diferença máxima de
+1,9e-6 nos logits, mesmas ações.
+
+**Por que a imitada supera o próprio professor? Não explicado.** A hipótese era
+que a rede suaviza as decisões e oscila menos no congestionamento
+(`npm run bench:oscilacao`, por minuto simulado, somando as 5 escolhas, média de
+10 seeds):
+
+| Cenário                          | Mudanças de nível por minuto: professor → só imitada → imitação + PPO | Heurística com suavização 0,15 |
+| -------------------------------- | --------------------------------------------------------------------- | ------------------------------ |
+| Normal                           | 2,4 → 1,9 → 3,4                                                       | 0,4                            |
+| Esteira com alternativa quebrada | 8,0 → 6,4 → 8,0                                                       | 4,9                            |
+| Pico de pedidos                  | 31,0 → 24,6 → 24,2                                                    | 16,5                           |
+| Falhas automáticas               | 25,4 → 19,8 → 21,9                                                    | 13,8                           |
+
+A imitada oscila cerca de 20% menos que o professor no congestionamento, mas isso
+não acompanha o ganho seed a seed (Pearson −0,41 no pico, +0,13 nas falhas). O
+**teste causal**, só como análise (a heurística oficial não mudou): com
+suavização 0,15 em vez de 0,3, a heurística passa a mexer na divisão bem menos que
+a imitada, e o p95 não melhora em nenhum cenário (normal −0,0%, pico −0,1%,
+falhas −0,3%, todos com IC incluindo 0; esteira −0,7%, IC −1,1% a −0,3%).
+Oscilar menos não produz o ganho.
+
+**Candidata principal para as seeds de teste** (registrada em 2026-10-06, antes de
+qualquer uso das seeds de teste, só com a validação): **a rede da rodada 2
+(imitação + PPO)**. Motivos: maior ganho médio no p95 na validação (+1,8% contra
++1,6% da só imitada), melhor p99 (+2,4% contra +1,8%) e melhor idade máxima
+(+3,2% contra +3,0%), sem piora significativa em nenhum cenário; e é o método
+completo da rodada (a só imitada é a comparação declarada, para medir o que o
+PPO acrescentou). Nenhuma das duas cumpriu o critério na validação, então a
+expectativa é que a heurística continue sendo a política oficial. A passada única
+nas seeds de teste mede as 4 políticas juntas (estática, heurística, só imitada e
+imitação + PPO), com o critério aplicado sem mudança às duas redes. A rodada 3
+não foi usada: o PPO acrescentou +0,2 ponto à imitação em 2M decisões, longe dos
+limiares.
+
+<!-- TESTE -->
 
 ### Manutenção preditiva (sinais simulados)
 
