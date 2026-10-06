@@ -305,7 +305,7 @@ function inject(kind: FailureKind) {
 const MODEL_URL = new URL('models/roteamento', document.baseURI).href;
 
 function cyclePolicy() {
-  const current = routing?.wanted ?? 'static';
+  const current = routing?.wanted ?? 'heuristic';
   const next = POLICY_CHOICES[(POLICY_CHOICES.indexOf(current) + 1) % POLICY_CHOICES.length];
   send({ type: 'policy', policy: next as PolicyChoice, model: MODEL_URL });
 }

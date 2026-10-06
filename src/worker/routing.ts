@@ -3,9 +3,12 @@ import type { SimInput } from '../sim/recorder';
 import type { RoutingPolicy } from '../sim/policy';
 import { World } from '../sim/world';
 
-/** What the viewer picks with the P key; the learning agent runs as the "external" policy. */
+/**
+ * What the viewer picks with the P key, in the order P goes through them from
+ * the official one; the learning agent runs as the "external" policy.
+ */
 export type PolicyChoice = 'static' | 'heuristic' | 'rl';
-export const POLICY_CHOICES: readonly PolicyChoice[] = ['static', 'heuristic', 'rl'];
+export const POLICY_CHOICES: readonly PolicyChoice[] = ['heuristic', 'rl', 'static'];
 
 export function policyOf(choice: PolicyChoice): RoutingPolicy {
   return choice === 'rl' ? 'external' : choice;

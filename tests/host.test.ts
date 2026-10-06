@@ -136,18 +136,42 @@ describe('SimHost routing (key P)', () => {
   /** Lets the promises of the agent settle. */
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
-  it('switches who routes; the past keeps its own; a static copy runs from the switch', () => {
+  it('starts with the heuristic (the official policy), compared live with a static copy from tick 0', () => {
     const { host, posted, pump, header } = makeHost();
     host.handle({ type: 'init', config: { seed: 5 } });
     host.handle({ type: 'advance', seconds: 30 });
+    pump(600);
+    expect(header()[HEADER.policy]).toBe(1);
+    const r = routingOf(posted);
+    expect(r.shown).toBe('heuristic');
+    expect(r.compare?.since).toBe(0);
+    // A recorded input at tick 0, so the past and the reports have it too.
+    expect(host.currentRecorder.inputs[0]).toEqual({
+      tick: 0,
+      input: { type: 'policy', policy: 'heuristic' },
+    });
+    // And again after a restart.
+    host.handle({ type: 'restart' });
+    pump(600);
+    expect(header()[HEADER.policy]).toBe(1);
+  });
+
+  it('switches who routes; the past keeps its own; a static copy runs from the switch', () => {
+    const { host, posted, pump, header } = makeHost();
+    host.handle({ type: 'init', config: { seed: 5 } });
+    host.handle({ type: 'policy', policy: 'static' });
+    host.handle({ type: 'advance', seconds: 30 });
+    pump(600);
     expect(header()[HEADER.policy]).toBe(0);
+    expect(routingOf(posted).compare).toBeNull();
+    const switchedAt = host.currentWorld.time;
     host.handle({ type: 'policy', policy: 'heuristic' });
     host.handle({ type: 'advance', seconds: 60 });
     pump(600);
     expect(header()[HEADER.policy]).toBe(1);
     let r = routingOf(posted);
     expect(r.shown).toBe('heuristic');
-    expect(r.compare?.since).toBeCloseTo(30, 6);
+    expect(r.compare?.since).toBeCloseTo(switchedAt, 6);
     // The copy took the same 60 s with the static routing.
     expect(r.compare!.live.delivered).toBeGreaterThan(100);
     expect(r.compare!.shadow.delivered).toBeGreaterThan(100);
@@ -177,10 +201,10 @@ describe('SimHost routing (key P)', () => {
     host.handle({ type: 'policy', policy: 'rl', model: 'x' });
     advanceClock(600);
     host.pump();
-    // Asked for while the network loads: still static until it is ready.
+    // Asked for while the network loads: still the heuristic until it is ready.
     expect(routingOf(posted).wanted).toBe('rl');
     expect(routingOf(posted).agent).toBe('loading');
-    expect(header()[HEADER.policy]).toBe(0);
+    expect(header()[HEADER.policy]).toBe(1);
     await settle();
     host.handle({ type: 'speed', speed: 16 });
     // Each pump runs until the next second, which waits for the agent's answer.

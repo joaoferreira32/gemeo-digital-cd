@@ -54,29 +54,29 @@ npm run bench:rotas -- --rl teste
 
 ## Controles
 
-| Ação                   | Mouse / teclado                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------- |
-| Girar                  | arrastar · <kbd>Q</kbd> <kbd>E</kbd>                                                                    |
-| Mover                  | botão direito ou <kbd>Shift</kbd> + arrastar · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / setas |
-| Zoom                   | roda do mouse (em direção ao cursor) · <kbd>+</kbd> <kbd>−</kbd>                                        |
-| Inclinar               | <kbd>R</kbd> <kbd>F</kbd>                                                                               |
-| Câmeras                | <kbd>1</kbd> aérea · <kbd>2</kbd> chão · <kbd>3</kbd> seguir robô · <kbd>N</kbd> próximo robô           |
-| Pausar / velocidade    | <kbd>Espaço</kbd> · <kbd>,</kbd> <kbd>.</kbd> (1×, 4×, 16×)                                             |
-| Falhas                 | <kbd>5</kbd> esteira · <kbd>6</kbd> pico de pedidos · <kbd>7</kbd> robô · <kbd>8</kbd> doca             |
-| Falhas automáticas     | <kbd>9</kbd>                                                                                            |
-| Desgaste numa esteira  | <kbd>0</kbd> (quebra em 1 a 3 min; o halo do motor e o alarme de manutenção avisam antes)               |
-| Roteamento             | <kbd>P</kbd> estático → heurística → IA (PPO); o painel <kbd>K</kbd> compara com o estático ao vivo     |
-| Mapa de calor          | <kbd>M</kbd> ocupação → tempo de espera → tráfego de robôs → desligado                                  |
-| Teste de carga         | <kbd>T</kbd> (taxa de pedidos muito acima da capacidade)                                                |
-| Qualidade gráfica      | <kbd>G</kbd> (desliga o ajuste automático)                                                              |
-| Reiniciar (mesma seed) | <kbd>Shift</kbd> + <kbd>R</kbd>                                                                         |
-| Linha do tempo         | arrastar na barra de baixo · <kbd>[</kbd> <kbd>]</kbd> volta / avança 10 s                              |
-| Voltar ao vivo         | <kbd>L</kbd>                                                                                            |
-| Continuar daqui        | <kbd>C</kbd>, <kbd>Espaço</kbd> ou qualquer falha injetada no passado (descarta o que vinha depois)     |
-| Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, utilização, estados dos robôs, últimos 5 min)          |
-| Histórico              | clique num robô, numa esteira ou numa doca                                                              |
-| Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução    |
-| Atalhos e legenda      | <kbd>H</kbd>                                                                                            |
+| Ação                   | Mouse / teclado                                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Girar                  | arrastar · <kbd>Q</kbd> <kbd>E</kbd>                                                                         |
+| Mover                  | botão direito ou <kbd>Shift</kbd> + arrastar · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / setas      |
+| Zoom                   | roda do mouse (em direção ao cursor) · <kbd>+</kbd> <kbd>−</kbd>                                             |
+| Inclinar               | <kbd>R</kbd> <kbd>F</kbd>                                                                                    |
+| Câmeras                | <kbd>1</kbd> aérea · <kbd>2</kbd> chão · <kbd>3</kbd> seguir robô · <kbd>N</kbd> próximo robô                |
+| Pausar / velocidade    | <kbd>Espaço</kbd> · <kbd>,</kbd> <kbd>.</kbd> (1×, 4×, 16×)                                                  |
+| Falhas                 | <kbd>5</kbd> esteira · <kbd>6</kbd> pico de pedidos · <kbd>7</kbd> robô · <kbd>8</kbd> doca                  |
+| Falhas automáticas     | <kbd>9</kbd>                                                                                                 |
+| Desgaste numa esteira  | <kbd>0</kbd> (quebra em 1 a 3 min; o halo do motor e o alarme de manutenção avisam antes)                    |
+| Roteamento             | <kbd>P</kbd> heurística (padrão) → IA (PPO) → estático; o painel <kbd>K</kbd> compara com o estático ao vivo |
+| Mapa de calor          | <kbd>M</kbd> ocupação → tempo de espera → tráfego de robôs → desligado                                       |
+| Teste de carga         | <kbd>T</kbd> (taxa de pedidos muito acima da capacidade)                                                     |
+| Qualidade gráfica      | <kbd>G</kbd> (desliga o ajuste automático)                                                                   |
+| Reiniciar (mesma seed) | <kbd>Shift</kbd> + <kbd>R</kbd>                                                                              |
+| Linha do tempo         | arrastar na barra de baixo · <kbd>[</kbd> <kbd>]</kbd> volta / avança 10 s                                   |
+| Voltar ao vivo         | <kbd>L</kbd>                                                                                                 |
+| Continuar daqui        | <kbd>C</kbd>, <kbd>Espaço</kbd> ou qualquer falha injetada no passado (descarta o que vinha depois)          |
+| Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, utilização, estados dos robôs, últimos 5 min)               |
+| Histórico              | clique num robô, numa esteira ou numa doca                                                                   |
+| Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução         |
+| Atalhos e legenda      | <kbd>H</kbd>                                                                                                 |
 
 ## Arquitetura
 
@@ -248,7 +248,8 @@ Em cinco entroncamentos (A1 e B2 para as docas 1–3 e 4–6, A3 para as docas
 1–3), os pacotes têm dois caminhos até as docas de destino. A cada segundo
 simulado, uma política decide a **fração** que segue pelo caminho alternativo;
 um divisor determinístico (difusão de erro, sem sorteio) cumpre a fração exata.
-Três políticas, trocadas ao vivo com <kbd>P</kbd>:
+Três políticas, trocadas ao vivo com <kbd>P</kbd>; o app abre com a heurística,
+a política oficial:
 
 - **Estático:** sempre o caminho mais curto (o comportamento das Fases 1 a 3).
 - **Heurística:** estima o tempo de cada caminho até onde ele junta com o

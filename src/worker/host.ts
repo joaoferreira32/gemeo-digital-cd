@@ -56,8 +56,12 @@ export class SimHost {
   private replay: { report: RunReport; next: number } | null = null;
   /** Steps run in the last pump, for diagnostics. */
   stepsLastPump = 0;
-  /** Routing chosen by the viewer, and the one waiting for the network to load. */
-  private choice: PolicyChoice = 'static';
+  /**
+   * Routing chosen by the viewer, and the one waiting for the network to load.
+   * A run starts with the official policy, the heuristic (decided on the
+   * validation seeds; docs/resultados.md).
+   */
+  private choice: PolicyChoice = 'heuristic';
   private wanted: PolicyChoice | null = null;
   private readonly agent: LazyAgent;
   private modelUrl = '';
