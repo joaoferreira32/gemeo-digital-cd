@@ -350,24 +350,373 @@ thread da página (`?sim=main`), sem erros no console. O único aviso de shader
 
 ---
 
+## Fase 4 — IA de operações
+
+### Como as políticas de roteamento foram comparadas
+
+Quatro cenários de 10 minutos simulados, o primeiro minuto descartado (o
+galpão enchendo): **normal**; **esteira com alternativa quebrada** (Esteira 3,
+A2→A3, aos 120 s e Esteira 8, B2→B3, aos 330 s, 60 a 90 s cada); **pico de
+pedidos** (demanda 22% acima do normal e dois picos de 2,5× por 45 s); **falhas
+automáticas**. Só contam os pacotes que entram pelas esteiras: os pedidos de
+estoque vão do rack à doca por robô, sem passar por nenhuma escolha, e o ciclo
+deles (p95 de 128 s contra 37 s nas esteiras) esconderia o efeito. Cada
+política roda as mesmas seeds com os mesmos pedidos; os ganhos são pareados
+seed a seed, com intervalo de confiança de 95% (t de Student, 9 graus de
+liberdade). "Idade máxima" é a idade do pacote mais velho ainda no galpão, no
+pior momento do episódio.
+
+Seeds: treino 10.001 a 19.999 (episódios do PPO e demonstrações da imitação),
+validação 20.001 a 20.010 (calibração da heurística e do detector, julgamento
+das rodadas da IA), teste 30.001 a 30.010 (uma única vez, no resultado final;
+os benchmarks recusam sem `--final`).
+
+### Heurística contra o roteamento estático (seeds de validação)
+
+`npm run bench:rotas`, parâmetros da heurística: peso da fila 0,5, escala 0,5 s,
+suavização 0,3.
+
+| Cenário                          | p95 do ciclo (estática → heurística) | ganho no p95 (IC 95%)    | seeds melhores | ganho no p99 | idade máxima (estática → heurística) | vazão  |
+| -------------------------------- | ------------------------------------ | ------------------------ | -------------- | ------------ | ------------------------------------ | ------ |
+| Normal                           | 37,4 s → 36,7 s                      | +1,7% (+1,2% a +2,1%)    | 10 de 10       | +3,3%        | 42,7 s → 41,0 s                      | +0,0%  |
+| Esteira com alternativa quebrada | 107,6 s → 46,5 s                     | +56,6% (+53,7% a +59,5%) | 10 de 10       | +11,0%       | 120,1 s → 115,8 s                    | +4,1%  |
+| Pico de pedidos                  | 184,3 s → 121,6 s                    | +34,0% (+31,0% a +36,9%) | 10 de 10       | +28,9%       | 211,0 s → 151,8 s                    | +11,5% |
+| Falhas automáticas               | 210,1 s → 163,6 s                    | +21,5% (+13,7% a +29,2%) | 10 de 10       | +17,2%       | 340,8 s → 337,0 s                    | +9,5%  |
+
+**Calibração** (`npm run bench:rotas -- --calibrate`, grade 3 × 3): ganho médio
+no p95 entre +26,9% e +28,4% em todas as combinações; a escolhida (peso 0,5,
+escala 0,5 s) foi a melhor. O ótimo é plano, então a escolha não é frágil.
+
+**A heurística nos cinco níveis do agente** (`--teacher`: frações arredondadas
+para 0, ¼, ½, ¾ ou 1, como o agente decide). É o professor da imitação da
+rodada 2, e mede igual à heurística contínua (todos os intervalos incluem 0):
+o espaço de ação do agente não é o que limita.
+
+| Cenário                          | ganho no p95 sobre a heurística (IC 95%) | seeds melhores |
+| -------------------------------- | ---------------------------------------- | -------------- |
+| Normal                           | −0,0% (−0,1% a +0,1%)                    | 5 de 10        |
+| Esteira com alternativa quebrada | +0,1% (−0,4% a +0,5%)                    | 4 de 10        |
+| Pico de pedidos                  | −0,4% (−1,9% a +1,1%)                    | 4 de 10        |
+| Falhas automáticas               | +1,0% (−1,0% a +3,0%)                    | 7 de 10        |
+
+### Agente de reforço (PPO): rodadas de ajuste nas seeds de validação
+
+**Critério de sucesso, fixado antes de treinar** (contra a heurística, pares
+seed × cenário): p95 do ciclo melhor em pelo menos 7 de cada 10 pares; ganho
+médio no p95 de pelo menos 3% com o IC 95% acima de 0; sem perda de vazão; em
+nenhum cenário o p95 significativamente pior; nem o p99 nem a idade máxima de um
+pacote significativamente piores, no total ou em algum cenário. Prazo: até 3
+rodadas de ajuste de no máximo 2 milhões de decisões cada. Recompensa por
+segundo: −(0,01 × pacotes no galpão + 0,05 × pacotes com mais de 60 s); ação: um
+nível de 0 a 4 por escolha (fração = nível ÷ 4); observação: 93 valores
+(ocupação e fila de cada esteira, desvios por robô, filas de entrada, frações
+atuais, pico de pedidos, docas bloqueadas).
+
+Retorno médio de referência por episódio (a mesma recompensa, 40 seeds de
+treino por cenário, `bench/retornos.ts`): estática −4.450, heurística −2.671.
+
+![Curvas de aprendizado](curvas-rl.svg)
+
+**Rodada 1: PPO a partir de pesos aleatórios** (2M decisões, 69,7 min, 478
+decisões/s, 16 ambientes, taxa 3e-4, entropia 0,01). Retorno de treino nos últimos
+200 episódios: −5.827, pior que o estático. A política aleatória do começo espalha pacotes ao
+acaso a cada segundo, e 2M decisões não bastaram nem para chegar ao estático.
+
+| Cenário                          | p95 (heurística → agente) | ganho no p95 (IC 95%)       | seeds melhores |
+| -------------------------------- | ------------------------- | --------------------------- | -------------- |
+| Normal                           | 36,7 s → 45,2 s           | −23,0% (−24,0% a −22,0%)    | 0 de 10        |
+| Esteira com alternativa quebrada | 46,5 s → 116,6 s          | −152,0% (−176,7% a −127,3%) | 0 de 10        |
+| Pico de pedidos                  | 121,6 s → 194,2 s         | −60,1% (−69,7% a −50,5%)    | 0 de 10        |
+| Falhas automáticas               | 163,6 s → 218,2 s         | −35,5% (−53,8% a −17,2%)    | 0 de 10        |
+
+No total, −67,6% (IC −85,6% a −49,7%), 0 de 40 pares: nenhum item do critério.
+
+**Rodada 2: imitação da heurística + PPO.** A rede começa imitando o professor
+(a heurística nos cinco níveis do agente, que mede igual à heurística): 400
+episódios em seeds de treino, 216 mil passos, 189 s; em episódios separados ela
+acerta 97,7% dos níveis e as cinco escolhas de uma vez em 90,2% dos segundos.
+Depois, 10 atualizações só do crítico e PPO por 2M decisões (69,0 min, 483
+decisões/s; taxa 1e-4, entropia 0,001, clip 0,1). Retorno de treino nos últimos
+200 episódios: −2.746 (heurística: −2.671).
+
+| Cenário                          | Só imitada: ganho no p95 (IC 95%) | seeds melhores | Imitação + PPO: ganho no p95 (IC 95%) | seeds melhores |
+| -------------------------------- | --------------------------------- | -------------- | ------------------------------------- | -------------- |
+| Normal                           | +0,0% (−0,1% a +0,2%)             | 4 de 10        | +0,1% (−0,0% a +0,1%)                 | 7 de 10        |
+| Esteira com alternativa quebrada | +0,4% (−0,1% a +0,8%)             | 7 de 10        | −0,2% (−0,4% a +0,1%)                 | 3 de 10        |
+| Pico de pedidos                  | +4,1% (+2,4% a +5,9%)             | 9 de 10        | +3,9% (+2,3% a +5,6%)                 | 9 de 10        |
+| Falhas automáticas               | +1,8% (+0,2% a +3,5%)             | 7 de 10        | +3,2% (+0,1% a +6,3%)                 | 7 de 10        |
+| **Total (40 pares)**             | **+1,6% (+0,8% a +2,3%)**         | **27 de 40**   | **+1,8% (+0,8% a +2,7%)**             | **26 de 40**   |
+
+| Item do critério                        | Só imitada  | Imitação + PPO |
+| --------------------------------------- | ----------- | -------------- |
+| p95 melhor em pelo menos 28 de 40 pares | não (27)    | não (26)       |
+| ganho médio ≥ 3% com IC acima de 0      | não (+1,6%) | não (+1,8%)    |
+| sem perda de vazão                      | sim (+0,3%) | sim (+0,2%)    |
+| p95 não piora em nenhum cenário         | sim         | sim            |
+| p99 não piora                           | sim (+1,8%) | sim (+2,4%)    |
+| idade máxima não piora                  | sim (+3,0%) | sim (+3,2%)    |
+
+As duas **quase passaram**: cumprem 7 dos 9 itens e ficam abaixo dos dois
+limiares de ganho, que não mudam. O PPO acrescentou +0,2 ponto à imitação no
+ganho médio, dentro do ruído. Os ganhos se concentram nos cenários congestionados
+(pico, falhas automáticas), onde a idade máxima de um pacote também cai (152 → 141
+s no pico, 337 → 303 s nas falhas).
+
+**A rede só imitada é reproduzível bit a bit.** Refazer as demonstrações e a
+imitação do zero dá o mesmo ONNX, byte a byte (sha256 `c5e09a8c37a33bf2`), o
+que foi conferido em três execuções independentes:
+`ai/.venv/Scripts/python ai/check_imitation.py` (cerca de 3 min, código de saída
+1 se diferir). Paridade ONNX × PyTorch das três redes: diferença máxima de
+1,9e-6 nos logits, mesmas ações.
+
+**Por que a imitada supera o próprio professor? Não explicado.** A hipótese era
+que a rede suaviza as decisões e oscila menos no congestionamento
+(`npm run bench:oscilacao`, por minuto simulado, somando as 5 escolhas, média de
+10 seeds):
+
+| Cenário                          | Mudanças de nível por minuto: professor → só imitada → imitação + PPO | Heurística com suavização 0,15 |
+| -------------------------------- | --------------------------------------------------------------------- | ------------------------------ |
+| Normal                           | 2,4 → 1,9 → 3,4                                                       | 0,4                            |
+| Esteira com alternativa quebrada | 8,0 → 6,4 → 8,0                                                       | 4,9                            |
+| Pico de pedidos                  | 31,0 → 24,6 → 24,2                                                    | 16,5                           |
+| Falhas automáticas               | 25,4 → 19,8 → 21,9                                                    | 13,8                           |
+
+A imitada oscila cerca de 20% menos que o professor no congestionamento, mas isso
+não acompanha o ganho seed a seed (Pearson −0,41 no pico, +0,13 nas falhas). O
+**teste causal**, só como análise (a heurística oficial não mudou): com
+suavização 0,15 em vez de 0,3, a heurística passa a mexer na divisão bem menos que
+a imitada, e o p95 não melhora em nenhum cenário (normal −0,0%, pico −0,1%,
+falhas −0,3%, todos com IC incluindo 0; esteira −0,7%, IC −1,1% a −0,3%).
+Oscilar menos não produz o ganho.
+
+**Candidata principal para as seeds de teste** (registrada em 2026-10-06, antes de
+qualquer uso das seeds de teste, só com a validação): **a rede da rodada 2
+(imitação + PPO)**. Motivos: maior ganho médio no p95 na validação (+1,8% contra
++1,6% da só imitada), melhor p99 (+2,4% contra +1,8%) e melhor idade máxima
+(+3,2% contra +3,0%), sem piora significativa em nenhum cenário; e é o método
+completo da rodada (a só imitada é a comparação declarada, para medir o que o
+PPO acrescentou). Nenhuma das duas cumpriu o critério na validação, então a
+expectativa é que a heurística continue sendo a política oficial. A passada única
+nas seeds de teste mede as 4 políticas juntas (estática, heurística, só imitada e
+imitação + PPO), com o critério aplicado sem mudança às duas redes. A rodada 3
+não foi usada: o PPO acrescentou +0,2 ponto à imitação em 2M decisões, longe dos
+limiares.
+
+**Política oficial: heurística, decidida na validação.** A passada no teste é só
+para reportar os números finais das 4 políticas e do detector; o resultado do
+teste não muda essa decisão. (Registrado em 2026-10-06, antes de rodar o teste.)
+
+### Resultado final nas seeds de teste (passada única)
+
+Uma única passada nas seeds 30.001 a 30.010, depois dos registros acima, com as 4
+políticas juntas e o detector (`npm run bench:rotas -- --set test --final --rl
+rodada2-imitacao,rodada2` e `npm run bench:manutencao -- --set test --final`).
+
+**Ganho no p95 do ciclo sobre o roteamento estático** (IC 95%; seeds melhores em
+10):
+
+| Cenário                          | Heurística                  | Só imitada                  | Imitação + PPO              |
+| -------------------------------- | --------------------------- | --------------------------- | --------------------------- |
+| Normal                           | +1,7% (+1,2% a +2,2%) 10    | +1,7% (+1,2% a +2,1%) 10    | +1,7% (+1,2% a +2,1%) 10    |
+| Esteira com alternativa quebrada | +54,0% (+52,3% a +55,6%) 10 | +54,1% (+52,4% a +55,7%) 10 | +53,8% (+52,3% a +55,3%) 10 |
+| Pico de pedidos                  | +34,8% (+33,5% a +36,1%) 10 | +37,6% (+35,3% a +39,9%) 10 | +37,9% (+35,5% a +40,3%) 10 |
+| Falhas automáticas               | +21,5% (+13,8% a +29,2%) 10 | +22,9% (+14,9% a +30,9%) 10 | +23,1% (+15,3% a +30,9%) 10 |
+
+p95 do ciclo (estática → heurística): normal 37,4 → 36,8 s; esteira 105,2 → 48,4
+s; pico 185,0 → 120,7 s; falhas 202,8 → 155,1 s. Vazão +0,1%, +3,5%, +11,4% e
++10,0%.
+
+**As redes contra a heurística** (o critério):
+
+| Cenário                          | Só imitada: ganho no p95 (IC 95%) | seeds melhores | Imitação + PPO: ganho no p95 (IC 95%) | seeds melhores |
+| -------------------------------- | --------------------------------- | -------------- | ------------------------------------- | -------------- |
+| Normal                           | −0,0% (−0,1% a +0,1%)             | 4 de 10        | −0,0% (−0,1% a +0,0%)                 | 2 de 10        |
+| Esteira com alternativa quebrada | +0,2% (+0,0% a +0,4%)             | 7 de 10        | −0,4% (−0,9% a +0,2%)                 | 3 de 10        |
+| Pico de pedidos                  | +4,3% (+1,8% a +6,8%)             | 9 de 10        | +4,7% (+1,5% a +7,9%)                 | 9 de 10        |
+| Falhas automáticas               | +1,8% (+0,3% a +3,4%)             | 8 de 10        | +2,0% (+0,2% a +3,9%)                 | 7 de 10        |
+| **Total (40 pares)**             | **+1,6% (+0,7% a +2,4%)**         | **28 de 40**   | **+1,6% (+0,5% a +2,6%)**             | **21 de 40**   |
+
+| Item do critério                        | Só imitada  | Imitação + PPO (a candidata) |
+| --------------------------------------- | ----------- | ---------------------------- |
+| p95 melhor em pelo menos 28 de 40 pares | sim (28)    | não (21)                     |
+| ganho médio ≥ 3% com IC acima de 0      | não (+1,6%) | não (+1,6%)                  |
+| sem perda de vazão                      | sim (+0,1%) | sim (+0,0%)                  |
+| p95 não piora em nenhum cenário         | sim         | sim                          |
+| p99 não piora                           | sim (+1,5%) | sim (+1,3%)                  |
+| idade máxima não piora                  | sim (+1,7%) | sim (+1,9%)                  |
+
+Nenhuma rede cumpre o critério no teste. A candidata cumpre 7 dos 9 itens; a só
+imitada, 8 (falha só no ganho médio de 3%). O padrão da validação se repete: as
+duas ganham da heurística no pico (+4% a +5%) e nas falhas automáticas (+2%), e
+empatam onde a heurística já é quase ótima. **A política oficial continua a
+heurística**, como registrado antes do teste; a rede da rodada 2 fica no app como
+opção experimental da tecla P.
+
+**Detector de manutenção (k = 3, h = 48), seeds de teste** (10 seeds × 30 min):
+
+| O que                                 | Validação        | Teste            |
+| ------------------------------------- | ---------------- | ---------------- |
+| Precisão                              | 98% (50 de 51)   | 95% (38 de 40)   |
+| Recall das quebras com desgaste       | 77% (48 de 62)   | 72% (38 de 53)   |
+| Recall de todas as quebras de esteira | 56% (24 súbitas) | 46% (29 súbitas) |
+| Antecedência mediana (p10)            | 36 s (10 s)      | 32 s (8 s)       |
+| Alarmes falsos por hora no CD inteiro | 0,2              | 0,4              |
+
+Os alarmes que o motor levantou bateram exatamente com a reaplicação do CUSUM
+também no teste.
+
+### Manutenção preditiva (sinais simulados)
+
+> Vibração e temperatura vêm de um modelo simples, não de máquinas reais.
+> Os números abaixo medem o detector nesse modelo.
+
+`npm run bench:manutencao`: cada seed roda 30 minutos de falhas automáticas uma
+vez; os escores de cada segundo ficam guardados, e a grade de k e h reaplica o
+CUSUM sobre eles sem simular de novo. Os alarmes que o próprio motor levantou
+batem exatamente com essa reaplicação (o benchmark confere e falha se não
+baterem). Um alarme é verdadeiro quando sobe enquanto aquela esteira está se
+desgastando; uma quebra conta como detectada quando um alarme subiu durante o
+desgaste dela (alarme já aceso antes do início não conta).
+
+**Seeds de validação, k = 3, h = 48** (10 seeds × 30 min = 5 h simuladas, 24
+motores):
+
+| O que                                 | Resultado                                                                                            |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Precisão                              | 98% (50 de 51 alarmes)                                                                               |
+| Recall das quebras com desgaste       | 77% (48 de 62)                                                                                       |
+| Recall de todas as quebras de esteira | 56% (48 de 86; 24 foram súbitas, sem aviso)                                                          |
+| Antecedência (do alarme à quebra)     | mediana 36 s, p10 10 s                                                                               |
+| Alarmes falsos                        | 1 em 5 h simuladas: 0,2 por hora no CD inteiro (≈ 0,01 por motor-hora); aconteceu durante um enrosco |
+
+**Calibração** (grade 7 × 8, ordenada por F1): k = 3, h = 48 deu F1 0,87; com
+k = 2 e h = 64, recall 94% mas precisão 77%; com k = 4 e h = 24, precisão 98%,
+recall 73%. k e h grandes fazem o alarme esperar a anomalia durar mais que um
+enrosco típico, que é o que mantém os alarmes falsos raros.
+
+**O que fica sem aviso** (as 14 quebras com desgaste não detectadas): desgastes
+que aparecem forte em **um sinal só** (vibração sem aquecimento, ou o contrário)
+e em geral **rápidos**. Com k = 3 e o z de cada sinal limitado a 4, um sinal
+sozinho soma no máximo 4/√2 ≈ 2,83 por segundo, abaixo de k: a soma nunca
+acumula. É o preço de ignorar pancadas (só vibração) e enroscos curtos.
+
+| Força do desgaste no sinal mais fraco | Detectadas | Duração do desgaste | Detectadas |
+| ------------------------------------- | ---------- | ------------------- | ---------- |
+| menor que 0,4                         | 20 de 34   | 60 a 100 s          | 13 de 22   |
+| de 0,4 a 0,8                          | 15 de 15   | 100 a 140 s         | 19 de 23   |
+| 0,8 ou mais                           | 13 de 13   | 140 a 180 s         | 16 de 17   |
+
+Mediana da força no sinal mais fraco: 0,14 nas perdidas, 0,50 nas detectadas;
+duração mediana: 84 s nas perdidas, 128 s nas detectadas.
+
+**Medido ao construir o detector** (mesmas seeds):
+
+| Versão do detector                                     | Resultado                                                                                            |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Modelo nominal fixo do motor                           | melhor F1 0,75 (precisão 64%), ótimo na borda da grade                                               |
+| + filtro de Kalman que aprende o normal de cada motor  | precisão até 69%: todos os 29 alarmes falsos (k = 1, h = 8, 4 seeds) de 2 a 16 s depois de um reparo |
+| + ressincronizar a temperatura quando o motor religa   | 100% de precisão e de recall: o problema tinha ficado fácil demais                                   |
+| + quebras súbitas, desgaste fraco, pancadas e enroscos | o compromisso real acima (ótimo no meio da grade)                                                    |
+
+### Treino no mesmo motor
+
+| O que                                                   | Resultado                                                                              |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Episódio de 10 min (40 robôs), motor compilado pelo tsx | 11 s                                                                                   |
+| O mesmo, build do esbuild sem `keepNames`               | 1,9 s (5,7×), mesmos resultados bit a bit                                              |
+| Ida e volta do protocolo binário (Python ↔ Node)        | 0,05 ms                                                                                |
+| Decisões por segundo no treino (16 ambientes)           | cerca de 490                                                                           |
+| Fidelidade Python ↔ TypeScript                          | mesma impressão digital, medidas e recompensas (cenários esteira e falhas automáticas) |
+
+Por que não escala mais: 8 processos simulando ao mesmo tempo ficam 2,4× mais
+lentos cada (cache e memória da máquina), e o passo em lote espera o ambiente
+mais lento a cada decisão.
+
+### O agente no app
+
+| O que                                        | Resultado                                                       |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| Uma decisão no Node (onnxruntime-web, WASM)  | 0,03 ms de inferência + 0,003 ms para montar a observação       |
+| Código do worker                             | 101 kB (89 kB na Fase 3)                                        |
+| Runtime da rede, baixado só ao escolher a IA | 71 kB de JavaScript + 14,2 MB de WebAssembly (3,7 MB com gzip)  |
+| Paridade ONNX × PyTorch                      | mesmos logits até 1e-4 e mesmas ações em 8 observações de prova |
+
+O WebAssembly é a variante só de CPU: a variante com WebGPU tinha 28 MB, e uma
+rede de 128 × 128 não precisa de GPU. O worker passou a ser um módulo ES; antes
+ele embutia o runtime inteiro (510 kB) porque o formato IIFE não separa
+importações dinâmicas.
+
+### Conferência por mutação
+
+| Especificação | O que muda de propósito                                                                                   | Pegas pelos testes |
+| ------------- | --------------------------------------------------------------------------------------------------------- | ------------------ |
+| manutenção    | desgaste antes das quebras, sinais, ressincronização, aprendizado do filtro, teto do z, CUSUM, checkpoint | 9 de 9             |
+
+Com as especificações anteriores: 39 de 39 na execução completa, em 14 minutos,
+com o treino da IA rodando ao mesmo tempo; a mutação dos agregados, criada
+depois, foi pega à parte (40 de 40). Uma rodada que passa de 5× o tempo da linha
+de base é encerrada e conta como pega: um mutante tinha transformado uma espera
+num laço infinito.
+
+### No navegador e no motor
+
+**Chromium (build de produção):** o app abre com a heurística (rótulo e snapshots
+desde o primeiro segundo) e o painel <kbd>K</kbd> a compara ao vivo com a cópia
+estática desde 0:00; <kbd>P</kbd> passa por IA → estático → heurística; a rede da
+rodada 2 carrega em 0,3 s (servidor local) e decide em 0,8 ms em média no worker
+(observação, inferência e resposta assíncrona); <kbd>0</kbd> mostra o halo do
+motor indo de ciano a vermelho; nenhum erro de console e nenhuma requisição com
+erro.
+
+**Benchmark do motor** (`npm run bench`, mesma máquina): 4.187 passos/s com 40
+robôs (4.231 na Fase 3), dentro do ruído; sem robôs, 1,10 milhão de passos/s.
+
+**O gate do CI pegou uma regressão real.** No PR, o motor sem robôs ficou 12,0%
+mais lento que a `main` (10,2% na rodada de confirmação; o limite é 10%). Medido
+por partes, numa cópia descartável: era o monitoramento dos motores (24 motores,
+uma vez por segundo simulado, cerca de 185 ns cada), invisível com robôs mas 7% a
+9% de um passo sem robôs, que leva cerca de 1 µs. Ele não podia ficar mais barato
+sem mudar os sinais (e invalidar a calibração e o teste do detector). A
+correção foi em outro ponto do mesmo caminho: as agregações do mundo (fila,
+pacotes nas esteiras etc.) eram recontadas a cada passo, percorrendo todos os
+pacotes, e só são lidas pelo gravador, pelo snapshot e pelos testes; agora são
+contadas na primeira leitura de cada passo. Resultado: sem robôs, cerca de 15% mais
+rápido que a `main` na mesma máquina (1,07 milhão contra 0,93 milhão de passos/s),
+com impressões digitais idênticas bit a bit em três mundos de referência (com e sem
+robôs, política externa, falhas automáticas e desgaste) e uma mutação nova pega
+(agregados não recontados depois de restaurar um checkpoint).
+
+**Testes:** 185 em 25 arquivos ao fim da fase (141 em 18 ao fim da Fase 3), mais
+2 testes de fidelidade em Python (`ai/test_fidelity.py`) e a conferência da
+imitação (`ai/check_imitation.py`).
+
+---
+
 ## Bugs que só apareceram medindo
 
-| Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                          |
-| ---- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------- |
-| 1    | Fila de entrada crescendo em regime normal (297 pacotes em 15 min) | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46        | esteiras a 2,0 m/s: E9 a 81%, fila estável                  |
-| 1    | +1 textura na GPU a cada reinício                                  | só a textura do ambiente era liberada, não o render target       | memória estável em 5 reinícios                              |
-| 1    | 433 chamadas de desenho por quadro                                 | um objeto por anel e por peça de caminhão                        | 284                                                         |
-| 1    | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade        | alvo do ajuste automático em 50 FPS                              | alvo 55: cai para média e volta a 60 FPS                    |
-| 2    | Frenagens acima do limite ao alcançar a referência                 | curva de frenagem contínua avaliada tick a tick                  | curva discreta e checagem da referência futura: 0 violações |
-| 2    | Frenagem brusca logo após replanejar                               | o novo plano mudava a curva na célula seguinte                   | compromisso 2 passos à frente: 0 violações em 8 seeds       |
-| 2    | Exceção "célula já reservada"                                      | robô precisando parar numa célula que outro reservaria no futuro | esse outro também replaneja                                 |
-| 2    | 31% das tentativas de planejamento sem caminho                     | estação liberada com o robô ainda em cima                        | 1,3%, e plano 10× mais rápido                               |
-| 3    | Os dois robôs de um par recuavam ao mesmo tempo                    | cada um pedia passagem ao outro na mesma rodada                  | só um recua (teste)                                         |
-| 3    | Robôs saindo da frente à toa atrás de um robô com defeito          | o pedido de passagem passava por quem não podia se mover         | nenhum pedido nesses casos (teste)                          |
-| 3    | 36 casos de impasse custando 11,8 s de CPU                         | cada tentativa sem caminho esgotava 60 mil estados da busca      | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa      |
-| 3    | Robô restaurado divergindo no último bit                           | a soma da janela de métricas era recalculada ao compactar        | compactação sem recálculo: idêntico bit a bit               |
-| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas      | pacotes parados nas entradas gravados com todos os campos        | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB    |
-| 3    | Teste de carga perdido ao reiniciar (teste do worker)              | a carga virou entrada gravada e o reinício criava gravação nova  | a carga volta como entrada no tick 0 da nova gravação       |
+| Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                               |
+| ---- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1    | Fila de entrada crescendo em regime normal (297 pacotes em 15 min) | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46        | esteiras a 2,0 m/s: E9 a 81%, fila estável                       |
+| 1    | +1 textura na GPU a cada reinício                                  | só a textura do ambiente era liberada, não o render target       | memória estável em 5 reinícios                                   |
+| 1    | 433 chamadas de desenho por quadro                                 | um objeto por anel e por peça de caminhão                        | 284                                                              |
+| 1    | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade        | alvo do ajuste automático em 50 FPS                              | alvo 55: cai para média e volta a 60 FPS                         |
+| 2    | Frenagens acima do limite ao alcançar a referência                 | curva de frenagem contínua avaliada tick a tick                  | curva discreta e checagem da referência futura: 0 violações      |
+| 2    | Frenagem brusca logo após replanejar                               | o novo plano mudava a curva na célula seguinte                   | compromisso 2 passos à frente: 0 violações em 8 seeds            |
+| 2    | Exceção "célula já reservada"                                      | robô precisando parar numa célula que outro reservaria no futuro | esse outro também replaneja                                      |
+| 2    | 31% das tentativas de planejamento sem caminho                     | estação liberada com o robô ainda em cima                        | 1,3%, e plano 10× mais rápido                                    |
+| 3    | Os dois robôs de um par recuavam ao mesmo tempo                    | cada um pedia passagem ao outro na mesma rodada                  | só um recua (teste)                                              |
+| 3    | Robôs saindo da frente à toa atrás de um robô com defeito          | o pedido de passagem passava por quem não podia se mover         | nenhum pedido nesses casos (teste)                               |
+| 3    | 36 casos de impasse custando 11,8 s de CPU                         | cada tentativa sem caminho esgotava 60 mil estados da busca      | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa           |
+| 3    | Robô restaurado divergindo no último bit                           | a soma da janela de métricas era recalculada ao compactar        | compactação sem recálculo: idêntico bit a bit                    |
+| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas      | pacotes parados nas entradas gravados com todos os campos        | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB         |
+| 3    | Teste de carga perdido ao reiniciar (teste do worker)              | a carga virou entrada gravada e o reinício criava gravação nova  | a carga volta como entrada no tick 0 da nova gravação            |
+| 4    | Treino a 170 decisões/s (2M em 3,3 h)                              | o tsx (keepNames) gastava ~75% do episódio num ajudante          | build com esbuild: ~490/s, 2M em cerca de 70 min                 |
+| 4    | Detector com 20% a 69% de precisão                                 | modelo fixo do motor: viés de cada motor e da carga              | filtro de Kalman aprende o normal de cada motor                  |
+| 4    | 29 de 29 alarmes falsos logo depois de um reparo                   | o motor que quebrou gasto volta quente (memória térmica)         | o gêmeo ressincroniza a temperatura quando o motor religa        |
+| 4    | 100% de precisão e de recall                                       | desgaste sempre forte e nenhum distúrbio no modelo dos sinais    | quebras súbitas, desgaste fraco, pancadas e enroscos             |
+| 4    | Conferência por mutação parada por mais de 7 min                   | mutante transformou "espere um desgaste" em laço infinito        | teste com limite; rodada encerrada em 5× a linha de base         |
+| 4    | Worker de 89 kB → 510 kB                                           | o formato IIFE embutia o runtime da rede no import dinâmico      | worker em módulo ES: 101 kB, runtime baixado sob demanda         |
+| 4    | Motor sem robôs 12% mais lento que a `main` (gate do CI)           | monitoramento dos 24 motores a cada segundo simulado             | agregados contados só quando lidos: 15% mais rápido que a `main` |
 
 ## Como reproduzir
 
@@ -377,7 +726,11 @@ npm run bench        # benchmark do motor
 npm run bench:mapf   # planejamento e episódios sem caminho
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e seek (cerca de 3 min)
-npm run mutate       # conferência por mutação numa cópia temporária (~5 min)
+npm run bench:rotas  # roteamento: estática × heurística (--rl <modelo> inclui o agente, --teacher o professor)
+npm run bench:manutencao  # detector de manutenção preditiva (--calibrate: grade de k e h)
+npm run mutate       # conferência por mutação numa cópia temporária (~10 min)
+ai/.venv/Scripts/python ai/test_fidelity.py   # o Python e o TypeScript simulam igual
+ai/.venv/Scripts/python ai/train.py --name x  # treino PPO (ver o README)
 npm run dev          # depois, no console do navegador: __gemeo.benchHeat()
 ```
 

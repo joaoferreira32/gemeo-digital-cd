@@ -1,6 +1,8 @@
 import { ROBOT_STAGES, type RobotStage } from '../sim/fleet';
 import type { WarehouseLayout } from '../sim/layout';
 import type { Kpis } from '../sim/recorder';
+import type { RoutingStatus } from '../worker/protocol';
+import type { Measures, PolicyChoice } from '../worker/routing';
 import { formatInt, formatRate, formatSeconds } from './format';
 import {
   STATE_GROUPS,
@@ -40,6 +42,8 @@ const MINIS: readonly Mini[] = [
 export class KpiPanel {
   readonly root: HTMLElement;
   private readonly tiles: HTMLElement;
+  private readonly routing: HTMLElement;
+  private routingStatus: { r: RoutingStatus; labels: Record<PolicyChoice, string> } | null = null;
   private readonly when: HTMLElement;
   private readonly states: HTMLElement;
   private readonly charts: HTMLElement;
@@ -75,6 +79,10 @@ export class KpiPanel {
 
     this.tiles = html('div', 'kpi__tiles');
     root.append(this.tiles);
+
+    root.append(html('h3', 'kpi__section', 'Roteamento'));
+    this.routing = html('div', 'kpi__routing');
+    root.append(this.routing);
 
     root.append(html('h3', 'kpi__section', 'Robôs agora'));
     this.states = html('div', 'states');
@@ -168,6 +176,9 @@ export class KpiPanel {
     if (open && this.kpis && this.last) {
       this.update(this.kpis, this.last.stages, this.last.time, this.last.past);
     }
+    if (open && this.routingStatus) {
+      this.updateRouting(this.routingStatus.r, this.routingStatus.labels);
+    }
     return open;
   }
 
@@ -183,6 +194,91 @@ export class KpiPanel {
     this.renderCharts(k);
     if (!this.table.hidden) this.renderTable();
     this.renderUse(k);
+  }
+
+  /**
+   * Who routes, and the live comparison with a copy of the run that kept the
+   * static routing from the moment of the switch (same seed and inputs).
+   */
+  updateRouting(r: RoutingStatus, labels: Record<PolicyChoice, string>): void {
+    this.routingStatus = { r, labels };
+    if (!this.open) return;
+    const head = html('p', 'kpi__note');
+    head.append(html('span', 'muted', 'Ativo: '), html('strong', '', labels[r.shown]));
+    if (r.wanted !== r.shown && r.agent === 'loading') {
+      head.append(html('span', 'muted', ' · carregando a IA…'));
+    }
+    if (r.decisions > 0) {
+      const ms = r.decisionMs.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+      head.append(
+        html(
+          'span',
+          'muted',
+          ` · ${formatInt(r.decisions)} decisões da IA, ${ms} ms cada em média`,
+        ),
+      );
+    }
+    const c = r.compare;
+    if (!c) {
+      const why =
+        r.shown === 'static'
+          ? 'Com P, troque para a heurística ou para a IA: o painel compara ao vivo com uma cópia da simulação que segue no roteamento estático.'
+          : 'A comparação ao vivo volta quando a simulação volta ao presente.';
+      this.routing.replaceChildren(head, html('p', 'kpi__note muted', why));
+      return;
+    }
+    const table = html('table', 'kpi__table mono');
+    const row = (cells: string[], tag: 'th' | 'td' = 'td') => {
+      const tr = html('tr', '');
+      for (const text of cells) tr.append(html(tag, '', text));
+      return tr;
+    };
+    const diff = (a: number, b: number, lowerIsBetter: boolean, unit: string, digits = 0) => {
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return '—';
+      const d = a - b;
+      const pct = b !== 0 ? ` (${d >= 0 ? '+' : '−'}${Math.abs((d / b) * 100).toFixed(0)}%)` : '';
+      const better = lowerIsBetter ? d < 0 : d > 0;
+      const sign = d >= 0 ? '+' : '−';
+      return `${sign}${Math.abs(d).toFixed(digits)}${unit}${pct}${Math.abs(d) > 1e-9 ? (better ? ' ✓' : '') : ''}`;
+    };
+    const val = (m: Measures, k: keyof Measures, digits = 0) =>
+      Number.isFinite(m[k]) ? m[k].toFixed(digits) : '—';
+    table.append(
+      row(['', labels[r.shown], 'Estático (cópia)', 'Diferença'], 'th'),
+      row([
+        'Ciclo médio (s)',
+        val(c.live, 'cycle', 1),
+        val(c.shadow, 'cycle', 1),
+        diff(c.live.cycle, c.shadow.cycle, true, ' s', 1),
+      ]),
+      row([
+        'Vazão (/min)',
+        val(c.live, 'throughput', 1),
+        val(c.shadow, 'throughput', 1),
+        diff(c.live.throughput, c.shadow.throughput, false, '', 1),
+      ]),
+      row([
+        'Na fila',
+        val(c.live, 'waiting'),
+        val(c.shadow, 'waiting'),
+        diff(c.live.waiting, c.shadow.waiting, true, ''),
+      ]),
+      row([
+        `Entregas desde ${formatMinSec(c.since)}`,
+        val(c.live, 'delivered'),
+        val(c.shadow, 'delivered'),
+        diff(c.live.delivered, c.shadow.delivered, false, ''),
+      ]),
+    );
+    this.routing.replaceChildren(
+      head,
+      table,
+      html(
+        'p',
+        'kpi__note muted',
+        'Ciclo médio e vazão dos últimos 2 min. A cópia recebe as mesmas falhas e o mesmo teste de carga; as falhas automáticas são sorteadas com a mesma semente.',
+      ),
+    );
   }
 
   private renderTiles(k: Kpis): void {

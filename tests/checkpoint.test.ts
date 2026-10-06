@@ -113,6 +113,21 @@ describe('World checkpoints', () => {
     expect(snapshotBytes(b)).toEqual(snapshotBytes(a));
   }, 60_000);
 
+  it('counts the aggregates again after a load, even into a world at the same tick', () => {
+    // The aggregates are counted on the first read of a tick; a seek reuses a
+    // world, which may have counted them at that very tick in another state.
+    const a = chaotic(6);
+    a.stepMany(60 * SECOND);
+    const cp = a.saveState();
+    const b = chaotic(6);
+    b.setArrivalRate(20); // a much heavier load: another state at the same tick
+    b.stepMany(60 * SECOND);
+    expect(b.tick).toBe(a.tick);
+    expect(b.stats.backlog).not.toBe(a.stats.backlog);
+    b.loadState(cp);
+    expect({ ...b.stats }).toEqual({ ...a.stats });
+  }, 60_000);
+
   it('refuses a checkpoint from a world with another fleet size', () => {
     const cp = new World({ robots: 10 }).saveState();
     expect(() => new World({ robots: 12 }).loadState(cp)).toThrow(/another fleet/);

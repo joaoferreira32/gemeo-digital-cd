@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -17,16 +17,22 @@
     "bench:mapf": "tsx bench/mapf.ts",
     "bench:vigia": "tsx bench/vigia.ts",
     "bench:tempo": "tsx --expose-gc bench/tempo.ts",
+    "bench:rotas": "tsx bench/rotas.ts",
+    "bench:manutencao": "tsx bench/manutencao.ts",
+    "bench:oscilacao": "tsx bench/oscilacao.ts",
     "mutate": "node scripts/mutate.mjs"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
+    "onnxruntime-web": "^1.30.0",
     "three": "^0.186.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.1",
     "@types/three": "^0.186.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",

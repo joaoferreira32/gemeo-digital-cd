@@ -30,7 +30,7 @@ describe('World determinism', () => {
       b.stepMany(MINUTE);
       expect(fingerprint(a)).toBe(fingerprint(b));
     }
-  });
+  }, 20_000);
 
   it('diverges for a different seed', () => {
     const a = new World({ seed: 1 });

@@ -31,7 +31,8 @@ import { pickEntity } from './ui/pick';
 import { TimelineBar } from './ui/timeline';
 import type { RunReport } from './sim/recorder';
 import { CpuHeatmap } from './render/heatmap-cpu';
-import { SPEEDS, type SimCommand } from './worker/protocol';
+import { SPEEDS, type RoutingStatus, type SimCommand } from './worker/protocol';
+import { POLICY_CHOICES, type PolicyChoice } from './worker/routing';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const loading = document.getElementById('loading') as HTMLElement;
@@ -104,6 +105,13 @@ let stress = false;
 let heatIndex = 0;
 let following = false;
 let firstFrame: SimFrame | null = null;
+let routing: RoutingStatus | null = null;
+
+const POLICY_LABEL: Record<PolicyChoice, string> = {
+  static: 'Estático',
+  heuristic: 'Heurística',
+  rl: 'IA (PPO)',
+};
 
 // Main-thread responsiveness, for the worker vs inline comparison.
 const longTasks = { count: 0, totalMs: 0 };
@@ -137,6 +145,7 @@ link.onMessage = (msg) => {
     case 'status':
       timeline.update(msg.timeline);
       kpiPanel.update(msg.kpis, msg.stages, msg.timeline.shown, msg.timeline.viewing);
+      showRouting(msg.routing);
       return;
     case 'history':
       historyPanel.render(msg.history);
@@ -292,6 +301,29 @@ function inject(kind: FailureKind) {
   send({ type: 'inject', kind });
 }
 
+/** The trained network's files, next to the page (public/models). */
+const MODEL_URL = new URL('models/roteamento', document.baseURI).href;
+
+function cyclePolicy() {
+  const current = routing?.wanted ?? 'heuristic';
+  const next = POLICY_CHOICES[(POLICY_CHOICES.indexOf(current) + 1) % POLICY_CHOICES.length];
+  send({ type: 'policy', policy: next as PolicyChoice, model: MODEL_URL });
+}
+
+let agentErrorNoted = false;
+function showRouting(r: RoutingStatus) {
+  routing = r;
+  const loading = r.wanted === 'rl' && r.agent === 'loading';
+  document.getElementById('policy-label')!.textContent = loading
+    ? 'carregando IA…'
+    : POLICY_LABEL[r.shown];
+  if (r.agent === 'error' && !agentErrorNoted) {
+    agentErrorNoted = true;
+    note(`Não foi possível carregar a IA de roteamento: ${r.agentError}`);
+  }
+  kpiPanel.updateRouting(r, POLICY_LABEL);
+}
+
 function toggleAuto() {
   const on = !((frames.latest?.s.header[HEADER.autoFailures] ?? 0) > 0);
   send({ type: 'auto', on });
@@ -333,6 +365,8 @@ function bindControls() {
   document.getElementById('btn-stress')!.addEventListener('click', () => setStress(!stress));
   document.getElementById('btn-restart')!.addEventListener('click', restart);
   document.getElementById('btn-auto')!.addEventListener('click', toggleAuto);
+  document.getElementById('btn-policy')!.addEventListener('click', cyclePolicy);
+  document.getElementById('btn-wear')!.addEventListener('click', () => send({ type: 'wear' }));
   document.getElementById('btn-heat')!.addEventListener('click', cycleHeat);
   document.getElementById('btn-quality')!.addEventListener('click', () => governor.cycle());
   document.getElementById('btn-help')!.addEventListener('click', () => toggleHelp());
@@ -376,6 +410,9 @@ function bindControls() {
       case 'Digit9':
         toggleAuto();
         break;
+      case 'Digit0':
+        send({ type: 'wear' });
+        break;
       case 'Space':
         if (onButton) return;
         e.preventDefault();
@@ -397,6 +434,9 @@ function bindControls() {
         break;
       case 'KeyK':
         toggleKpi();
+        break;
+      case 'KeyP':
+        cyclePolicy();
         break;
       case 'Comma':
         changeSpeed(-1);

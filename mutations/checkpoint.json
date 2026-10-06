@@ -110,6 +110,16 @@
           "replace": "    r.ints32();"
         }
       ]
+    },
+    {
+      "name": "agregados não recontados depois de restaurar",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "    this.events.length = 0;\n    this.statsTick = -1;",
+          "replace": "    this.events.length = 0;"
+        }
+      ]
     }
   ]
 }

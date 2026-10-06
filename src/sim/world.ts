@@ -21,7 +21,16 @@ import { createDefaultLayout, type WarehouseLayout } from './layout';
 import { Metrics } from './metrics';
 import { createPacket, type Packet, type PacketState } from './packet';
 import { deriveSeed, Rng } from './rng';
-import { ShortestPathRouter, type Router } from './router';
+import type { Router } from './router';
+import { SplitRouter } from './routing';
+import { MotorHealth, type DetectorParams } from './health';
+import {
+  DEFAULT_HEURISTIC,
+  HeuristicRouting,
+  ROUTING_POLICIES,
+  type HeuristicParams,
+  type RoutingPolicy,
+} from './policy';
 import { StateReader, StateWriter, type EncodedState } from './state';
 
 export interface SimConfig {
@@ -53,6 +62,10 @@ export interface SimConfig {
   readonly fleet?: Partial<FleetConfig>;
   /** Robots bridge broken conveyors without alternative (off = packets just wait). */
   readonly robotBypass: boolean;
+  /** Parameters of the congestion heuristic (calibrated on the validation seeds). */
+  readonly heuristic?: Partial<HeuristicParams>;
+  /** Parameters of the motor alarm (CUSUM; calibrated on the validation seeds). */
+  readonly detector?: Partial<DetectorParams>;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -76,7 +89,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 4;
+const CHECKPOINT_VERSION = 6;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -157,7 +170,7 @@ export class World implements FleetHost, FailureHost {
   readonly inbounds: Inbound[];
   readonly docks: Dock[];
   readonly metrics: Metrics;
-  readonly stats: WorldStats = {
+  private readonly statsCache: WorldStats = {
     backlog: 0,
     onConveyors: 0,
     staged: 0,
@@ -166,6 +179,8 @@ export class World implements FleetHost, FailureHost {
     onRobots: 0,
     rackPending: 0,
   };
+  /** Tick the cached aggregates belong to (-1: recompute on the next read). */
+  private statsTick = -1;
   readonly lanes: BypassLane[] = [];
   /** Packets that left each conveyor, and packets delivered to each dock, since the start. */
   readonly conveyorExits: Int32Array;
@@ -175,6 +190,8 @@ export class World implements FleetHost, FailureHost {
   /** Lane by conveyor edge id. */
   private readonly laneByEdge = new Map<number, BypassLane>();
   readonly failures: FailureInjector;
+  /** Simulated condition monitoring of the conveyor motors (predictive maintenance). */
+  readonly health: MotorHealth;
   /** Latest events, oldest first (bounded). */
   readonly events: SimEvent[] = [];
   private nextEventId = 1;
@@ -183,6 +200,15 @@ export class World implements FleetHost, FailureHost {
   tick = 0;
 
   private router: Router;
+  /** The routing the operations layer adjusts (the default router). */
+  readonly routing: SplitRouter;
+  readonly heuristic: HeuristicRouting;
+  /** Who sets the routing shares now. */
+  policy: RoutingPolicy = 'static';
+  /** Steps in one simulated second (the heuristic and the motor readings run once a second). */
+  private readonly ticksPerSecond: number;
+  /** Called on every delivery to a dock (evaluations); not part of the state. */
+  onDelivery: ((packet: Packet, byRobot: boolean) => void) | null = null;
   private readonly orderRng: Rng;
   private readonly destinationWeights: readonly number[];
   /** Round-robin pointer over incoming edges, per node, so merges are fair. */
@@ -222,7 +248,12 @@ export class World implements FleetHost, FailureHost {
     this.conveyorExits = new Int32Array(this.conveyors.length);
     this.dockDeliveries = new Int32Array(this.docks.length);
     this.metrics = new Metrics(this.config.metricsWindow);
-    this.router = new ShortestPathRouter(graph, layout.dockNodes);
+    this.routing = new SplitRouter(graph, layout.dockNodes);
+    this.router = this.routing;
+    this.heuristic = new HeuristicRouting(graph, this.routing, {
+      ...DEFAULT_HEURISTIC,
+      ...this.config.heuristic,
+    });
     if (this.config.robots > 0) {
       const fleetConfig: FleetConfig = {
         ...DEFAULT_FLEET,
@@ -236,6 +267,8 @@ export class World implements FleetHost, FailureHost {
       this.fleet = null;
     }
     this.failures = new FailureInjector(this, this.config.seed);
+    this.health = new MotorHealth(this.conveyors.length, this.config.seed, this.config.detector);
+    this.ticksPerSecond = Math.round(1 / this.config.dt);
   }
 
   private createLanes(fleet: Fleet): void {
@@ -317,6 +350,7 @@ export class World implements FleetHost, FailureHost {
       w.float(p.prevS);
       w.bool(p.blocked);
       w.float(p.deliveredAt);
+      w.int(p.next);
     }
     const ids = (list: readonly Packet[]) => w.ints32(list.map((p) => p.id));
 
@@ -355,7 +389,10 @@ export class World implements FleetHost, FailureHost {
       ids(lane.drop);
     }
     this.metrics.save(w);
+    w.pick(this.policy, ROUTING_POLICIES);
+    this.routing.save(w);
     this.failures.save(w);
+    this.health.save(w);
     this.fleet?.save(w);
     return { tick: this.tick, state: w.finish() };
   }
@@ -390,6 +427,7 @@ export class World implements FleetHost, FailureHost {
         prevS: r.float(),
         blocked: r.bool(),
         deliveredAt: r.float(),
+        next: r.int(),
       };
       byId.set(p.id, p);
     }
@@ -435,11 +473,14 @@ export class World implements FleetHost, FailureHost {
       fill(lane.drop);
     }
     this.metrics.load(r);
+    this.policy = r.pick(ROUTING_POLICIES);
+    this.routing.load(r);
     this.failures.load(r);
+    this.health.load(r);
     this.fleet?.load(r, packet);
     r.end();
     this.events.length = 0;
-    this.updateStats();
+    this.statsTick = -1;
   }
 
   /**
@@ -496,6 +537,7 @@ export class World implements FleetHost, FailureHost {
       dock.staged.push(p);
       this.metrics.recordDelivery(now, now - p.createdAt);
       this.metrics.deliveredByRobots++;
+      this.onDelivery?.(p, true);
       this.dockDeliveries[dockIndex]!++;
     }
     return true;
@@ -522,6 +564,20 @@ export class World implements FleetHost, FailureHost {
   }
 
   /** Simulation time in seconds (derived from the integer tick, so it never drifts). */
+  /**
+   * Aggregates of the current tick (the HUD, the recorder and the tests read
+   * them). Counted on the first read after a step, not on every step: nothing
+   * changes these lists between two steps, and most steps nobody reads them
+   * (in fast forward, or a world without robots, the count was a fifth of a step).
+   */
+  get stats(): WorldStats {
+    if (this.statsTick !== this.tick) {
+      this.updateStats();
+      this.statsTick = this.tick;
+    }
+    return this.statsCache;
+  }
+
   get time(): number {
     return this.tick * this.config.dt;
   }
@@ -537,6 +593,19 @@ export class World implements FleetHost, FailureHost {
 
   setRouter(router: Router): void {
     this.router = router;
+  }
+
+  /** Changes who sets the routing shares; back to static, every share returns to 0. */
+  setPolicy(policy: RoutingPolicy): void {
+    this.policy = policy;
+    if (policy === 'static') this.routing.share.fill(0);
+  }
+
+  /** Shares given from outside (the learning agent); ignored unless the policy is external. */
+  setShares(shares: readonly number[]): void {
+    if (this.policy !== 'external') return;
+    const s = this.routing.share;
+    for (let i = 0; i < s.length; i++) s[i] = Math.min(1, Math.max(0, shares[i] ?? 0));
   }
 
   setConveyorStatus(edgeId: number, status: ConveyorStatus): void {
@@ -638,7 +707,11 @@ export class World implements FleetHost, FailureHost {
     this.tick++;
     const now = this.time;
     const dt = this.config.dt;
+    const second = this.tick % this.ticksPerSecond === 0;
     this.failures.update(now);
+    if (this.policy === 'heuristic' && second) {
+      this.heuristic.update(this.conveyors, this.lanes);
+    }
     this.generateOrders(now);
     this.updateLanes();
     for (const c of this.conveyors) advanceConveyor(c, dt);
@@ -647,9 +720,20 @@ export class World implements FleetHost, FailureHost {
     this.induct();
     this.fleet?.update(this.tick, now, dt);
     this.updateTrucks(dt);
+    if (second) this.health.update(now, this.conveyors, this.failures.degrading, this.alarm);
     this.metrics.evict(now);
-    this.updateStats();
   }
+
+  /** The motor monitoring flagged a conveyor: tell the viewer, with the readings. */
+  private readonly alarm = (edgeId: number): void => {
+    const one = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const h = this.health;
+    this.push(
+      'maintenance',
+      `${this.conveyorLabel(edgeId)}: motor fora do padrão (vibração ${one(h.vibration[edgeId] as number)} mm/s, ${one(h.temperature[edgeId] as number)} °C), risco de quebra`,
+      { target: edgeId, about: [`conveyor:${edgeId}`] },
+    );
+  };
 
   stepMany(steps: number): void {
     for (let i = 0; i < steps; i++) this.step();
@@ -719,6 +803,7 @@ export class World implements FleetHost, FailureHost {
         dock.staged.push(p);
         dock.serviceProgress -= 1;
         this.metrics.recordDelivery(now, now - p.createdAt);
+        this.onDelivery?.(p, false);
         this.roundRobin[dock.nodeId] = (idx + 1) % inEdges.length;
         break;
       }
@@ -761,7 +846,18 @@ export class World implements FleetHost, FailureHost {
    * null) from `nodeId` onto its next belt or into a bypass. False: it waits.
    */
   private forward(nodeId: number, p: Packet, from: Conveyor | null): boolean {
-    const outEdge = this.router.nextEdge(nodeId, p);
+    // The choice is made once per packet (at a decision junction it advances
+    // the split) and kept while the packet waits; if the chosen belt breaks
+    // in the meantime and robots are not bridging it, it chooses again.
+    if (
+      p.next >= 0 &&
+      this.conveyors[p.next]?.status !== 'ok' &&
+      !this.laneByEdge.get(p.next)?.active
+    ) {
+      p.next = -1;
+    }
+    if (p.next < 0) p.next = this.router.nextEdge(nodeId, p);
+    const outEdge = p.next;
     const to = outEdge >= 0 ? this.conveyors[outEdge] : undefined;
     if (!to) return false;
     if (canAccept(to)) {
@@ -780,6 +876,7 @@ export class World implements FleetHost, FailureHost {
       p.edge = -1;
       p.state = 'bypass';
       p.blocked = true;
+      p.next = -1;
       lane.pickup.push(p);
       return true;
     }
@@ -864,13 +961,14 @@ export class World implements FleetHost, FailureHost {
       }
       for (const o of this.fleet.orders) rackPending += o.packets.length;
     }
-    this.stats.backlog = backlog;
-    this.stats.onConveyors = onConveyors;
-    this.stats.staged = staged;
-    this.stats.inBypass = inBypass;
-    this.stats.onRobots = onRobots;
-    this.stats.rackPending = rackPending;
-    this.stats.waiting = backlog + blocked + waitingBypass;
+    const stats = this.statsCache;
+    stats.backlog = backlog;
+    stats.onConveyors = onConveyors;
+    stats.staged = staged;
+    stats.inBypass = inBypass;
+    stats.onRobots = onRobots;
+    stats.rackPending = rackPending;
+    stats.waiting = backlog + blocked + waitingBypass;
   }
 }
 
@@ -883,7 +981,8 @@ function isAsCreated(p: Packet, origin: number): boolean {
     Object.is(p.s, 0) &&
     Object.is(p.prevS, 0) &&
     p.blocked &&
-    p.deliveredAt === -1
+    p.deliveredAt === -1 &&
+    p.next === -1
   );
 }
 

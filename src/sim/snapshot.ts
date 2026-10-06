@@ -1,6 +1,7 @@
 import { pointOnEdge, type EdgePoint } from './graph';
 import type { SimEvent } from './failures';
 import { ROBOT_STAGES, type RobotStage } from './fleet';
+import { ROUTING_POLICIES } from './policy';
 import type { World } from './world';
 
 /**
@@ -59,6 +60,10 @@ export const HEADER = {
   head: 40,
   /** 1 when this frame does not continue the previous one (seek, back to live, new run). */
   cut: 41,
+  /** Index in ROUTING_POLICIES of who sets the routing shares. */
+  policy: 42,
+  /** Routing choices (length of the shares section). */
+  decisions: 43,
 } as const;
 export const HEADER_LEN = 48;
 
@@ -86,7 +91,16 @@ export const ROBOT = {
 export const DOCK_STRIDE = 6; // staged truckState awayLeft truckLoad blocked blockedLeft
 export const LANE_STRIDE = 4; // active pickup drop carried
 export const FAILURE_STRIDE = 5; // kind target startedAt endsAt id
-export const CONVEYOR_STRIDE = 2; // status blocked
+export const CONVEYOR_STRIDE = 6; // status blocked vibration temperature risk alarm
+export const CONVEYOR = {
+  status: 0,
+  blocked: 1,
+  /** Simulated motor readings (mm/s, °C) and the alarm level 0 … 1 (health.ts). */
+  vibration: 2,
+  temperature: 3,
+  risk: 4,
+  alarm: 5,
+} as const;
 
 export const STAGES: readonly RobotStage[] = ROBOT_STAGES;
 export const JOBS = ['none', 'rack', 'bypass', 'charge', 'park', 'goto'] as const;
@@ -103,6 +117,8 @@ export interface SnapshotSections {
   lanes: Float32Array;
   failures: Float32Array;
   conveyors: Float32Array;
+  /** Share of the alternative way at each routing choice (SplitRouter order). */
+  shares: Float32Array;
   /** (x, z) pairs of the remaining route cells of every robot. */
   routes: Int16Array;
 }
@@ -116,6 +132,7 @@ interface Counts {
   lanes: number;
   failures: number;
   conveyors: number;
+  decisions: number;
 }
 
 function layoutOf(c: Counts): { offsets: Record<keyof SnapshotSections, number>; bytes: number } {
@@ -136,6 +153,7 @@ function layoutOf(c: Counts): { offsets: Record<keyof SnapshotSections, number>;
     lanes: take(c.lanes * LANE_STRIDE * 4, 4),
     failures: take(c.failures * FAILURE_STRIDE * 4, 4),
     conveyors: take(c.conveyors * CONVEYOR_STRIDE * 4, 4),
+    shares: take(c.decisions * 4, 4),
     routes: take(c.routeCells * 2 * 2, 2),
   };
   return { offsets, bytes: Math.ceil(off / 8) * 8 };
@@ -153,6 +171,7 @@ function viewsOf(buffer: ArrayBuffer, c: Counts): SnapshotSections {
     lanes: new Float32Array(buffer, o.lanes, c.lanes * LANE_STRIDE),
     failures: new Float32Array(buffer, o.failures, c.failures * FAILURE_STRIDE),
     conveyors: new Float32Array(buffer, o.conveyors, c.conveyors * CONVEYOR_STRIDE),
+    shares: new Float32Array(buffer, o.shares, c.decisions),
     routes: new Int16Array(buffer, o.routes, c.routeCells * 2),
   };
 }
@@ -169,6 +188,7 @@ export function readSnapshot(buffer: ArrayBuffer): SnapshotSections {
     lanes: header[HEADER.lanes] as number,
     failures: header[HEADER.failures] as number,
     conveyors: header[HEADER.conveyors] as number,
+    decisions: header[HEADER.decisions] as number,
   });
 }
 
@@ -247,6 +267,7 @@ export class SnapshotWriter {
       lanes: w.lanes.length,
       failures: w.failures.active.length,
       conveyors: w.conveyors.length,
+      decisions: w.routing.decisions.length,
     };
     const { bytes } = layoutOf(counts);
     let buffer: ArrayBuffer | undefined;
@@ -301,6 +322,8 @@ export class SnapshotWriter {
     h[HEADER.mode] = extra.mode ?? 0;
     h[HEADER.head] = extra.head ?? now;
     h[HEADER.cut] = this.cut ? 1 : 0;
+    h[HEADER.policy] = ROUTING_POLICIES.indexOf(w.policy);
+    h[HEADER.decisions] = counts.decisions;
     this.cut = false;
     if (fleet) {
       for (const r of robots) {
@@ -427,12 +450,19 @@ export class SnapshotWriter {
       v.failures[o + 3] = f.endsAt;
       v.failures[o + 4] = f.id;
     });
+    const health = w.health;
     w.conveyors.forEach((c, k) => {
-      v.conveyors[k * CONVEYOR_STRIDE] = c.status === 'ok' ? 0 : 1;
+      const o = k * CONVEYOR_STRIDE;
+      v.conveyors[o + CONVEYOR.status] = c.status === 'ok' ? 0 : 1;
       let blocked = 0;
       for (const p of c.packets) if (p.blocked) blocked++;
-      v.conveyors[k * CONVEYOR_STRIDE + 1] = blocked;
+      v.conveyors[o + CONVEYOR.blocked] = blocked;
+      v.conveyors[o + CONVEYOR.vibration] = health.vibration[k] as number;
+      v.conveyors[o + CONVEYOR.temperature] = health.temperature[k] as number;
+      v.conveyors[o + CONVEYOR.risk] = health.risk(k);
+      v.conveyors[o + CONVEYOR.alarm] = health.alarm[k] as number;
     });
+    v.shares.set(w.routing.share);
 
     this.prevTime = now;
     return buffer;

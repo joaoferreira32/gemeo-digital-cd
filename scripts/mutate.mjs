@@ -19,6 +19,11 @@
  *     "mutations": [{ "name": "…", "edits": [{ "file": "src/…", "find": "…", "replace": "…" }],
  *                     "equivalent": "optional reason" }] }
  *
+ * A mutation that keeps the tests running past five times the baseline time
+ * (at least a minute) is stopped and counts as caught: a test that never ends
+ * is a failing test (a loop waiting for something the mutation removed). The
+ * tests run with worker threads, so stopping vitest stops all of it.
+ *
  * Exit code 1 when a mutation survives (and is not marked equivalent), when a
  * snippet is not found, or when the baseline fails.
  */
@@ -82,19 +87,27 @@ try {
   symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'), 'junction');
   console.log(`cópia temporária: ${copy} (${files.length} arquivos)\n`);
 
-  const vitest = (tests) =>
-    spawnSync(process.execPath, [join(copy, 'node_modules/vitest/vitest.mjs'), 'run', ...tests], {
-      cwd: copy,
-      encoding: 'utf8',
-      env: { ...process.env, CI: '1' },
-    });
+  const vitest = (tests, timeout) =>
+    spawnSync(
+      process.execPath,
+      [join(copy, 'node_modules/vitest/vitest.mjs'), 'run', '--pool=threads', ...tests],
+      {
+        cwd: copy,
+        encoding: 'utf8',
+        env: { ...process.env, CI: '1' },
+        maxBuffer: 64 * 1024 * 1024,
+        ...(timeout ? { timeout } : {}),
+      },
+    );
 
   for (const specPath of specs) {
     const spec = JSON.parse(readFileSync(resolve(root, specPath), 'utf8'));
     console.log(
       `== ${specPath}: ${spec.mutations.length} mutações, testes ${spec.tests.join(' ')}`,
     );
+    const started = Date.now();
     const base = vitest(spec.tests);
+    const limit = Math.max(60_000, 5 * (Date.now() - started));
     if (base.status !== 0) {
       console.log('  a linha de base (sem mutação) já falha: nada a conferir');
       console.log(base.stdout.slice(-2000));
@@ -123,7 +136,8 @@ try {
         verdict = `?? não aplicada (${missing})`;
         failed = true;
       } else {
-        const run = vitest(spec.tests);
+        const run = vitest(spec.tests, limit);
+        const timedOut = run.error?.code === 'ETIMEDOUT';
         const names = (run.stdout + run.stderr)
           .split('\n')
           .filter((l) => l.trim().startsWith('×'))
@@ -133,7 +147,10 @@ try {
               .replace(/^× /, '')
               .replace(/ \d+ms$/, ''),
           );
-        if (run.status !== 0) {
+        if (timedOut) {
+          caught++;
+          verdict = `PEGA   tempo esgotado (${Math.round(limit / 1000)} s): um teste não terminou`;
+        } else if (run.status !== 0) {
           caught++;
           verdict = `PEGA   ${names.length} teste(s) falharam${names[0] ? `: ${names[0].slice(0, 90)}` : ''}`;
         } else if (m.equivalent) {
