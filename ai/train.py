@@ -15,12 +15,18 @@ network for the first --warmup updates (a critic that knows nothing yet
 would push the policy around) and goes on with both. The network as it is
 after imitation alone is exported too (<name>-imitacao), so the benchmark
 shows what PPO added on top of it.
+
+Every --checkpoint-every decisions the run is saved in ai/runs/<name>/
+(model, reward normalization, episodes so far); --resume continues an
+interrupted run from there with the same command. A resumed run is not bit
+for bit the uninterrupted one (the engines restart their episodes).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -47,6 +53,39 @@ class EpisodeLog(BaseCallback):
         for info in self.locals["infos"]:
             if "episode" in info:
                 self.episodes.append({**info["episode"], "step": int(self.num_timesteps)})
+        return True
+
+
+CHECKPOINT = ("checkpoint.zip", "checkpoint-vecnormalize.pkl", "checkpoint.json")
+
+
+def save_checkpoint(model, run_dir: Path, state: dict) -> None:
+    """Writes the three files under temporary names, then swaps them in (the state last)."""
+    tmp = {name: run_dir / f"tmp-{name}" for name in CHECKPOINT}
+    model.save(tmp["checkpoint.zip"])
+    model.get_vec_normalize_env().save(str(tmp["checkpoint-vecnormalize.pkl"]))
+    tmp["checkpoint.json"].write_text(json.dumps(state), encoding="utf-8")
+    for name in CHECKPOINT:
+        os.replace(tmp[name], run_dir / name)
+
+
+class Checkpoint(BaseCallback):
+    """Saves the run every `every` decisions (see save_checkpoint)."""
+
+    def __init__(self, every: int, run_dir: Path, state) -> None:
+        super().__init__()
+        self.every = every
+        self.run_dir = run_dir
+        self.state = state
+        self.next = every
+
+    def _on_training_start(self) -> None:
+        self.next = (self.num_timesteps // self.every + 1) * self.every
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps >= self.next:
+            self.next += self.every
+            save_checkpoint(self.model, self.run_dir, {"steps": self.num_timesteps, **self.state()})
         return True
 
 
@@ -182,6 +221,8 @@ def main() -> None:
     ap.add_argument("--clip", type=float, default=0.2)
     ap.add_argument("--imitate", type=int, default=0, help="episodes of heuristic demonstrations (0: random start)")
     ap.add_argument("--warmup", type=int, default=10, help="updates of the value network alone after imitation")
+    ap.add_argument("--checkpoint-every", type=int, default=250_000, help="decisions between saves of the run")
+    ap.add_argument("--resume", action="store_true", help="continue an interrupted run from its last checkpoint")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")  # the Windows console defaults to cp1252
     # The engines are separate processes; one PyTorch thread leaves the cores to them.
@@ -196,21 +237,43 @@ def main() -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     torch.manual_seed(args.seed)
-    venv = GemeoVecEnv(args.envs, seed=args.seed, reward=reward)
-    info = venv.servers[0].info
-    env = VecNormalize(venv, norm_obs=False, norm_reward=True, gamma=0.99)
-    n_steps = 256
-    model = PPO(
-        "MlpPolicy", env, n_steps=n_steps, batch_size=n_steps * args.envs // 4, n_epochs=10,
-        learning_rate=args.lr,
-        gamma=0.99, gae_lambda=0.95, clip_range=args.clip, ent_coef=args.ent,
-        policy_kwargs={"net_arch": {"pi": [128, 128], "vf": [128, 128]}},
-        seed=args.seed, device="cpu", verbose=0,
-    )
-    model.set_logger(configure(str(run_dir), ["csv", "stdout"]))
+    log = EpisodeLog()
     imitation = None
-    callbacks: list[BaseCallback] = [log := EpisodeLog()]
-    if args.imitate:
+    wall_before = 0.0
+    if args.resume:
+        saved = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
+        # SB3's CSV logger starts progress.csv over: the part before the interruption is kept
+        # apart, without the rows logged after the checkpoint (that stretch of training is lost).
+        part = len(list(run_dir.glob("progress.part*.csv"))) + 1
+        rows = (run_dir / "progress.csv").read_text(encoding="utf-8").splitlines()
+        steps_col = rows[0].split(",").index("time/total_timesteps")
+        kept = [rows[0]] + [r for r in rows[1:] if int(r.split(",")[steps_col]) <= saved["steps"]]
+        (run_dir / f"progress.part{part}.csv").write_text("\n".join(kept) + "\n", encoding="utf-8")
+        (run_dir / "progress.csv").unlink()
+        # Other episodes than the ones the run started with.
+        venv = GemeoVecEnv(args.envs, seed=args.seed * 1_000_003 + saved["steps"], reward=reward)
+        info = venv.servers[0].info
+        env = VecNormalize.load(str(run_dir / "checkpoint-vecnormalize.pkl"), venv)
+        model = PPO.load(run_dir / "checkpoint.zip", env=env, device="cpu")
+        log.episodes = saved["episodes"]
+        imitation = saved.get("imitation")
+        wall_before = saved["wallSeconds"]
+        print(f"retomando de {model.num_timesteps} decisões", flush=True)
+    else:
+        venv = GemeoVecEnv(args.envs, seed=args.seed, reward=reward)
+        info = venv.servers[0].info
+        env = VecNormalize(venv, norm_obs=False, norm_reward=True, gamma=0.99)
+        n_steps = 256
+        model = PPO(
+            "MlpPolicy", env, n_steps=n_steps, batch_size=n_steps * args.envs // 4, n_epochs=10,
+            learning_rate=args.lr,
+            gamma=0.99, gae_lambda=0.95, clip_range=args.clip, ent_coef=args.ent,
+            policy_kwargs={"net_arch": {"pi": [128, 128], "vf": [128, 128]}},
+            seed=args.seed, device="cpu", verbose=0,
+        )
+    model.set_logger(configure(str(run_dir), ["csv", "stdout"]))
+    callbacks: list[BaseCallback] = [log]
+    if args.imitate and not args.resume:
         t = time.time()
         data = demonstrations(args.imitate, run_dir / "demos", args.seed, info["observationSize"],
                               info["decisions"])
@@ -222,8 +285,13 @@ def main() -> None:
         })
         callbacks.append(CriticWarmup(args.warmup))
     t0 = time.time()
-    model.learn(total_timesteps=args.steps, callback=callbacks)
-    wall = time.time() - t0
+    callbacks.append(Checkpoint(args.checkpoint_every, run_dir, lambda: {
+        "episodes": log.episodes, "imitation": imitation,
+        "wallSeconds": wall_before + time.time() - t0,
+    }))
+    model.learn(total_timesteps=args.steps - model.num_timesteps, callback=callbacks,
+                reset_num_timesteps=not args.resume)
+    wall = wall_before + time.time() - t0
     model.save(run_dir / "model.zip")
     env.close()
 

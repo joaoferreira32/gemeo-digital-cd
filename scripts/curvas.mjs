@@ -11,7 +11,7 @@
  * build, 40 seeds per scenario in 4 processes.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 const rounds = process.argv.slice(2);
 if (!rounds.length) {
@@ -61,15 +61,22 @@ for (const policy of ['static', 'heuristic']) {
 }
 
 const curves = rounds.map((name) => {
-  const lines = readFileSync(`ai/runs/${name}/progress.csv`, 'utf8').trim().split(/\r?\n/);
-  const head = lines[0].split(',');
-  const x = head.indexOf('time/total_timesteps');
-  const y = head.indexOf('rollout/ep_rew_mean');
-  const points = lines
-    .slice(1)
-    .map((l) => l.split(','))
-    .filter((r) => r[y] !== '' && Number.isFinite(Number(r[y])))
-    .map((r) => [Number(r[x]), Number(r[y])]);
+  // A resumed run keeps the part before each interruption in progress.partN.csv.
+  const dir = `ai/runs/${name}`;
+  const parts = readdirSync(dir)
+    .filter((f) => /^progress\.part\d+\.csv$/.test(f))
+    .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+  const points = [...parts, 'progress.csv'].flatMap((file) => {
+    const lines = readFileSync(`${dir}/${file}`, 'utf8').trim().split(/\r?\n/);
+    const head = lines[0].split(',');
+    const x = head.indexOf('time/total_timesteps');
+    const y = head.indexOf('rollout/ep_rew_mean');
+    return lines
+      .slice(1)
+      .map((l) => l.split(','))
+      .filter((r) => r[y] !== '' && Number.isFinite(Number(r[y])))
+      .map((r) => [Number(r[x]), Number(r[y])]);
+  });
   return { name, points };
 });
 
