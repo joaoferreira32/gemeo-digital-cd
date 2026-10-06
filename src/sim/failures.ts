@@ -46,7 +46,14 @@ export type SimEventKind =
   | 'robot-stuck'
   | 'robot-moving'
   /** The motor monitoring raised an alarm on a conveyor (predictive maintenance). */
-  | 'maintenance';
+  | 'maintenance'
+  /** The maintenance schedule (schedule.ts): planned or postponed, started, done, too late. */
+  | 'service-planned'
+  | 'service-start'
+  | 'service-end'
+  | 'service-lost'
+  /** A planned maintenance found the wear: the breakdown will not happen. */
+  | 'failure-avoided';
 
 /** Something worth telling the viewer; the text is ready to show (pt-BR). */
 export interface SimEvent {
@@ -193,6 +200,8 @@ export class FailureInjector {
   inject(kind: FailureKind, now: number, target?: number): ActiveFailure | null {
     const t = target ?? this.pickTarget(kind);
     if (t === null || this.isActive(kind, t)) return null;
+    // A belt stopped for maintenance cannot break down on top of it.
+    if (kind === 'conveyor' && this.host.isConveyorBroken(t)) return null;
     const [lo, hi] = DURATION[kind];
     const endsAt = now + lo + (hi - lo) * this.rng.next();
     // A sudden breakdown of a belt that was wearing out ends its wear (it gets repaired).
@@ -282,6 +291,12 @@ export class FailureInjector {
       }
       this.nextAutoAt = now + this.rng.exponential(1 / this.autoMeanInterval);
     }
+  }
+
+  /** A planned maintenance on a conveyor: its wear, if any, is gone. Returns the wear it found. */
+  service(target: number): Degradation | null {
+    const i = this.degrading.findIndex((d) => d.target === target);
+    return i < 0 ? null : (this.degrading.splice(i, 1)[0] as Degradation);
   }
 
   private isWearing(target: number): boolean {

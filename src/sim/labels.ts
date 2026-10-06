@@ -24,4 +24,9 @@ export const EVENT_LABEL: Record<SimEventKind, string> = {
   'robot-stuck': 'Robô travado',
   'robot-moving': 'Robô voltou a andar',
   maintenance: 'Manutenção preditiva',
+  'service-planned': 'Manutenção agendada',
+  'service-start': 'Manutenção sem desgaste',
+  'service-end': 'Fim da manutenção',
+  'service-lost': 'Quebra antes da manutenção',
+  'failure-avoided': 'Falha evitada',
 };

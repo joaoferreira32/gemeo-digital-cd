@@ -79,10 +79,20 @@ export class HeuristicRouting {
     this.cost = router.decisions.map(() => ({ primary: 0, alternative: 0 }));
   }
 
-  /** Recomputes the target shares from the belts as they are and moves the shares toward them. */
-  update(conveyors: readonly Conveyor[], lanes: readonly BypassLane[]): void {
+  /**
+   * Recomputes the target shares from the belts as they are and moves the
+   * shares toward them. `closing` marks belts being emptied for a planned
+   * maintenance (schedule.ts): a way through one counts as cut, like a broken
+   * belt nobody bridges.
+   */
+  update(
+    conveyors: readonly Conveyor[],
+    lanes: readonly BypassLane[],
+    closing?: ArrayLike<number>,
+  ): void {
     const laneOf = new Map(lanes.map((l) => [l.edgeId, l]));
     const edgeCost = (e: number) => {
+      if (closing?.[e]) return Infinity;
       const c = conveyors[e] as Conveyor;
       const travel = c.length / c.speed;
       if (c.status !== 'ok') {

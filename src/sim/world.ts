@@ -24,6 +24,7 @@ import { deriveSeed, Rng } from './rng';
 import type { Router } from './router';
 import { SplitRouter } from './routing';
 import { MotorHealth, type DetectorParams } from './health';
+import { MaintenanceSchedule, type ScheduleHost, type ScheduleParams } from './schedule';
 import {
   DEFAULT_HEURISTIC,
   HeuristicRouting,
@@ -66,6 +67,14 @@ export interface SimConfig {
   readonly heuristic?: Partial<HeuristicParams>;
   /** Parameters of the motor alarm (CUSUM; calibrated on the validation seeds). */
   readonly detector?: Partial<DetectorParams>;
+  /**
+   * The operations AI schedules a maintenance on every motor alarm (phase 4b,
+   * schedule.ts). Off by default, so the runs of the earlier phases, and
+   * their published numbers, stay exactly as they were.
+   */
+  readonly scheduleMaintenance: boolean;
+  /** Parameters of the maintenance schedule (the window is calibrated on the validation seeds). */
+  readonly schedule?: Partial<ScheduleParams>;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -83,13 +92,14 @@ export const DEFAULT_CONFIG: SimConfig = {
   robots: 40,
   rackOrderRate: 0.25,
   robotBypass: true,
+  scheduleMaintenance: false,
 };
 
 /** Events kept for the UI (captions, history). */
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 6;
+const CHECKPOINT_VERSION = 7;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -98,7 +108,7 @@ const PACKET_STATES: readonly PacketState[] = [
   'robot',
   'staged',
 ];
-const CONVEYOR_STATUSES: readonly ConveyorStatus[] = ['ok', 'broken'];
+const CONVEYOR_STATUSES: readonly ConveyorStatus[] = ['ok', 'broken', 'maintenance'];
 const TRUCK_STATES: readonly TruckState[] = ['docked', 'loading', 'away'];
 
 /** The complete changing state of a world at one tick. */
@@ -162,7 +172,7 @@ export interface WorldStats {
  * No rendering, no wall clock, no Math.random: `step()` advances exactly `dt`
  * seconds and the same config always produces the same sequence of states.
  */
-export class World implements FleetHost, FailureHost {
+export class World implements FleetHost, FailureHost, ScheduleHost {
   readonly config: SimConfig;
   readonly layout: WarehouseLayout;
   /** One conveyor per graph edge, indexed by edge id. */
@@ -192,6 +202,8 @@ export class World implements FleetHost, FailureHost {
   readonly failures: FailureInjector;
   /** Simulated condition monitoring of the conveyor motors (predictive maintenance). */
   readonly health: MotorHealth;
+  /** Maintenance planned on the motor alarms (does nothing unless config.scheduleMaintenance). */
+  readonly schedule: MaintenanceSchedule;
   /** Latest events, oldest first (bounded). */
   readonly events: SimEvent[] = [];
   private nextEventId = 1;
@@ -207,6 +219,12 @@ export class World implements FleetHost, FailureHost {
   policy: RoutingPolicy = 'static';
   /** Steps in one simulated second (the heuristic and the motor readings run once a second). */
   private readonly ticksPerSecond: number;
+  /**
+   * Seconds to empty each belt by routing around it: its length plus its
+   * longest feeder's, at belt speed; 0 for belts on no routing choice (their
+   * traffic has no other way).
+   */
+  private readonly drainTime: Float64Array;
   /** Called on every delivery to a dock (evaluations); not part of the state. */
   onDelivery: ((packet: Packet, byRobot: boolean) => void) | null = null;
   private readonly orderRng: Rng;
@@ -268,7 +286,19 @@ export class World implements FleetHost, FailureHost {
     }
     this.failures = new FailureInjector(this, this.config.seed);
     this.health = new MotorHealth(this.conveyors.length, this.config.seed, this.config.detector);
+    this.schedule = new MaintenanceSchedule(
+      this,
+      this.config.scheduleMaintenance,
+      this.config.schedule,
+    );
     this.ticksPerSecond = Math.round(1 / this.config.dt);
+    this.drainTime = new Float64Array(this.conveyors.length);
+    const onAWay = new Set(this.heuristic.ways.flatMap((w) => [...w.primary, ...w.alternative]));
+    for (const e of graph.edges) {
+      if (!onAWay.has(e.id)) continue;
+      const feeder = Math.max(0, ...graph.node(e.from).inEdges.map((f) => graph.edge(f).length));
+      this.drainTime[e.id] = Math.ceil((e.length + feeder) / this.config.conveyorSpeed);
+    }
   }
 
   private createLanes(fleet: Fleet): void {
@@ -393,6 +423,7 @@ export class World implements FleetHost, FailureHost {
     this.routing.save(w);
     this.failures.save(w);
     this.health.save(w);
+    this.schedule.save(w);
     this.fleet?.save(w);
     return { tick: this.tick, state: w.finish() };
   }
@@ -477,6 +508,7 @@ export class World implements FleetHost, FailureHost {
     this.routing.load(r);
     this.failures.load(r);
     this.health.load(r);
+    this.schedule.load(r);
     this.fleet?.load(r, packet);
     r.end();
     this.events.length = 0;
@@ -645,6 +677,33 @@ export class World implements FleetHost, FailureHost {
     this.setConveyorStatus(edgeId, broken ? 'broken' : 'ok');
   }
 
+  // ---------------------------------------------------------------- ScheduleHost
+
+  serviceWear(edgeId: number) {
+    return this.failures.service(edgeId);
+  }
+
+  /**
+   * Orders per second expected at time `t`, from what is known now: the base
+   * rate, times the surge factor until a running surge ends (its length is
+   * announced when it starts).
+   */
+  forecastRate(t: number): number {
+    const surge = this.failures.active.find((f) => f.kind === 'surge');
+    return surge && t < surge.endsAt
+      ? this.baseArrivalRate * this.surgeFactor
+      : this.baseArrivalRate;
+  }
+
+  /** Only the congestion heuristic routes around a belt being emptied. */
+  drainSeconds(edgeId: number): number {
+    return this.policy === 'heuristic' ? (this.drainTime[edgeId] as number) : 0;
+  }
+
+  emitService(kind: SimEventKind, text: string, edgeId: number): void {
+    this.push(kind, text, { target: edgeId, about: [`conveyor:${edgeId}`] });
+  }
+
   /** Multiplies the order rates (inbound and racks) while a surge lasts. */
   setSurge(factor: number): void {
     this.surgeFactor = factor;
@@ -710,7 +769,7 @@ export class World implements FleetHost, FailureHost {
     const second = this.tick % this.ticksPerSecond === 0;
     this.failures.update(now);
     if (this.policy === 'heuristic' && second) {
-      this.heuristic.update(this.conveyors, this.lanes);
+      this.heuristic.update(this.conveyors, this.lanes, this.schedule.closing);
     }
     this.generateOrders(now);
     this.updateLanes();
@@ -720,7 +779,10 @@ export class World implements FleetHost, FailureHost {
     this.induct();
     this.fleet?.update(this.tick, now, dt);
     this.updateTrucks(dt);
-    if (second) this.health.update(now, this.conveyors, this.failures.degrading, this.alarm);
+    if (second) {
+      this.health.update(now, this.conveyors, this.failures.degrading, this.alarm);
+      if (this.schedule.enabled) this.schedule.update(now);
+    }
     this.metrics.evict(now);
   }
 
@@ -733,6 +795,7 @@ export class World implements FleetHost, FailureHost {
       `${this.conveyorLabel(edgeId)}: motor fora do padrão (vibração ${one(h.vibration[edgeId] as number)} mm/s, ${one(h.temperature[edgeId] as number)} °C), risco de quebra`,
       { target: edgeId, about: [`conveyor:${edgeId}`] },
     );
+    this.schedule.alarm(edgeId, this.time);
   };
 
   stepMany(steps: number): void {

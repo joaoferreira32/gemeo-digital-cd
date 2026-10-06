@@ -91,8 +91,9 @@ export const ROBOT = {
 export const DOCK_STRIDE = 6; // staged truckState awayLeft truckLoad blocked blockedLeft
 export const LANE_STRIDE = 4; // active pickup drop carried
 export const FAILURE_STRIDE = 5; // kind target startedAt endsAt id
-export const CONVEYOR_STRIDE = 6; // status blocked vibration temperature risk alarm
+export const CONVEYOR_STRIDE = 8; // status blocked vibration temperature risk alarm service avoidedAt
 export const CONVEYOR = {
+  /** 0 running · 1 broken · 2 stopped for a planned maintenance. */
   status: 0,
   blocked: 1,
   /** Simulated motor readings (mm/s, °C) and the alarm level 0 … 1 (health.ts). */
@@ -100,6 +101,10 @@ export const CONVEYOR = {
   temperature: 3,
   risk: 4,
   alarm: 5,
+  /** Maintenance schedule: 0 nothing · 1 planned (emptying) · 2 in maintenance. */
+  service: 6,
+  /** When the last failure avoided on this belt was found (s), or -1. */
+  avoidedAt: 7,
 } as const;
 
 export const STAGES: readonly RobotStage[] = ROBOT_STAGES;
@@ -451,9 +456,10 @@ export class SnapshotWriter {
       v.failures[o + 4] = f.id;
     });
     const health = w.health;
+    const schedule = w.schedule;
     w.conveyors.forEach((c, k) => {
       const o = k * CONVEYOR_STRIDE;
-      v.conveyors[o + CONVEYOR.status] = c.status === 'ok' ? 0 : 1;
+      v.conveyors[o + CONVEYOR.status] = c.status === 'ok' ? 0 : c.status === 'broken' ? 1 : 2;
       let blocked = 0;
       for (const p of c.packets) if (p.blocked) blocked++;
       v.conveyors[o + CONVEYOR.blocked] = blocked;
@@ -461,6 +467,8 @@ export class SnapshotWriter {
       v.conveyors[o + CONVEYOR.temperature] = health.temperature[k] as number;
       v.conveyors[o + CONVEYOR.risk] = health.risk(k);
       v.conveyors[o + CONVEYOR.alarm] = health.alarm[k] as number;
+      v.conveyors[o + CONVEYOR.service] = schedule.stateOf(k);
+      v.conveyors[o + CONVEYOR.avoidedAt] = schedule.avoidedAt[k] as number;
     });
     v.shares.set(w.routing.share);
 
