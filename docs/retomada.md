@@ -1,7 +1,8 @@
 # Retomada da Fase 4 (IA de operações)
 
-Parado em 2026-10-05, às 17h45, a pedido (máquina desligada). Branch `fase-4`,
-enviado ao GitHub como backup (ainda sem PR).
+Parado em 2026-10-05, às 17h45, a pedido (máquina desligada). Retomado em
+2026-10-06: checkpoints no `train.py` feitos (passo 2) e a rodada 2 rodando de
+novo (passo 3). Branch `fase-4`, enviado ao GitHub como backup (ainda sem PR).
 
 ## Onde parou
 
@@ -42,17 +43,22 @@ enviado ao GitHub como backup (ainda sem PR).
 
 1. Conferir o estado ao retomar: `git status`, `git diff`, `git stash list`,
    `git worktree list`, e que nenhum processo antigo ficou rodando.
-2. Dar ao `train.py` checkpoints periódicos (modelo, estatísticas do
-   `VecNormalize` e passo atual a cada ~250 mil decisões) e `--resume`, para uma
-   interrupção não custar mais que alguns minutos. Testar com um treino curto.
+2. ~~Checkpoints periódicos e `--resume` no `train.py`~~ (feito em 2026-10-06:
+   a cada 250 mil decisões; testado matando um treino curto depois do primeiro
+   checkpoint e retomando até o fim).
 3. Rodar a rodada 2 de novo, com a mesma configuração (é a mesma rodada, não uma
-   nova; cerca de 75 min):
+   nova; cerca de 75 min). **Em andamento desde 2026-10-06, 11h10.** A rede só
+   imitada saiu idêntica bit a bit à já avaliada (mesmo hash). Se for
+   interrompida, o mesmo comando com `--resume` continua do último checkpoint:
    `ai/.venv/Scripts/python ai/train.py --name rodada2 --imitate 400 --lr 1e-4 --ent 0.001 --clip 0.1 --seed 2`
+   (a tentativa interrompida em 2026-10-05 está em `ai/runs/rodada2-interrompida/`).
 4. Avaliar nas seeds de validação: `npm run bench:rotas -- --rl rodada2-imitacao,rodada2`
    e `npm run bench:oscilacao -- --rl rodada2-imitacao,rodada2` (completa a
    medição de oscilação com a rede final).
 5. Se a rede final não cumprir o critério, decidir se vale a rodada 3 (a última
    do prazo, até 2M decisões), com o ajuste justificado pela validação.
+   Depois da rodada 2 (aprovado): teste causal da suavização, só como análise,
+   com a heurística oficial sem mudança.
 6. Escrever em `docs/resultados.md` qual é a candidata principal e por quê, só
    com a validação, e **commitar antes** de tocar nas seeds de teste.
 7. Passada única nas seeds de teste:
@@ -73,5 +79,7 @@ enviado ao GitHub como backup (ainda sem PR).
 
 - CUSUM por sinal, além do combinado, para pegar parte dos 23% de desgastes que
   aparecem num sinal só (troca por mais alarmes falsos com pancadas e enroscos).
-- Teste causal da hipótese da suavização: rodar a heurística com suavização 0,15
-  no pico e nas falhas, só como análise (sem mudar a heurística calibrada).
+  Recomendação dada: não fazer na Fase 4; registrar no README como próximo passo.
+
+Decidido: teste causal da suavização aprovado (depois da rodada 2, só como
+análise, heurística oficial sem mudança).
