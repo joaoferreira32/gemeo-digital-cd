@@ -128,16 +128,19 @@ class Correction {
     return (this.a[i] as number) * f0 + (this.b[i] as number) * f1;
   }
 
-  /** Prediction error and its expected variance (the z of this signal is e / √s). */
-  innovation(i: number, y: number, f0: number, f1: number): { e: number; s: number } {
+  /** Prediction error of the last innovation and its expected variance (z = e / √s). */
+  e = 0;
+  s = 0;
+
+  /** Sets `e` and `s` for motor i (fields, not an object: it runs for every motor every second). */
+  innovation(i: number, y: number, f0: number, f1: number): void {
     const p00 = (this.p00[i] as number) + this.q00;
     const p01 = this.p01[i] as number;
     const p11 = (this.p11[i] as number) + this.q11;
     this.p00[i] = p00;
     this.p11[i] = p11;
-    const e = y - this.predict(i, f0, f1);
-    const s = f0 * (p00 * f0 + p01 * f1) + f1 * (p01 * f0 + p11 * f1) + this.r;
-    return { e, s };
+    this.e = y - this.predict(i, f0, f1);
+    this.s = f0 * (p00 * f0 + p01 * f1) + f1 * (p01 * f0 + p11 * f1) + this.r;
   }
 
   /** Learns from the last innovation of motor i. */
@@ -295,23 +298,22 @@ export class MotorHealth {
         shake = this.disturbanceVibration[i] as number;
         rub = this.disturbanceHeat[i] as number;
       }
-      const heatTarget = running
-        ? AMBIENT +
-          (this.heat[i] as number) +
-          (this.heatPerLoad[i] as number) * load +
-          (this.severityT[i] as number) * WEAR.temperature * wear ** 1.5 +
-          rub
-        : AMBIENT;
+      // The wear terms are exactly 0 without wear: skipping them gives the same bits.
+      let heatTarget = AMBIENT;
+      if (running) {
+        heatTarget = AMBIENT + (this.heat[i] as number) + (this.heatPerLoad[i] as number) * load;
+        if (wear > 0) heatTarget += (this.severityT[i] as number) * WEAR.temperature * wear ** 1.5;
+        heatTarget += rub;
+      }
       this.trueTemperature[i] =
         (this.trueTemperature[i] as number) +
         (heatTarget - (this.trueTemperature[i] as number)) * LAG;
-      const vibration = running
-        ? (this.base[i] as number) +
-          (this.vibrationPerLoad[i] as number) * load +
-          (this.severityV[i] as number) * WEAR.vibration * wear * wear +
-          shake +
-          NOISE.vibration * gv
-        : 0.05 * Math.abs(gv);
+      let vibration = 0.05 * Math.abs(gv);
+      if (running) {
+        vibration = (this.base[i] as number) + (this.vibrationPerLoad[i] as number) * load;
+        if (wear > 0) vibration += (this.severityV[i] as number) * WEAR.vibration * wear * wear;
+        vibration = vibration + shake + NOISE.vibration * gv;
+      }
       const temperature = (this.trueTemperature[i] as number) + NOISE.temperature * gt;
       this.vibration[i] = vibration;
       this.temperature[i] = temperature;
@@ -342,11 +344,15 @@ export class MotorHealth {
       }
       yt -= this.thermalOffset[i] as number;
       this.thermalOffset[i] = (this.thermalOffset[i] as number) * (1 - LAG);
-      const v = this.vibrationFilter.innovation(i, yv, 1, load);
-      const t = this.temperatureFilter.innovation(i, yt, lagRun, lagLoad);
-      const z =
-        (Math.min(Z_CAP, v.e / Math.sqrt(v.s)) + Math.min(Z_CAP, t.e / Math.sqrt(t.s))) /
-        Math.SQRT2;
+      const vf = this.vibrationFilter;
+      const tf = this.temperatureFilter;
+      vf.innovation(i, yv, 1, load);
+      tf.innovation(i, yt, lagRun, lagLoad);
+      const { e: ve, s: vs } = vf;
+      const { e: te, s: ts } = tf;
+      const vSpread = Math.sqrt(vs);
+      const tSpread = Math.sqrt(ts);
+      const z = (Math.min(Z_CAP, ve / vSpread) + Math.min(Z_CAP, te / tSpread)) / Math.SQRT2;
       this.score[i] = z;
       this.onScore?.(i, z);
       const sum = Math.max(0, (this.sum[i] as number) + z - allowance);
@@ -357,12 +363,8 @@ export class MotorHealth {
       } else if (this.alarm[i] && sum === 0) {
         this.alarm[i] = 0;
       }
-      if (Math.abs(v.e) < LEARN_WITHIN * Math.sqrt(v.s)) {
-        this.vibrationFilter.learn(i, v.e, v.s, 1, load);
-      }
-      if (Math.abs(t.e) < LEARN_WITHIN * Math.sqrt(t.s)) {
-        this.temperatureFilter.learn(i, t.e, t.s, lagRun, lagLoad);
-      }
+      if (Math.abs(ve) < LEARN_WITHIN * vSpread) vf.learn(i, ve, vs, 1, load);
+      if (Math.abs(te) < LEARN_WITHIN * tSpread) tf.learn(i, te, ts, lagRun, lagLoad);
     }
   }
 

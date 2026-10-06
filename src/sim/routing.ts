@@ -36,14 +36,20 @@ export class SplitRouter implements Router {
   readonly share: Float64Array;
   private readonly carry: Float64Array;
   private readonly tables = new Map<number, Int32Array>();
-  /** Decision index at (node, dock), or absent. */
-  private readonly byNodeDock = new Map<number, number>();
+  /** Decision index at [dock × nodes + node], or -1; the static choice at the same place. */
+  private readonly decisionTable: Int32Array;
+  private readonly staticTable: Int32Array;
   private readonly nodeCount: number;
 
   constructor(graph: Graph, docks: readonly number[]) {
     this.nodeCount = graph.nodes.length;
+    // Flat tables, read for every packet at every junction (a Map lookup there showed in the benchmark).
+    this.decisionTable = new Int32Array(this.nodeCount * this.nodeCount).fill(-1);
+    this.staticTable = new Int32Array(this.nodeCount * this.nodeCount).fill(-1);
     for (const dock of docks) {
-      this.tables.set(dock, shortestPathTree(graph, dock, (e) => e.length).next);
+      const next = shortestPathTree(graph, dock, (e) => e.length).next;
+      this.tables.set(dock, next);
+      this.staticTable.set(next, dock * this.nodeCount);
     }
     const reaches = (from: number, dock: number) =>
       from === dock ||
@@ -94,7 +100,7 @@ export class SplitRouter implements Router {
           docks: group,
           label: `${node.name} → Docas ${Math.min(...nos)}–${Math.max(...nos)}`,
         });
-        for (const d of group) this.byNodeDock.set(d * this.nodeCount + node.id, id);
+        for (const d of group) this.decisionTable[d * this.nodeCount + node.id] = id;
       }
     }
     const n = this.decisions.length;
@@ -104,12 +110,12 @@ export class SplitRouter implements Router {
 
   /** Decision taken at `node` for packets bound to `dock`, or -1. */
   decisionAt(node: number, dock: number): number {
-    return this.byNodeDock.get(dock * this.nodeCount + node) ?? -1;
+    return this.decisionTable[dock * this.nodeCount + node] ?? -1;
   }
 
   /** The static choice (what a share of 0 does). */
   staticEdge(node: number, dock: number): number {
-    return this.tables.get(dock)?.[node] ?? -1;
+    return this.staticTable[dock * this.nodeCount + node] ?? -1;
   }
 
   nextEdge(nodeId: number, packet: Packet): number {
