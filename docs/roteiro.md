@@ -137,6 +137,14 @@ feito em cada fase está no README e em `docs/resultados.md`.
   feito.
 - **2026-10-06, ordem até o fim.** Fase 4b, depois Fase 5, depois Fase 6. O
   vídeo só é gravado com o projeto inteiro pronto.
+- **2026-10-06, plano da Fase 4b.** Aprovado com três ajustes: o prazo da
+  agenda sai de um percentil baixo da antecedência (p10 ou p20, escolhido nas
+  seeds de validação e justificado), e mede-se quantas quebras aconteceram
+  enquanto a manutenção esperava; além de medir se o detector aponta o gargalo,
+  mede-se o percentual de causas corretas, comparando a causa explicada com a
+  falha que o injetor realmente aplicou; e a avaliação final da 4b usa um
+  conjunto de teste novo, as seeds 30.011 a 30.020, registrado em
+  `docs/resultados.md` antes de medir.
 - **2026-10-06, Fase 5.** Plano aprovado com um ajuste: o atalho do laboratório
   não pode ser a tecla L (já é "voltar ao vivo" da linha do tempo), e todos os
   atalhos são conferidos para não haver conflito. A licença do dataset da Olist

@@ -692,6 +692,37 @@ imitação (`ai/check_imitation.py`).
 
 ---
 
+## Fase 4b — gargalo explicado e manutenção agendada
+
+### Protocolo (registrado antes de qualquer medida da 4b)
+
+Registrado em 2026-10-06, antes de rodar qualquer medida desta fase.
+
+- **Seeds de validação:** 20.001 a 20.010, as mesmas da Fase 4. Nelas, e só
+  nelas, saem o prazo da agenda de manutenção e os limiares do detector de
+  gargalo.
+- **Seeds de teste novas:** 30.011 a 30.020, nunca usadas antes, para a
+  avaliação final da 4b, numa passada única (`--final`). As seeds 30.001 a
+  30.010 já serviram ao teste da Fase 4 e não entram aqui. O resultado do teste
+  é só reportado: nenhum parâmetro muda depois dele.
+- **Prazo da agenda:** a janela entre o alarme e o início da manutenção sai de
+  um percentil baixo da antecedência medida na validação (p10 ou p20, com a
+  escolha justificada pelos números da validação), não da mediana.
+- **Medidas da agenda** (pareadas por seed, com e sem agenda): quebras
+  evitadas (entre as que tinham desgaste e entre todas), quebras que
+  aconteceram enquanto a manutenção esperava, manutenções sem desgaste
+  encontrado por hora, tempo de esteira parada e p95 do ciclo. Premissa
+  declarada: a manutenção planejada leva 30 s, contra 60 a 90 s de uma quebra;
+  os números saem também com 45 e 60 s.
+- **Medidas do detector de gargalo:** em ensaios controlados (uma falha
+  aplicada de cada vez, numa operação sem outras falhas, comparada com a mesma
+  seed sem a falha): das falhas que formam fila, quantas ele aponta e em quanto
+  tempo; o **percentual de causas corretas**, comparando a causa explicada com
+  a falha que o injetor realmente aplicou; e quantos gargalos ele aponta por
+  hora sem nenhuma falha aplicada.
+
+---
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                               |
