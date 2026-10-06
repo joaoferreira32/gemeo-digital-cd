@@ -686,7 +686,7 @@ com impressões digitais idênticas bit a bit em três mundos de referência (co
 robôs, política externa, falhas automáticas e desgaste) e uma mutação nova pega
 (agregados não recontados depois de restaurar um checkpoint).
 
-**Testes:** 184 em 25 arquivos ao fim da fase (141 em 18 ao fim da Fase 3), mais
+**Testes:** 185 em 25 arquivos ao fim da fase (141 em 18 ao fim da Fase 3), mais
 2 testes de fidelidade em Python (`ai/test_fidelity.py`) e a conferência da
 imitação (`ai/check_imitation.py`).
 
