@@ -502,6 +502,10 @@ imitação + PPO), com o critério aplicado sem mudança às duas redes. A rodad
 não foi usada: o PPO acrescentou +0,2 ponto à imitação em 2M decisões, longe dos
 limiares.
 
+**Política oficial: heurística, decidida na validação.** A passada no teste é só
+para reportar os números finais das 4 políticas e do detector; o resultado do
+teste não muda essa decisão. (Registrado em 2026-10-06, antes de rodar o teste.)
+
 <!-- TESTE -->
 
 ### Manutenção preditiva (sinais simulados)
