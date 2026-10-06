@@ -193,6 +193,22 @@ describe('maintenance schedule', () => {
     expect(w.isConveyorBroken(NO_OTHER_WAY)).toBe(true);
   });
 
+  it('a breakdown avoided keeps its place in the limit of automatic failures until it would have ended', () => {
+    // Two wears take the two places; servicing one must not free its place
+    // early, or the automatic mode would apply more failures with the schedule.
+    const w = world();
+    runUntil(w, 10);
+    const a = w.failures.degrade(w.time, ON_A_WAY)!;
+    const b = w.failures.degrade(w.time, NO_OTHER_WAY)!;
+    expect(w.failures.service(ON_A_WAY)).toBe(a);
+    w.failures.setAuto(true, w.time);
+    const firstFree = Math.min(a.breaksAt + a.duration, b.breaksAt + b.duration);
+    for (let t = w.time + 1; t < firstFree - 1; t++) {
+      runUntil(w, t);
+      expect(w.failures.active.length + w.failures.degrading.length, `at ${t} s`).toBe(1);
+    }
+  });
+
   it('restored in the middle of a plan or of a maintenance, it continues bit for bit', () => {
     const bytes = (w: World) =>
       new Uint8Array(new SnapshotWriter(w).write({ speed: 1, stress: false }));

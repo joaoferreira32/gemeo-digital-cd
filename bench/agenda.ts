@@ -130,6 +130,7 @@ function report(label: string, without: readonly Tagged[], withIt: readonly Tagg
   const total = s.avoided + s.breakdowns;
   const stopped = (r: ScheduleRun) => r.brokenSeconds + r.serviceSeconds;
   const stuck = (r: ScheduleRun) => r.stuckBroken + r.stuckService;
+  const stuckSeconds = (r: ScheduleRun) => r.stuckSecondsBroken + r.stuckSecondsService;
   const rows = {
     p95: paired(
       without.map((r) => r.cycleP95),
@@ -148,6 +149,14 @@ function report(label: string, without: readonly Tagged[], withIt: readonly Tagg
     ),
     stopped: paired(without.map(stopped), withIt.map(stopped), true),
     stuck: paired(without.map(stuck), withIt.map(stuck), true),
+    stuckSeconds: paired(without.map(stuckSeconds), withIt.map(stuckSeconds), true),
+  };
+  const starts = withIt.flatMap((r) => r.starts);
+  const kind = (drainable: boolean) => {
+    const xs = starts.filter((x) => x.drainable === drainable);
+    const waits = xs.map((x) => x.wait).sort((a, b) => a - b);
+    const empty = xs.filter((x) => x.stuck === 0).length;
+    return `${xs.length} paradas, espera mediana ${q(waits, 0.5).toFixed(0)} s, ${pct(empty / xs.length)} vazias`;
   };
   console.log(`\n### ${label}\n`);
   console.log(`| O que | Resultado |`);
@@ -174,6 +183,17 @@ function report(label: string, without: readonly Tagged[], withIt: readonly Tagg
   console.log(
     `| Pacotes presos em esteira parada, redução | ${ci(rows.stuck)} (${sum(without, stuck)} → ${sum(withIt, stuck)}) |`,
   );
+  console.log(
+    `| Pacote·segundo em esteira parada, redução | ${ci(rows.stuckSeconds)} (${sum(without, stuckSeconds).toFixed(0)} → ${sum(withIt, stuckSeconds).toFixed(0)}) |`,
+  );
+  const load = (runs: readonly ScheduleRun[]) => {
+    const k = (f: keyof ScheduleRun['injected']) => sum(runs, (r) => r.injected[f]);
+    return `${k('wear')} desgastes, ${k('conveyor')} quebras de esteira, ${k('surge')} picos, ${k('robot')} robôs, ${k('dock')} docas`;
+  };
+  console.log(`| Falhas que o modo automático aplicou, sem a agenda | ${load(without)} |`);
+  console.log(`| Falhas que o modo automático aplicou, com a agenda | ${load(withIt)} |`);
+  console.log(`| Esteiras que a rota consegue esvaziar | ${kind(true)} |`);
+  console.log(`| Esteiras sem outro caminho para o fluxo | ${kind(false)} |`);
   return { label, score: s, rows };
 }
 

@@ -1,3 +1,4 @@
+import type { FailureKind } from '../sim/failures';
 import { quantile } from '../sim/recorder';
 import type { ScheduleParams, ServiceOutcome } from '../sim/schedule';
 import { World } from '../sim/world';
@@ -38,6 +39,8 @@ export interface ScheduleRun {
   readonly degradations: { id: number; target: number; onset: number; breaksAt: number }[];
   /** Motor alarms: second and belt. */
   readonly alarms: { time: number; motor: number }[];
+  /** Failures the automatic mode started, by kind, and wears started (the load the run faced). */
+  readonly injected: Record<FailureKind | 'wear', number>;
   /** How each maintenance plan ended (schedule on). */
   readonly outcomes: ServiceOutcome[];
   /** Belt-seconds stopped by breakdowns, and by planned maintenance. */
@@ -46,6 +49,11 @@ export interface ScheduleRun {
   /** Packets on a belt at the moment it stopped (they wait for it): breakdowns, maintenance. */
   readonly stuckBroken: number;
   readonly stuckService: number;
+  /** Packet-seconds on stopped belts (how many waited, and for how long): breakdowns, maintenance. */
+  readonly stuckSecondsBroken: number;
+  readonly stuckSecondsService: number;
+  /** Each maintenance started: the belt, the wait since its alarm, the packets left on it. */
+  readonly starts: { target: number; wait: number; stuck: number; drainable: boolean }[];
   /** Inbound packets delivered after the warm-up, and their cycle time (order to dock), s. */
   readonly delivered: number;
   readonly cycleMean: number;
@@ -76,11 +84,21 @@ export function recordScheduleRun(seed: number, options: ScheduleRunOptions): Sc
   >();
   const breakdowns = new Map<number, Breakdown>();
   const alarms: { time: number; motor: number }[] = [];
+  const injected: Record<FailureKind | 'wear', number> = {
+    conveyor: 0,
+    surge: 0,
+    robot: 0,
+    dock: 0,
+    wear: 0,
+  };
   const status = w.conveyors.map((c) => c.status);
   let brokenTicks = 0;
   let serviceTicks = 0;
   let stuckBroken = 0;
   let stuckService = 0;
+  let stuckTicksBroken = 0;
+  let stuckTicksService = 0;
+  const starts: ScheduleRun['starts'] = [];
   let lastEvent = 0;
   for (let t = 0; t < options.seconds * perSecond; t++) {
     w.step();
@@ -104,11 +122,25 @@ export function recordScheduleRun(seed: number, options: ScheduleRunOptions): Sc
       });
     }
     w.conveyors.forEach((c, i) => {
-      if (c.status === 'broken') brokenTicks++;
-      else if (c.status === 'maintenance') serviceTicks++;
+      if (c.status === 'broken') {
+        brokenTicks++;
+        stuckTicksBroken += c.packets.length;
+      } else if (c.status === 'maintenance') {
+        serviceTicks++;
+        stuckTicksService += c.packets.length;
+      }
       if (c.status !== status[i]) {
         if (status[i] === 'ok' && c.status === 'broken') stuckBroken += c.packets.length;
-        if (status[i] === 'ok' && c.status === 'maintenance') stuckService += c.packets.length;
+        if (status[i] === 'ok' && c.status === 'maintenance') {
+          stuckService += c.packets.length;
+          const o = outcomes.at(-1) as ServiceOutcome;
+          starts.push({
+            target: i,
+            wait: o.time - o.alarmAt,
+            stuck: c.packets.length,
+            drainable: w.drainSeconds(i) > 0,
+          });
+        }
         status[i] = c.status;
       }
     });
@@ -116,6 +148,7 @@ export function recordScheduleRun(seed: number, options: ScheduleRunOptions): Sc
       if (e.id <= lastEvent) continue;
       lastEvent = e.id;
       if (e.kind === 'maintenance') alarms.push({ time: e.time, motor: e.target as number });
+      if (e.kind === 'failure-start' && e.failure) injected[e.failure]++;
     }
   }
   let sum = 0;
@@ -128,11 +161,15 @@ export function recordScheduleRun(seed: number, options: ScheduleRunOptions): Sc
     breakdowns: [...breakdowns.values()],
     degradations: [...degradations.values()],
     alarms,
+    injected: { ...injected, wear: degradations.size },
     outcomes,
     brokenSeconds: brokenTicks / perSecond,
     serviceSeconds: serviceTicks / perSecond,
     stuckBroken,
     stuckService,
+    stuckSecondsBroken: stuckTicksBroken / perSecond,
+    stuckSecondsService: stuckTicksService / perSecond,
+    starts,
     delivered: cycles.length,
     cycleMean: cycles.length ? sum / cycles.length : NaN,
     cycleP95: quantile(cycles, 0.95),

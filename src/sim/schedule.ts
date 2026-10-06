@@ -43,10 +43,15 @@ export interface ScheduleParams {
 }
 
 /**
- * The window is calibrated on the validation seeds (npm run bench:agenda --
- * --calibrate); the duration is an assumption, measured at 30, 45 and 60 s.
+ * Window: 11 s, the p10 of the lead time of the motor alarms on the
+ * validation seeds (heuristic routing, automatic failures, 47 worn belts
+ * caught; npm run bench:agenda -- --calibrate). The p20 (15 s) gave exactly
+ * the same results, since the wait almost never reaches the deadline (it is
+ * the emptying, up to 10 s, or the end of a surge); the rule fixed before
+ * measuring then picks the shorter one. The duration is an assumption,
+ * measured at 30, 45 and 60 s.
  */
-export const DEFAULT_SCHEDULE: ScheduleParams = { window: 10, duration: 30, demandDrop: 0.2 };
+export const DEFAULT_SCHEDULE: ScheduleParams = { window: 11, duration: 30, demandDrop: 0.2 };
 
 /** What the schedule needs from the world. */
 export interface ScheduleHost {
