@@ -24,6 +24,7 @@ await build({
     'bench/rotas-job.ts',
     'bench/manutencao-job.ts',
     'bench/agenda-job.ts',
+    'bench/gargalo-job.ts',
   ],
   // Loaded from node_modules at run time: it ships WebAssembly next to its code.
   external: ['onnxruntime-web'],

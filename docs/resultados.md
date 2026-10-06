@@ -722,7 +722,13 @@ Registrado em 2026-10-06, antes de rodar qualquer medida desta fase.
   seed sem a falha): das falhas que formam fila, quantas ele aponta e em quanto
   tempo; o **percentual de causas corretas**, comparando a causa explicada com
   a falha que o injetor realmente aplicou; e quantos gargalos ele aponta por
-  hora sem nenhuma falha aplicada.
+  hora sem nenhuma falha aplicada. Uma falha "forma fila" quando deixa pelo
+  menos 10 pacotes a mais esperando (média de 10 s) do que a mesma seed sem
+  ela, enquanto dura ou nos 30 s seguintes. Regra da escolha dos limiares,
+  fixada antes de medir: entre as combinações com no máximo um gargalo por
+  hora sem falha aplicada, a que aponta com a causa certa (no primeiro aviso)
+  o maior número de falhas que formaram fila; no empate, menos gargalos sem
+  falha; depois, a menor mediana até apontar; depois, os valores atuais.
 
 ---
 
