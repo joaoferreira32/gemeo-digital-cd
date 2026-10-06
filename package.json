@@ -19,6 +19,7 @@
     "bench:tempo": "tsx --expose-gc bench/tempo.ts",
     "bench:rotas": "tsx bench/rotas.ts",
     "bench:manutencao": "tsx bench/manutencao.ts",
+    "bench:agenda": "tsx bench/agenda.ts",
     "bench:oscilacao": "tsx bench/oscilacao.ts",
     "mutate": "node scripts/mutate.mjs"
   },

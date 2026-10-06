@@ -21,7 +21,7 @@ import { availableParallelism } from 'node:os';
 import { writeFileSync } from 'node:fs';
 import { criterion } from '../src/ai/criterion';
 import { SCENARIOS, SCENARIO_LABEL, type EvalResult, type ScenarioName } from '../src/ai/evaluate';
-import { seedsOf, type SeedSet } from '../src/ai/seeds';
+import { isTestSet, seedsOf, type SeedSet } from '../src/ai/seeds';
 import { paired } from '../src/ai/stats';
 import { DEFAULT_HEURISTIC, type HeuristicParams, type RoutingPolicy } from '../src/sim/policy';
 
@@ -43,7 +43,7 @@ const value = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const set = (value('--set') ?? 'validation') as SeedSet;
-if (set === 'test' && !flag('--final')) {
+if (isTestSet(set) && !flag('--final')) {
   console.error('As seeds de teste são usadas uma única vez, no resultado final: use --final.');
   process.exit(2);
 }

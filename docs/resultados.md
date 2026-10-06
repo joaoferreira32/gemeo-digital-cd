@@ -707,7 +707,10 @@ Registrado em 2026-10-06, antes de rodar qualquer medida desta fase.
   é só reportado: nenhum parâmetro muda depois dele.
 - **Prazo da agenda:** a janela entre o alarme e o início da manutenção sai de
   um percentil baixo da antecedência medida na validação (p10 ou p20, com a
-  escolha justificada pelos números da validação), não da mediana.
+  escolha justificada pelos números da validação), não da mediana. O valor é o
+  percentil arredondado para baixo, em segundos. Regra da escolha, fixada antes
+  de medir: fica o percentil com menos quebras enquanto a manutenção esperava;
+  no empate, o que evita mais falhas; no empate, o prazo menor.
 - **Medidas da agenda** (pareadas por seed, com e sem agenda): quebras
   evitadas (entre as que tinham desgaste e entre todas), quebras que
   aconteceram enquanto a manutenção esperava, manutenções sem desgaste
