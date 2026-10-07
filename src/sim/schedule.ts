@@ -200,7 +200,8 @@ export class MaintenanceSchedule {
         });
         continue;
       }
-      // The first check is a second after the alarm: the belt needs a moment to show it empties.
+      // The first check is a second after the alarm, when the routing has turned away from the
+      // belt (the heuristic runs at the start of each second, before the motor readings).
       if (now >= p.alarmAt + 1 - EPS && this.ready(p, c, now)) {
         this.plans.splice(i, 1);
         this.start(p, now);

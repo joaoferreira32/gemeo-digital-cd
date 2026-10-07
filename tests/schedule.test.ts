@@ -268,5 +268,9 @@ describe('maintenance schedule', () => {
       expect(broke.some(atItsTime)).toBe(false);
     }
     expect(w.schedule.avoided + w.schedule.unneeded + w.schedule.lost).toBe(outcomes.length);
+    // A real alarm comes inside a step; the maintenance never starts in that same second.
+    for (const o of outcomes.filter((x) => x.kind !== 'lost')) {
+      expect(o.time - o.alarmAt).toBeGreaterThanOrEqual(1 - 1e-6);
+    }
   }, 60_000);
 });

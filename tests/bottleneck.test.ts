@@ -182,15 +182,16 @@ describe('bottleneck detector', () => {
     expect(detector.detect(long, 100)!.cause.kind).toBe('layout');
   });
 
-  it('the worst point wins: the resource holding the most packets', () => {
+  it('the worst point wins: the resource holding the most packets, not the fastest growing', () => {
     const s = series({
       seconds: 101,
-      queue: (t, c) => (c === 0 ? rising(70)(t) : 2 * rising(80)(t)),
+      queue: (t, c) => (c === 0 ? rising(40)(t) : 2 * rising(85)(t)),
       flow: () => 1.9,
     });
-    // Esteira 2 started later but holds more: 40 packets against 30.
-    expect(detector.detect(s, 100)!.index).toBe(1);
-    expect(detector.detect(s, 100)!.queue).toBe(40);
+    // Esteira 1 holds 60 packets growing by 60 a minute; Esteira 2, 30 growing by 120.
+    const b = detector.detect(s, 100)!;
+    expect(b.index).toBe(0);
+    expect(b.queue).toBe(60);
   });
 
   it('a finding stays up a few seconds after its last confirmation, then goes', () => {
