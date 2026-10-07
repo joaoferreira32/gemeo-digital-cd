@@ -20,6 +20,16 @@
           "replace": "  return false;"
         }
       ]
+    },
+    {
+      "name": "tecla repetida: o laboratório na tecla do painel K",
+      "edits": [
+        {
+          "file": "src/ui/shortcuts.ts",
+          "find": "    codes: ['KeyB'],",
+          "replace": "    codes: ['KeyK'],"
+        }
+      ]
     }
   ]
 }
