@@ -334,9 +334,11 @@ export class KpiPanel {
     };
     this.tiles.replaceChildren(
       tile('Vazão', formatInt(k.throughput), 'entregas no último minuto'),
+      tile('Entregas', formatInt(k.deliveries), 'nos últimos 5 min'),
       tile('Ciclo médio', formatSeconds(k.cycleMean), 'do pedido à doca, 5 min'),
       tile('Ciclo p95', formatSeconds(k.cycleP95), '95% das entregas abaixo'),
-      tile('Entregas', formatInt(k.deliveries), 'nos últimos 5 min'),
+      tile('Espera média', formatSeconds(k.waitMean), 'parte do ciclo parada em fila'),
+      tile('Espera p95', formatSeconds(k.waitP95), '95% esperaram menos'),
     );
   }
 

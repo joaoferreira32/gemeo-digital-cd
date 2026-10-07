@@ -31,6 +31,14 @@ export interface Packet {
   deliveredAt: number;
   /** Belt chosen at the junction the packet waits at (-1 until chosen; cleared when it moves). */
   next: number;
+  /**
+   * Seconds spent waiting so far: in the entry pile, on a shelf or in a bypass
+   * buffer waiting for a robot, and on a belt whenever it could not move at the
+   * belt's speed (the time lost against moving freely; all of it while the belt
+   * is stopped). Being carried by a robot counts as moving. A measure only:
+   * nothing in the simulation reads it.
+   */
+  waited: number;
 }
 
 export function createPacket(
@@ -51,5 +59,6 @@ export function createPacket(
     blocked: true,
     deliveredAt: -1,
     next: -1,
+    waited: 0,
   };
 }

@@ -210,6 +210,7 @@ const parts: Part[] = [
     }) => {
       const row = (key: string) => json.rows.find((r) => r.key === key) as (typeof json.rows)[0];
       const p95 = row('cycleP95');
+      const wait = row('waitP95');
       const tp = row('throughput');
       const d = (e: Estimate, unit: string) =>
         `**${signed(e.mean, 1, unit)}** (${signed(e.low, 1, unit)} a ${signed(e.high, 1, unit)})`;
@@ -217,6 +218,11 @@ const parts: Part[] = [
         {
           what: 'Laboratório: demanda da Olist × constante (mesmo volume no dia), p95 do ciclo',
           result: `${num(p95.a.mean)} s → ${num(p95.b.mean)} s: ${d(p95.difference, ' s')}, pior em ${p95.difference.higher} de ${p95.difference.n} seeds`,
+          how: '`npm run bench:lab`',
+        },
+        {
+          what: 'Laboratório: demanda da Olist × constante, p95 de espera (a parte do ciclo parada em fila)',
+          result: `${num(wait.a.mean)} s → ${num(wait.b.mean)} s: ${d(wait.difference, ' s')}, pior em ${wait.difference.higher} de ${wait.difference.n} seeds`,
           how: '`npm run bench:lab`',
         },
         {

@@ -41,6 +41,7 @@ interface Measure {
 const MEASURES: readonly Measure[] = [
   { key: 'cycleMean', label: 'Tempo de ciclo médio', unit: 's', scale: 1, digits: 1, chart: true },
   { key: 'cycleP95', label: 'p95 do ciclo', unit: 's', scale: 1, digits: 1, chart: true },
+  { key: 'waitP95', label: 'p95 de espera', unit: 's', scale: 1, digits: 1, chart: true },
   { key: 'throughput', label: 'Vazão', unit: 'pacotes/min', scale: 1, digits: 1, chart: true },
   { key: 'beltUse', label: 'Uso das esteiras', unit: '%', scale: 100, digits: 1, chart: true },
   { key: 'dockUse', label: 'Uso das docas', unit: '%', scale: 100, digits: 1, chart: false },

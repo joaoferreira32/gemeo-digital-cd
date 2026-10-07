@@ -74,6 +74,8 @@ export function advanceConveyor(c: Conveyor, dt: number): void {
     const next = Math.max(p.s, Math.min(wanted, limit));
     // Blocked = waiting: the belt is stopped or the packet could not travel the full step.
     p.blocked = v === 0 || next < wanted - 1e-9;
+    // The time lost against moving at the belt's speed (all of it while the belt is stopped).
+    p.waited += v > 0 ? Math.max(0, dt - (next - p.s) / v) : dt;
     p.s = next;
     limit = next - c.spacing;
   }
