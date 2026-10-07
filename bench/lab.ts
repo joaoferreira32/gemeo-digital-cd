@@ -82,10 +82,15 @@ await Promise.all(
 );
 jobs.forEach((j, i) => results[j.side].push(done.get(i) as LabMetrics));
 
+const POLICY_LABEL: Record<LabScenario['policy'], string> = {
+  static: 'roteamento estático',
+  heuristic: 'heurística',
+  rl: 'IA treinada (PPO)',
+};
 const show = (s: LabScenario) =>
   `${s.robots} robôs, ${s.conveyorSpeed} m/s, ${s.brokenConveyor >= 0 ? `esteira ${s.brokenConveyor + 1} parada` : 'nenhuma esteira parada'}, ` +
-  `${s.arrivalRate} pedidos/s em média, demanda ${s.demand === 'olist' ? 'da Olist (segunda-feira)' : 'constante'}, ` +
-  `${s.policy}, ${s.autoFailures ? 'com' : 'sem'} falhas automáticas, ${s.maintenance ? 'com' : 'sem'} agenda de manutenção`;
+  `${s.arrivalRate} pedidos/s em média no dia, demanda ${s.demand === 'olist' ? 'da Olist (segunda-feira)' : 'constante'}, ` +
+  `${POLICY_LABEL[s.policy]}, ${s.autoFailures ? 'com' : 'sem'} falhas automáticas, ${s.maintenance ? 'com' : 'sem'} agenda de manutenção`;
 console.log(
   `Laboratório: ${n} seeds a partir de ${LAB_FIRST_SEED}, um dia simulado cada (${LAB_SECONDS} s).`,
 );

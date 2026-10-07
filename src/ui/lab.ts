@@ -250,7 +250,7 @@ export class LabPanel {
         ...this.options.conveyorLabels.map((l, i) => [String(i), l] as [string, string]),
       ]),
     );
-    field('Pedidos por segundo (média)', num('arrivalRate', s.arrivalRate, 0.5, 8, 0.1));
+    field('Pedidos por segundo (média do dia)', num('arrivalRate', s.arrivalRate, 0.5, 8, 0.1));
     field(
       'Demanda',
       choice('demand', s.demand, [

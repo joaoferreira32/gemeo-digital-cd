@@ -43,3 +43,24 @@ export function pairedDifference(a: readonly number[], b: readonly number[]): Pa
     higher: d.filter((x) => x > 0).length,
   };
 }
+
+/**
+ * A share pooled over seeds (Σ hits / Σ trials) with its 95% interval, the
+ * seed as the unit: the trials of one seed are not independent (one queue
+ * yields several explanations), so the interval comes from how much the
+ * seeds differ (the variance of a ratio estimator, linearized), not from the
+ * count of trials. Clamped to [0, 1]; when every seed has the same share the
+ * interval closes on it.
+ */
+export function pooledShare(hits: readonly number[], trials: readonly number[]): Estimate {
+  if (hits.length !== trials.length) throw new Error('hits and trials differ in size');
+  const n = hits.length;
+  const total = trials.reduce((a, b) => a + b, 0);
+  if (n === 0 || total === 0) return { n, mean: NaN, low: NaN, high: NaN };
+  const share = hits.reduce((a, b) => a + b, 0) / total;
+  if (n === 1) return { n, mean: share, low: 0, high: 1 };
+  const residuals = hits.reduce((a, h, i) => a + (h - share * (trials[i] as number)) ** 2, 0);
+  const se = Math.sqrt((n / (n - 1)) * residuals) / total;
+  const half = tQuantile975(n - 1) * se;
+  return { n, mean: share, low: Math.max(0, share - half), high: Math.min(1, share + half) };
+}

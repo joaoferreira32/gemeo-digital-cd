@@ -1,6 +1,6 @@
 import type { Agent } from '../ai/agent';
 import { ACTION_LEVELS, observe } from '../ai/env';
-import { SECONDS_PER_HOUR } from '../sim/demand';
+import { HOURS_PER_WEEK, SECONDS_PER_HOUR } from '../sim/demand';
 import type { RobotStage } from '../sim/fleet';
 import { quantile } from '../sim/recorder';
 import { World, type SimConfig } from '../sim/world';
@@ -101,13 +101,27 @@ export function labConfig(
     ...(scenario.demand === 'olist'
       ? {
           demand: {
-            weights: options.weights as readonly number[],
+            weights: dayScaled(options.weights as readonly number[], options.startHour ?? 0),
             secondsPerHour: SECONDS_PER_HOUR,
             startHour: options.startHour ?? 0,
           },
         }
       : {}),
   };
+}
+
+/**
+ * The profile rescaled so that the simulated day (24 hours from `startHour`)
+ * averages 1: the rate of the scenario is then the mean rate of that day, as
+ * the panel says, and the Olist demand differs from the constant one only in
+ * its shape over the day, not in volume (a Monday of the Olist has 15.7% more
+ * orders than the mean of the week).
+ */
+export function dayScaled(weights: readonly number[], startHour: number): number[] {
+  let sum = 0;
+  for (let h = 0; h < 24; h++) sum += weights[(startHour + h) % HOURS_PER_WEEK] as number;
+  if (!(sum > 0)) throw new Error('o dia escolhido do perfil não tem pedidos');
+  return weights.map((w) => (w * 24) / sum);
 }
 
 /** Builds the world of a scenario, ready to run (exposed for the tests). */

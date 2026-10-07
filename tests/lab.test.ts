@@ -1,14 +1,17 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { Episode } from '../src/ai/evaluate';
 import { LabPool, type LabReply, type LabRequest, type WorkerLike } from '../src/lab/pool';
 import {
+  dayScaled,
   DEFAULT_SCENARIO,
+  labConfig,
   labWorld,
   runLab,
   type LabMetrics,
   type LabScenario,
 } from '../src/lab/run';
-import { estimate, pairedDifference } from '../src/lab/stats';
+import { estimate, pairedDifference, pooledShare } from '../src/lab/stats';
 import { fingerprint } from '../src/sim/fingerprint';
 
 const SECOND = 60;
@@ -55,6 +58,30 @@ describe('lab runs', () => {
     expect(noRobots.robotUse).toBeNaN();
   }, 30_000);
 
+  it('the Olist demand has the rate of the scenario as the mean of the simulated day', () => {
+    const olist = (
+      JSON.parse(readFileSync('public/demanda-olist.json', 'utf-8')) as { weights: number[] }
+    ).weights;
+    for (const startHour of [0, 24 * 5, 160]) {
+      const config = labConfig({ ...DEFAULT_SCENARIO, demand: 'olist' }, 1, {
+        weights: olist,
+        startHour,
+      });
+      const w = config.demand!.weights;
+      let day = 0;
+      for (let h = 0; h < 24; h++) day += w[(startHour + h) % 168]!;
+      expect(day / 24).toBeCloseTo(1, 12);
+      // Only the scale changes: the shape of the week is the Olist one.
+      expect(w[startHour + 3]! / w[(startHour + 15) % 168]!).toBeCloseTo(
+        olist[startHour + 3]! / olist[(startHour + 15) % 168]!,
+        12,
+      );
+    }
+    // A Monday of the Olist is busier than the mean of the week: rescaled down.
+    expect(dayScaled(olist, 0)[0]!).toBeLessThan(olist[0]!);
+    expect(() => dayScaled(new Array<number>(168).fill(0), 0)).toThrow(/pedidos/);
+  });
+
   it('asks for what it needs: the profile for the Olist demand, the network for the trained policy', async () => {
     await expect(
       runLab({ ...DEFAULT_SCENARIO, demand: 'olist' }, 1, { seconds: 10 }),
@@ -80,6 +107,24 @@ describe('lab statistics', () => {
     expect(d.mean).toBeCloseTo((-1 + 2 - 3 + 0) / 4, 12);
     expect([d.lower, d.higher]).toEqual([2, 1]);
     expect(() => pairedDifference([1], [1, 2])).toThrow();
+  });
+
+  it('a share pooled over seeds, with the seed as the unit of its interval', () => {
+    // Equal trials per seed: the same interval as the mean of the per-seed shares.
+    const s = pooledShare([40, 45, 50], [100, 100, 100]);
+    const e = estimate([0.4, 0.45, 0.5]);
+    expect(s.mean).toBeCloseTo(0.45, 12);
+    expect(s.low).toBeCloseTo(e.low, 12);
+    expect(s.high).toBeCloseTo(e.high, 12);
+    // Pooled, not averaged: the larger seed weighs more.
+    expect(pooledShare([1, 90], [10, 100]).mean).toBeCloseTo(91 / 110, 12);
+    // Every seed with the same share: the interval closes on it.
+    expect(pooledShare([9, 18], [10, 20])).toMatchObject({ mean: 0.9, low: 0.9, high: 0.9 });
+    // Clamped to [0, 1].
+    expect(pooledShare([8, 9, 10], [10, 10, 10]).high).toBe(1);
+    expect(pooledShare([3], [4])).toMatchObject({ low: 0, high: 1 });
+    expect(pooledShare([0, 0], [0, 0]).mean).toBeNaN();
+    expect(() => pooledShare([1], [1, 2])).toThrow();
   });
 });
 
