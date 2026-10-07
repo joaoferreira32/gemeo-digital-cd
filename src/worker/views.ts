@@ -10,7 +10,13 @@ import type { Recorder } from '../sim/recorder';
  * Pure functions of the recorder, so they are tested without a browser.
  */
 
-export type MarkerKind = FailureKind | 'stuck' | 'watchdog' | 'maintenance';
+/**
+ * Failures and stuck robots (intervals); watchdog actions, motor alarms,
+ * failures avoided and breakdowns while a maintenance waited (points);
+ * planned maintenance (intervals).
+ */
+export type MarkerKind =
+  FailureKind | 'stuck' | 'watchdog' | 'maintenance' | 'service' | 'avoided' | 'lost';
 
 export interface TimelineMarker {
   readonly kind: MarkerKind;
@@ -81,6 +87,17 @@ export function markers(events: readonly SimEvent[]): TimelineMarker[] {
       close(`stuck:${e.about?.[0]}`, e.time);
     } else if (e.kind === 'watchdog' || e.kind === 'maintenance') {
       out.push({ kind: e.kind, start: e.time, end: e.time, label: e.text });
+    } else if (e.kind === 'failure-avoided' || e.kind === 'service-start') {
+      // The stop of a planned maintenance, and the failure it avoided (a point on top).
+      open.set(`service:${e.target}`, out.length);
+      out.push({ kind: 'service', start: e.time, end: null, label: e.text });
+      if (e.kind === 'failure-avoided') {
+        out.push({ kind: 'avoided', start: e.time, end: e.time, label: e.text });
+      }
+    } else if (e.kind === 'service-end') {
+      close(`service:${e.target}`, e.time);
+    } else if (e.kind === 'service-lost') {
+      out.push({ kind: 'lost', start: e.time, end: e.time, label: e.text });
     }
   }
   return out;
@@ -149,7 +166,7 @@ export function history(rec: Recorder, entity: string, window = 300): EntityHist
     const one = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
     const h = w.health;
     status =
-      `${c.status === 'ok' ? 'Funcionando' : 'Quebrada'} · ${c.packets.length} pacotes` +
+      `${c.status === 'ok' ? 'Funcionando' : c.status === 'broken' ? 'Quebrada' : 'Em manutenção'} · ${c.packets.length} pacotes` +
       (blocked ? `, ${blocked} parados` : '') +
       ` · motor ${one(h.vibration[id] as number)} mm/s, ${one(h.temperature[id] as number)} °C` +
       (h.alarm[id] ? ' · alarme de manutenção' : '');

@@ -11,13 +11,15 @@ planejamento multiagente, com falhas injetadas e mapa de calor. Toda a execuçã
 é gravada: dá para voltar a qualquer instante, ver o estado exato daquele
 momento, continuar dali por outro caminho e exportar o log de eventos. Uma
 camada de IA de operações escolhe por onde os pacotes seguem (heurística ou
-rede treinada por reforço, comparadas ao vivo com o roteamento estático) e
+rede treinada por reforço, comparadas ao vivo com o roteamento estático),
 avisa antes de uma esteira quebrar (manutenção preditiva sobre sinais
-simulados). O motor de simulação é determinístico, roda num Web Worker e é
-testado sem navegador.
+simulados), agenda a manutenção para a quebra não acontecer e aponta o gargalo
+do momento, dizendo a causa. O motor de simulação é determinístico, roda num
+Web Worker e é testado sem navegador.
 
-> **Status:** Fase 4 de 6 concluída (IA de operações). Laboratório de cenários e
-> modo cinema vêm depois.
+> **Status:** Fase 4 de 6 concluída (IA de operações), com a Fase 4b (gargalo
+> explicado e manutenção agendada). Laboratório de cenários e modo cinema vêm
+> depois; o roteiro original está em [`docs/roteiro.md`](docs/roteiro.md).
 
 ## Como rodar
 
@@ -64,7 +66,7 @@ npm run bench:rotas -- --rl teste
 | Pausar / velocidade    | <kbd>Espaço</kbd> · <kbd>,</kbd> <kbd>.</kbd> (1×, 4×, 16×)                                                  |
 | Falhas                 | <kbd>5</kbd> esteira · <kbd>6</kbd> pico de pedidos · <kbd>7</kbd> robô · <kbd>8</kbd> doca                  |
 | Falhas automáticas     | <kbd>9</kbd>                                                                                                 |
-| Desgaste numa esteira  | <kbd>0</kbd> (quebra em 1 a 3 min; o halo do motor e o alarme de manutenção avisam antes)                    |
+| Desgaste numa esteira  | <kbd>0</kbd> (quebraria em 1 a 3 min; o alarme avisa antes e a IA agenda a manutenção: falha evitada)        |
 | Roteamento             | <kbd>P</kbd> heurística (padrão) → IA (PPO) → estático; o painel <kbd>K</kbd> compara com o estático ao vivo |
 | Mapa de calor          | <kbd>M</kbd> ocupação → tempo de espera → tráfego de robôs → desligado                                       |
 | Teste de carga         | <kbd>T</kbd> (taxa de pedidos muito acima da capacidade)                                                     |
@@ -73,7 +75,7 @@ npm run bench:rotas -- --rl teste
 | Linha do tempo         | arrastar na barra de baixo · <kbd>[</kbd> <kbd>]</kbd> volta / avança 10 s                                   |
 | Voltar ao vivo         | <kbd>L</kbd>                                                                                                 |
 | Continuar daqui        | <kbd>C</kbd>, <kbd>Espaço</kbd> ou qualquer falha injetada no passado (descarta o que vinha depois)          |
-| Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, utilização, estados dos robôs, últimos 5 min)               |
+| Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, roteamento, manutenção, utilização, robôs, últimos 5 min)   |
 | Histórico              | clique num robô, numa esteira ou numa doca                                                                   |
 | Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução         |
 | Atalhos e legenda      | <kbd>H</kbd>                                                                                                 |
@@ -276,11 +278,12 @@ de confiança de 95% (t de Student).
 
 ### Conjuntos de seeds
 
-| Conjunto  | Seeds           | Uso                                                                            |
-| --------- | --------------- | ------------------------------------------------------------------------------ |
-| Treino    | 10.001 a 19.999 | episódios do PPO e demonstrações da imitação                                   |
-| Validação | 20.001 a 20.010 | calibração da heurística e do detector; julgamento das rodadas de ajuste da IA |
-| Teste     | 30.001 a 30.010 | usadas uma única vez, no resultado final (os benchmarks exigem `--final`)      |
+| Conjunto    | Seeds           | Uso                                                                                                                       |
+| ----------- | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Treino      | 10.001 a 19.999 | episódios do PPO e demonstrações da imitação                                                                              |
+| Validação   | 20.001 a 20.010 | calibração da heurística, do alarme, do prazo da agenda e dos limiares do gargalo; julgamento das rodadas de ajuste da IA |
+| Teste       | 30.001 a 30.010 | usadas uma única vez, no resultado final da Fase 4 (os benchmarks exigem `--final`)                                       |
+| Teste da 4b | 30.011 a 30.020 | nunca usadas antes; uma única vez, na avaliação final da agenda e do detector de gargalo                                  |
 
 ### Treino em Python, no mesmo motor
 
@@ -381,6 +384,56 @@ nas seeds de validação). Dois CUSUMs extras, um por sinal e com limiar própri
 pegariam parte delas, em troca de mais alarmes falsos com pancadas (só vibram) e
 enroscos, e de uma nova calibração.
 
+### Gargalo explicado (Fase 4b)
+
+A cada segundo, a gravação guarda por quem cada pacote parado está esperando: a
+esteira em que precisa entrar (ou os robôs que fazem o desvio dela) ou a doca que
+tem que recebê-lo. A espera segue a corrente de esteiras paradas até a raiz: o
+primeiro recurso parado, uma doca ou uma esteira cheia que ainda anda. Assim a
+fila inteira que se formou atrás de uma esteira quebrada conta para ela, e não
+para as esteiras do caminho, que são vítimas. O detector só lê a gravação, então
+também funciona ao voltar no tempo.
+
+Um recurso é gargalo quando tem pacotes esperando por ele e:
+
+- está parado (quebrado, em manutenção, doca bloqueada), com a fila crescendo ou
+  não; ou
+- trabalha perto da capacidade (pelo menos 70% no último minuto) e a fila na
+  frente dele cresce há alguns segundos (pelo menos 12 pacotes, 6 por minuto).
+
+Entre vários, o que segura mais pacotes. A causa, nesta ordem: a falha do próprio
+recurso (certa); uma esteira parada no outro caminho de uma escolha de rota que
+leva a ele (o fluxo foi desviado para cá); um pico de pedidos enquanto a fila
+crescia ou no minuto anterior (a onda leva um tempo para atravessar o galpão);
+senão, o próprio desenho do galpão. Os limiares foram calibrados nas seeds de
+validação, com a regra de escolha registrada antes de medir.
+
+Na tela, o cartão **Gargalo agora** diz o que, por quê e os números, e um anel
+âmbar tracejado gira em volta do recurso.
+
+### Agenda de manutenção (Fase 4b)
+
+Quando o alarme de um motor sobe, a IA:
+
+1. **Desvia o fluxo.** A heurística passa a tratar a esteira como cortada, e o
+   tráfego dela vai pelo outro caminho, quando existe.
+2. **Escolhe o início.** A parada começa assim que a esteira esvazia (ou acaba o
+   tempo de esvaziar, ou ela não tem como esvaziar), a menos que a demanda
+   prevista caia antes do prazo: no meio de um pico que termina antes do prazo,
+   espera o fim. É o horário de menor demanda dentro do tempo que a esteira tem.
+3. **Respeita o prazo.** No máximo 11 s depois do alarme: o p10 da antecedência
+   medida nas seeds de validação (quanto tempo a esteira ainda tinha antes de
+   quebrar). Esperar mais seria esperar a quebra.
+4. **Para a esteira por 30 s.** Premissa declarada: peça e equipe prontas, contra
+   60 a 90 s de uma quebra. Se havia desgaste, ele é corrigido e a quebra não
+   acontece: **falha evitada**. Se não havia, foi alarme falso, e a parada conta
+   como perdida.
+
+Na tela, a esteira em manutenção fica ciano e parada, o motor brilha ciano, e uma
+onda ciano sai dele quando uma falha é evitada. O feed destaca "Falha evitada", a
+linha do tempo marca manutenções e falhas evitadas, e o painel <kbd>K</kbd> conta
+falhas evitadas, alarmes falsos e quebras durante a espera.
+
 ## Números medidos
 
 Todos os números de cada fase, com método e forma de reproduzir, estão em
@@ -388,6 +441,15 @@ Todos os números de cada fase, com método e forma de reproduzir, estão em
 
 Máquina de desenvolvimento: Chromium com GPU dedicada (RTX 5060 Ti); um
 notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
+
+### Fase 4b
+
+| O que                                            | Resultado                                                                                                                                                                             | Como reproduzir                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Agenda de manutenção (seeds de teste novas)      | 74% das quebras com desgaste evitadas (43 de 58), 51% de todas as quebras de esteira; 1 quebra durante a espera; nenhum alarme falso                                                  | `npm run bench:agenda` (teste: `--set teste-4b --final`, uma vez)  |
+| Efeito da agenda (teste, manutenção de 30 s)     | p95 do ciclo +25,0% (IC 95% +13,4% a +36,5%), melhor em 10 de 10 seeds; tempo de esteira parada −27,7%. Com 45 s: +16,6%; com 60 s: +5,8% (o intervalo inclui zero)                   | `npm run bench:agenda`                                             |
+| Detector de gargalo (teste, ensaios controlados) | 99% das falhas que formaram fila apontadas (289 de 291), mediana de 6 s; causa correta em 100% dos primeiros avisos e em 98% dos segundos de aviso; nenhum gargalo sem falha em 4,8 h | `npm run bench:gargalo` (teste: `--set teste-4b --final`, uma vez) |
+| Conferência por mutação                          | 63 de 63 (23 novas: 12 da agenda, 11 do detector e da contagem de filas)                                                                                                              | `npm run mutate`                                                   |
 
 ### Fase 4
 
@@ -438,6 +500,17 @@ notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
 
 Bugs encontrados medindo, não supondo:
 
+- **A fila contada só um passo à frente** (Fase 4b). O detector de gargalo
+  deixava passar a quebra de três esteiras curtas do sorter, com centenas de
+  pacotes a mais esperando: cada pacote contava para a esteira logo à frente, e a
+  fila atrás de uma esteira de 11 pacotes nunca passava de 11. Agora a espera
+  segue a corrente até a raiz, e um teste confere a cada segundo que todo pacote
+  esperando é contado uma vez.
+- **A agenda enfrentava mais falhas do que o mundo sem ela** (Fase 4b). Uma
+  quebra evitada liberava cedo a vaga do limite de duas falhas simultâneas do
+  modo automático, e o mundo com agenda recebia 36% mais desgastes. Agora a vaga
+  fica ocupada até quando a quebra teria terminado, e os dois braços de cada seed
+  recebem exatamente as mesmas falhas.
 - **Estação "livre" com robô em cima.** A posse da estação era liberada quando o
   robô terminava a tarefa, mas ele só sai da célula no passo seguinte. Outros
   robôs eram mandados para lá e falhavam ao planejar. Com a correção, as
@@ -505,6 +578,23 @@ Bugs encontrados medindo, não supondo:
   desgaste apareça nos dois sinais: desgaste forte num sinal só, em geral rápido
   (60 a 100 s), passa despercebido (14 das 62 quebras com desgaste nas seeds de
   validação). Quebras súbitas não têm aviso por definição.
+- **A agenda de manutenção depende de uma premissa:** a parada planejada dura
+  30 s, contra 60 a 90 s de uma quebra. Com 45 s, o ganho no p95 cai de +35% para
+  +24%; com 60 s, para +11%, e o intervalo de confiança passa a incluir zero
+  (seeds de validação).
+- **O "horário de baixa demanda" hoje só enxerga picos de pedidos.** Fora deles a
+  demanda prevista é constante, e o prazo curto (11 s) quase nunca deixa escolha:
+  a espera é o esvaziamento da esteira. O perfil de demanda da Olist (Fase 5)
+  traz variação ao longo do dia para a mesma regra usar.
+- **O desvio antes da parada nem sempre esvazia a esteira:** 43% das paradas em
+  esteiras que a rota consegue esvaziar começam vazias.
+- **A causa do gargalo foi medida com uma falha de cada vez.** Com várias falhas
+  ao mesmo tempo, o detector escolhe a mais provável pela ordem descrita, sem uma
+  medida própria. Defeito de robô nunca é dado como causa (nenhum formou fila nos
+  ensaios), e a fila que uma falha deixa depois de terminar pode aparecer como
+  "desenho do galpão".
+- **Não feito:** balanceamento entre docas e redistribuição de robôs na
+  heurística, previstos no roteiro original da Fase 4 (`docs/roteiro.md`).
 - A cópia estática do painel recebe as mesmas entradas, mas as falhas
   automáticas são sorteadas de novo nela (mesma semente): os alvos podem
   divergir quando os dois mundos ficam diferentes.

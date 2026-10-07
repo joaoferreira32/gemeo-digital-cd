@@ -22,7 +22,7 @@ import {
   type DetectorScore,
   type MaintenanceRun,
 } from '../src/ai/maintenance';
-import { seedsOf, type SeedSet } from '../src/ai/seeds';
+import { isTestSet, seedsOf, type SeedSet } from '../src/ai/seeds';
 import { DEFAULT_DETECTOR, type DetectorParams } from '../src/sim/health';
 
 const args = process.argv.slice(2);
@@ -32,7 +32,7 @@ const value = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const set = (value('--set') ?? 'validation') as SeedSet;
-if (set === 'test' && !flag('--final')) {
+if (isTestSet(set) && !flag('--final')) {
   console.error('As seeds de teste são usadas uma única vez, no resultado final: use --final.');
   process.exit(2);
 }

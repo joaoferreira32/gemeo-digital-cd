@@ -146,6 +146,9 @@ link.onMessage = (msg) => {
       timeline.update(msg.timeline);
       kpiPanel.update(msg.kpis, msg.stages, msg.timeline.shown, msg.timeline.viewing);
       showRouting(msg.routing);
+      hud.showBottleneck(msg.bottleneck);
+      view.setBottleneck(msg.bottleneck);
+      kpiPanel.updateMaintenance(msg.maintenance);
       return;
     case 'history':
       historyPanel.render(msg.history);
@@ -550,7 +553,8 @@ async function boot() {
     document.fonts.load('700 64px "Barlow Condensed"'),
     document.fonts.load('500 16px "JetBrains Mono"'),
   ]).catch(() => undefined);
-  send({ type: 'init', config: { seed: DEFAULT_CONFIG.seed } });
+  // The app runs with the maintenance schedule of phase 4b (off by default in the engine).
+  send({ type: 'init', config: { seed: DEFAULT_CONFIG.seed, scheduleMaintenance: true } });
   buildView();
   bindControls();
   // Wait for the first snapshot, render once (shaders compile behind the loading screen), reveal.

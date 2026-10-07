@@ -692,31 +692,286 @@ imitação (`ai/check_imitation.py`).
 
 ---
 
+## Fase 4b — gargalo explicado e manutenção agendada
+
+### Protocolo (registrado antes de qualquer medida da 4b)
+
+Registrado em 2026-10-06, antes de rodar qualquer medida desta fase.
+
+- **Seeds de validação:** 20.001 a 20.010, as mesmas da Fase 4. Nelas, e só
+  nelas, saem o prazo da agenda de manutenção e os limiares do detector de
+  gargalo.
+- **Seeds de teste novas:** 30.011 a 30.020, nunca usadas antes, para a
+  avaliação final da 4b, numa passada única (`--final`). As seeds 30.001 a
+  30.010 já serviram ao teste da Fase 4 e não entram aqui. O resultado do teste
+  é só reportado: nenhum parâmetro muda depois dele.
+- **Prazo da agenda:** a janela entre o alarme e o início da manutenção sai de
+  um percentil baixo da antecedência medida na validação (p10 ou p20, com a
+  escolha justificada pelos números da validação), não da mediana. O valor é o
+  percentil arredondado para baixo, em segundos. Regra da escolha, fixada antes
+  de medir: fica o percentil com menos quebras enquanto a manutenção esperava;
+  no empate, o que evita mais falhas; no empate, o prazo menor.
+- **Medidas da agenda** (pareadas por seed, com e sem agenda): quebras
+  evitadas (entre as que tinham desgaste e entre todas), quebras que
+  aconteceram enquanto a manutenção esperava, manutenções sem desgaste
+  encontrado por hora, tempo de esteira parada e p95 do ciclo. Premissa
+  declarada: a manutenção planejada leva 30 s, contra 60 a 90 s de uma quebra;
+  os números saem também com 45 e 60 s.
+- **Medidas do detector de gargalo:** em ensaios controlados (uma falha
+  aplicada de cada vez, numa operação sem outras falhas, comparada com a mesma
+  seed sem a falha): das falhas que formam fila, quantas ele aponta e em quanto
+  tempo; o **percentual de causas corretas**, comparando a causa explicada com
+  a falha que o injetor realmente aplicou; e quantos gargalos ele aponta por
+  hora sem nenhuma falha aplicada. Uma falha "forma fila" quando deixa pelo
+  menos 10 pacotes a mais esperando (média de 10 s) do que a mesma seed sem
+  ela, enquanto dura ou nos 30 s seguintes. Regra da escolha dos limiares,
+  fixada antes de medir: entre as combinações com no máximo um gargalo por
+  hora sem falha aplicada, a que aponta com a causa certa (no primeiro aviso)
+  o maior número de falhas que formaram fila; no empate, menos gargalos sem
+  falha; depois, a menor mediana até apontar; depois, os valores atuais.
+
+### Agenda de manutenção: o prazo (seeds de validação)
+
+`npm run bench:agenda -- --calibrate`: 30 minutos de falhas automáticas por seed,
+roteamento pela heurística, com e sem a agenda. Sem a agenda, o alarme pegou 47
+quebras com desgaste; a antecedência delas (do alarme à quebra) teve **p10 de
+11,6 s e p20 de 15,3 s**. O prazo testado foi o percentil arredondado para baixo:
+11 s e 15 s.
+
+Os dois deram resultados idênticos (as mesmas falhas evitadas, nenhuma quebra
+durante a espera nos dois, a mesma espera mediana de 1 s e p90 de 8 s). O prazo
+quase nunca é o limite: a espera é o tempo de esvaziar a esteira (até 10 s) ou o
+fim de um pico de pedidos. Pela regra fixada antes de medir (no empate, o prazo
+menor), ficou o **p10: 11 s**.
+
+### Achado: com a agenda, o modo automático aplicava mais falhas
+
+A primeira comparação com e sem a agenda deu números estranhos: com manutenção
+de 60 s, a agenda **piorava** as entregas (−3,8%, significativo). Contando as
+falhas que o modo automático aplicou em cada braço, nas mesmas 10 seeds: **67
+desgastes sem a agenda, 91 com ela (+36%)**. O modo automático limita as falhas
+simultâneas a duas, e um desgaste ocupa uma vaga até a quebra terminar; cortado
+pela manutenção, liberava a vaga cerca de um minuto antes, e o simulador injetava
+mais falhas no mundo com agenda. A comparação punia a agenda com uma carga maior.
+
+Correção: a quebra evitada continua ocupando a vaga até quando teria terminado.
+Depois disso, os dois braços de cada seed recebem exatamente as mesmas falhas (67
+desgastes, 45 picos, 54 defeitos de robô e 43 docas bloqueadas em cada um). Com a
+agenda desligada nada muda (as impressões digitais de referência não se moveram).
+
+### Agenda de manutenção: resultado nas seeds de validação
+
+`npm run bench:agenda` (manutenção de 30 s; prazo de 11 s):
+
+| O que                                          | Resultado                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------- |
+| Quebras evitadas, entre as que tinham desgaste | **76% (48 de 63)**                                            |
+| Quebras evitadas, entre todas as de esteira    | 55% (48 de 87; 24 eram súbitas, sem aviso possível)           |
+| Quebras enquanto a manutenção esperava         | **0**                                                         |
+| Manutenções sem desgaste (alarme falso)        | 1 em 5 h simuladas (0,2 por hora no CD)                       |
+| Espera do alarme ao início                     | mediana 1 s, p90 8 s                                          |
+| p95 do ciclo, com × sem a agenda               | **+34,9% (IC 95% +25,0% a +44,8%), melhor em 10 de 10 seeds** |
+| Ciclo médio                                    | +27,2% (+16,5% a +38,0%), 10 de 10                            |
+| Entregas                                       | +7,1% (+4,6% a +9,7%), 10 de 10                               |
+| Tempo de esteira parada                        | −30,2% (IC −24,0% a −36,5%): 6.259 → 4.355 esteira·s          |
+| Pacote·segundo em esteira parada               | −35,7% (IC −25,1% a −46,2%): 41.088 → 26.116                  |
+
+**A premissa da duração decide o tamanho do ganho:**
+
+| Manutenção planejada | p95 do ciclo                    | Entregas              | Tempo de esteira parada |
+| -------------------- | ------------------------------- | --------------------- | ----------------------- |
+| 30 s                 | +34,9% (+25,0% a +44,8%), 10/10 | +7,1% (+4,6% a +9,7%) | −30,2%                  |
+| 45 s                 | +23,6% (+13,2% a +33,9%), 10/10 | +5,3% (+2,9% a +7,6%) | −18,5%                  |
+| 60 s                 | +11,1% (−0,7% a +22,8%), 9/10   | +2,7% (+0,6% a +4,9%) | −6,7%                   |
+
+Mesmo com 60 s, a duração da quebra mais curta, a agenda ainda reduz o tempo
+parado (a quebra dura 75 s em média e o desvio esvazia parte das esteiras antes).
+
+**O desvio antes da parada nem sempre esvazia a esteira.** Das 21 paradas em
+esteiras que a rota consegue esvaziar, 43% começaram com a esteira vazia (espera
+mediana de 8 s); nas 28 sem outro caminho para o fluxo, a parada começa 1 s
+depois do alarme e 11% estavam vazias por acaso. A fila na saída faz uma esteira
+esvaziar mais devagar do que o comprimento dela prevê.
+
+### Detector de gargalo: calibração (seeds de validação)
+
+`npm run bench:gargalo -- --calibrate`: em cada uma das 10 seeds, uma rodada de
+30 minutos sem nenhuma falha e 34 ensaios com uma falha só, aplicada aos 150 s
+(cada uma das 24 esteiras, cada uma das 6 docas, um pico de pedidos e 3 robôs),
+roteamento pela heurística. Das 340 falhas aplicadas, **293 formaram fila** (pelo
+menos 10 pacotes a mais esperando do que sem a falha); os 30 defeitos de robô não
+formaram nenhuma (40 robôs dão conta sem o robô parado).
+
+Grade de 27 combinações de três limiares (fila mínima 6, 8 ou 12 pacotes;
+crescimento mínimo 4, 6 ou 10 por minuto; uso mínimo 70%, 80% ou 90%):
+
+| Fila mínima | Uso mínimo | Apontadas  | Causa correta no 1º aviso | Gargalos sem falha (por hora) |
+| ----------- | ---------- | ---------- | ------------------------- | ----------------------------- |
+| 6           | 70%        | 292 de 293 | 262 (90%)                 | 16,8                          |
+| 6           | 90%        | 285        | 284 (100%)                | 3,7                           |
+| 8           | 70%        | 291        | 262 (90%)                 | 6,2                           |
+| 8           | 90%        | 278        | 277 (100%)                | 1,7                           |
+| **12**      | **70%**    | **291**    | **291 (100%)**            | **0,8**                       |
+| 12          | 90%        | 275        | 273 (99%)                 | 0,4                           |
+
+O crescimento mínimo não fez diferença com fila mínima de 12 (4, 6 e 10 por
+minuto deram o mesmo resultado). Pela regra fixada antes de medir (no máximo um
+gargalo por hora sem falha; depois, o maior número de falhas apontadas com a causa
+certa; depois, os valores atuais), ficaram **fila mínima de 12 pacotes, uso mínimo
+de 70% e crescimento mínimo de 6 por minuto**.
+
+### Achado: a fila contada só um passo à frente
+
+A primeira calibração deixou passar a quebra das Esteiras 15, 16 e 18 (a espinha
+do sorter), com 244 a 296 pacotes a mais esperando. A causa: um pacote parado era
+contado na fila da esteira em que ele queria entrar, só um passo à frente. A
+Esteira 16 (6 m, cabem 11 pacotes) parada recebia os 11 pacotes da esteira
+anterior, cheia e parada atrás dela; as centenas de pacotes mais atrás contavam
+para essa esteira anterior, uma vítima, que o detector corretamente ignora. A
+fila do gargalo de verdade nunca passava de 11 e não chegava ao mínimo de 12.
+
+Correção: a espera segue a corrente de esteiras paradas até a raiz (o primeiro
+recurso parado, uma doca, ou uma esteira cheia que ainda anda). Um teste confere,
+a cada segundo de três execuções caóticas (inclusive o teste de carga), que todo
+pacote esperando do motor é contado exatamente uma vez. Depois da correção, as
+três quebras passaram a ser apontadas: de 285 para 291 apontadas com a causa
+certa.
+
+### Detector de gargalo: resultado nas seeds de validação
+
+| O que                                                        | Resultado                 |
+| ------------------------------------------------------------ | ------------------------- |
+| Falhas que formaram fila                                     | 293 de 340                |
+| Apontadas pelo detector                                      | **99% (291 de 293)**      |
+| Tempo até apontar                                            | mediana 6 s, p90 28 s     |
+| **Causa correta** (o primeiro aviso nomeia a falha aplicada) | **100% (291 de 291)**     |
+| Causa correta, em todos os segundos de aviso                 | 98% (17.484 de 17.768 s)  |
+| Falhas sem fila formada com gargalo apontado                 | 0 de 47                   |
+| Gargalos apontados sem nenhuma falha aplicada                | 4 em 4,8 h (0,8 por hora) |
+
+Por tipo de falha: esteira quebrada 221 de 223 apontadas, todas com a causa
+certa; doca bloqueada 60 de 60; pico de pedidos 10 de 10.
+
+As duas falhas não apontadas foram quebras da Esteira 12 que deixaram 11 e 18
+pacotes a mais: filas pequenas, abaixo do mínimo. Os quatro gargalos sem falha
+duraram de 6 a 8 s cada: as Docas 2 e 3 e a Esteira 9 saturadas por um acúmulo
+momentâneo de pedidos, com a causa "a demanda passa da capacidade". São
+saturações reais e curtas, não erros de leitura.
+
+**Leitura honesta do 100%.** Na maioria dos ensaios o gargalo é o próprio recurso
+parado, e a causa vem do estado dele. As partes difíceis da explicação (o fluxo
+desviado de outra esteira e o pico de pedidos) aparecem nos avisos seguintes e
+nos ensaios de pico; elas entram no número "em todos os segundos de aviso" (98%).
+
+### Resultado final nas seeds de teste novas (passada única)
+
+Uma única passada nas seeds 30.011 a 30.020, depois de todas as calibrações e da
+conferência por mutação (`npm run bench:agenda -- --set teste-4b --final` e
+`npm run bench:gargalo -- --set teste-4b --final`). Nada mudou depois dela.
+
+**Agenda de manutenção** (manutenção de 30 s; prazo de 11 s):
+
+| O que                                          | Validação                       | Teste                               |
+| ---------------------------------------------- | ------------------------------- | ----------------------------------- |
+| Quebras evitadas, entre as que tinham desgaste | 76% (48 de 63)                  | **74% (43 de 58)**                  |
+| Quebras evitadas, entre todas as de esteira    | 55% (48 de 87)                  | 51% (43 de 85; 27 súbitas)          |
+| Quebras enquanto a manutenção esperava         | 0                               | **1**                               |
+| Manutenções sem desgaste (alarme falso)        | 1                               | 0                                   |
+| Espera do alarme ao início                     | mediana 1 s, p90 8 s            | mediana 1 s, p90 8 s                |
+| p95 do ciclo, com × sem a agenda               | +34,9% (+25,0% a +44,8%), 10/10 | **+25,0% (+13,4% a +36,5%), 10/10** |
+| Ciclo médio                                    | +27,2% (+16,5% a +38,0%)        | +20,8% (+11,7% a +30,0%)            |
+| Entregas                                       | +7,1% (+4,6% a +9,7%)           | +6,2% (+3,7% a +8,8%)               |
+| Tempo de esteira parada                        | −30,2%                          | −27,7% (6.035 → 4.400 esteira·s)    |
+| Pacote·segundo em esteira parada               | −35,7%                          | −30,8% (41.375 → 28.744)            |
+
+Com manutenção de 45 s, o p95 melhora +16,6% (+8,7% a +24,6%); com 60 s, +5,8%
+(−0,1% a +11,8%), e o intervalo passa a incluir zero. As falhas aplicadas foram as
+mesmas nos dois braços de cada seed (64 desgastes, 48 picos, 64 defeitos de robô e
+36 docas bloqueadas em cada um).
+
+Nessas seeds, sem a agenda, a antecedência dos alarmes teve p10 de 9,2 s e p20 de
+20,7 s (40 quebras com desgaste detectadas): o p10 ficou abaixo do prazo de 11 s
+calibrado na validação, o que combina com a única quebra durante a espera.
+
+**Detector de gargalo** (ensaios controlados; um ensaio de robô ficou de fora
+porque o robô estava recarregando):
+
+| O que                                                        | Validação                 | Teste                    |
+| ------------------------------------------------------------ | ------------------------- | ------------------------ |
+| Falhas que formaram fila                                     | 293 de 340                | 291 de 339               |
+| Apontadas pelo detector                                      | 99% (291 de 293)          | **99% (289 de 291)**     |
+| Tempo até apontar                                            | mediana 6 s, p90 28 s     | mediana 6 s, p90 26 s    |
+| **Causa correta** (o primeiro aviso nomeia a falha aplicada) | 100% (291 de 291)         | **100% (289 de 289)**    |
+| Causa correta, em todos os segundos de aviso                 | 98%                       | 98% (16.780 de 17.074 s) |
+| Falhas sem fila formada com gargalo apontado                 | 0 de 47                   | 0 de 48                  |
+| Gargalos apontados sem nenhuma falha aplicada                | 0,8 por hora (4 em 4,8 h) | **0 em 4,8 h**           |
+
+Por tipo de falha, no teste: esteira quebrada 219 de 221 apontadas, todas com a
+causa certa; doca bloqueada 60 de 60; pico de pedidos 10 de 10. As duas não
+apontadas: uma quebra da Esteira 12 (11 pacotes a mais) e uma da Esteira 4 (31 a
+mais), em que a rota desviou o fluxo e a fila se espalhou por outros caminhos sem
+que nenhum recurso saturasse.
+
+### Conferência por mutação
+
+`npm run mutate`: **63 de 63** mutações pegas. As 23 novas: 12 da agenda de
+manutenção (ignorar o alarme, não desviar a rota, não esperar esvaziar ou a
+demanda cair, ignorar o prazo, não corrigir o desgaste, a esteira não voltar,
+quebra durante a espera não notada, a quebra evitada liberar cedo a vaga do
+limite de falhas, a esteira quebrar durante a manutenção, checkpoint sem a
+agenda, decidir no mesmo segundo do alarme) e 11 do detector e da contagem de
+filas (a fila contada só um passo à frente, que foi o bug real; esteira parada,
+doca e pilha de entrada fora da conta; vítima apontada como gargalo; esteira
+parada exigindo fila crescendo; pico contado só enquanto ativo; sem a causa de
+fluxo desviado; o pior ponto pelo crescimento; aviso que não se segura; a
+própria quebra como causa apenas provável). Uma sobreviveu na primeira rodada
+(decidir no mesmo segundo do alarme): o teste de ponta a ponta passou a conferir
+que nenhuma manutenção começa no segundo do alarme real.
+
+### No navegador e nos testes
+
+No Chromium, com o build de produção: o cartão "Gargalo agora" e o anel âmbar na
+quebra da Esteira 9; o cartão acompanhando a viagem no tempo (some 20 s antes da
+quebra, volta 10 s depois); um desgaste terminando em falha evitada (alarme,
+agendamento e "Falha evitada" no feed, esteira e motor ciano, painel K com a
+contagem); um celular de 390 px sem sobreposição entre métricas, cartão, feed e
+controles; nenhum erro de console. O benchmark do motor não mudou (gravação com
+40 robôs: −0,8%, dentro do ruído).
+
+**Testes:** 224 em 29 arquivos (185 em 25 ao fim da Fase 4), entre eles as
+impressões digitais de referência de quatro execuções, tiradas antes da 4b: com a
+agenda desligada, o motor das fases anteriores não mudou um bit.
+
+---
+
 ## Bugs que só apareceram medindo
 
-| Fase | Sintoma medido                                                     | Causa                                                            | Efeito da correção                                               |
-| ---- | ------------------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------- |
-| 1    | Fila de entrada crescendo em regime normal (297 pacotes em 15 min) | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46        | esteiras a 2,0 m/s: E9 a 81%, fila estável                       |
-| 1    | +1 textura na GPU a cada reinício                                  | só a textura do ambiente era liberada, não o render target       | memória estável em 5 reinícios                                   |
-| 1    | 433 chamadas de desenho por quadro                                 | um objeto por anel e por peça de caminhão                        | 284                                                              |
-| 1    | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade        | alvo do ajuste automático em 50 FPS                              | alvo 55: cai para média e volta a 60 FPS                         |
-| 2    | Frenagens acima do limite ao alcançar a referência                 | curva de frenagem contínua avaliada tick a tick                  | curva discreta e checagem da referência futura: 0 violações      |
-| 2    | Frenagem brusca logo após replanejar                               | o novo plano mudava a curva na célula seguinte                   | compromisso 2 passos à frente: 0 violações em 8 seeds            |
-| 2    | Exceção "célula já reservada"                                      | robô precisando parar numa célula que outro reservaria no futuro | esse outro também replaneja                                      |
-| 2    | 31% das tentativas de planejamento sem caminho                     | estação liberada com o robô ainda em cima                        | 1,3%, e plano 10× mais rápido                                    |
-| 3    | Os dois robôs de um par recuavam ao mesmo tempo                    | cada um pedia passagem ao outro na mesma rodada                  | só um recua (teste)                                              |
-| 3    | Robôs saindo da frente à toa atrás de um robô com defeito          | o pedido de passagem passava por quem não podia se mover         | nenhum pedido nesses casos (teste)                               |
-| 3    | 36 casos de impasse custando 11,8 s de CPU                         | cada tentativa sem caminho esgotava 60 mil estados da busca      | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa           |
-| 3    | Robô restaurado divergindo no último bit                           | a soma da janela de métricas era recalculada ao compactar        | compactação sem recálculo: idêntico bit a bit                    |
-| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas      | pacotes parados nas entradas gravados com todos os campos        | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB         |
-| 3    | Teste de carga perdido ao reiniciar (teste do worker)              | a carga virou entrada gravada e o reinício criava gravação nova  | a carga volta como entrada no tick 0 da nova gravação            |
-| 4    | Treino a 170 decisões/s (2M em 3,3 h)                              | o tsx (keepNames) gastava ~75% do episódio num ajudante          | build com esbuild: ~490/s, 2M em cerca de 70 min                 |
-| 4    | Detector com 20% a 69% de precisão                                 | modelo fixo do motor: viés de cada motor e da carga              | filtro de Kalman aprende o normal de cada motor                  |
-| 4    | 29 de 29 alarmes falsos logo depois de um reparo                   | o motor que quebrou gasto volta quente (memória térmica)         | o gêmeo ressincroniza a temperatura quando o motor religa        |
-| 4    | 100% de precisão e de recall                                       | desgaste sempre forte e nenhum distúrbio no modelo dos sinais    | quebras súbitas, desgaste fraco, pancadas e enroscos             |
-| 4    | Conferência por mutação parada por mais de 7 min                   | mutante transformou "espere um desgaste" em laço infinito        | teste com limite; rodada encerrada em 5× a linha de base         |
-| 4    | Worker de 89 kB → 510 kB                                           | o formato IIFE embutia o runtime da rede no import dinâmico      | worker em módulo ES: 101 kB, runtime baixado sob demanda         |
-| 4    | Motor sem robôs 12% mais lento que a `main` (gate do CI)           | monitoramento dos 24 motores a cada segundo simulado             | agregados contados só quando lidos: 15% mais rápido que a `main` |
+| Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |
+| ---- | -------------------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1    | Fila de entrada crescendo em regime normal (297 pacotes em 15 min)   | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46            | esteiras a 2,0 m/s: E9 a 81%, fila estável                       |
+| 1    | +1 textura na GPU a cada reinício                                    | só a textura do ambiente era liberada, não o render target           | memória estável em 5 reinícios                                   |
+| 1    | 433 chamadas de desenho por quadro                                   | um objeto por anel e por peça de caminhão                            | 284                                                              |
+| 1    | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade          | alvo do ajuste automático em 50 FPS                                  | alvo 55: cai para média e volta a 60 FPS                         |
+| 2    | Frenagens acima do limite ao alcançar a referência                   | curva de frenagem contínua avaliada tick a tick                      | curva discreta e checagem da referência futura: 0 violações      |
+| 2    | Frenagem brusca logo após replanejar                                 | o novo plano mudava a curva na célula seguinte                       | compromisso 2 passos à frente: 0 violações em 8 seeds            |
+| 2    | Exceção "célula já reservada"                                        | robô precisando parar numa célula que outro reservaria no futuro     | esse outro também replaneja                                      |
+| 2    | 31% das tentativas de planejamento sem caminho                       | estação liberada com o robô ainda em cima                            | 1,3%, e plano 10× mais rápido                                    |
+| 3    | Os dois robôs de um par recuavam ao mesmo tempo                      | cada um pedia passagem ao outro na mesma rodada                      | só um recua (teste)                                              |
+| 3    | Robôs saindo da frente à toa atrás de um robô com defeito            | o pedido de passagem passava por quem não podia se mover             | nenhum pedido nesses casos (teste)                               |
+| 3    | 36 casos de impasse custando 11,8 s de CPU                           | cada tentativa sem caminho esgotava 60 mil estados da busca          | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa           |
+| 3    | Robô restaurado divergindo no último bit                             | a soma da janela de métricas era recalculada ao compactar            | compactação sem recálculo: idêntico bit a bit                    |
+| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas        | pacotes parados nas entradas gravados com todos os campos            | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB         |
+| 3    | Teste de carga perdido ao reiniciar (teste do worker)                | a carga virou entrada gravada e o reinício criava gravação nova      | a carga volta como entrada no tick 0 da nova gravação            |
+| 4    | Treino a 170 decisões/s (2M em 3,3 h)                                | o tsx (keepNames) gastava ~75% do episódio num ajudante              | build com esbuild: ~490/s, 2M em cerca de 70 min                 |
+| 4    | Detector com 20% a 69% de precisão                                   | modelo fixo do motor: viés de cada motor e da carga                  | filtro de Kalman aprende o normal de cada motor                  |
+| 4    | 29 de 29 alarmes falsos logo depois de um reparo                     | o motor que quebrou gasto volta quente (memória térmica)             | o gêmeo ressincroniza a temperatura quando o motor religa        |
+| 4    | 100% de precisão e de recall                                         | desgaste sempre forte e nenhum distúrbio no modelo dos sinais        | quebras súbitas, desgaste fraco, pancadas e enroscos             |
+| 4    | Conferência por mutação parada por mais de 7 min                     | mutante transformou "espere um desgaste" em laço infinito            | teste com limite; rodada encerrada em 5× a linha de base         |
+| 4    | Worker de 89 kB → 510 kB                                             | o formato IIFE embutia o runtime da rede no import dinâmico          | worker em módulo ES: 101 kB, runtime baixado sob demanda         |
+| 4    | Motor sem robôs 12% mais lento que a `main` (gate do CI)             | monitoramento dos 24 motores a cada segundo simulado                 | agregados contados só quando lidos: 15% mais rápido que a `main` |
+| 4b   | Com a agenda, o modo automático aplicava 36% mais desgastes          | a quebra evitada liberava cedo a vaga do limite de 2 falhas          | a vaga fica ocupada até quando a quebra teria terminado          |
+| 4b   | Quebras de esteiras do sorter não apontadas (até 296 pacotes a mais) | fila contada só um passo à frente: a esteira curta não passava de 11 | a espera segue a corrente até a raiz: 285 → 291 apontadas        |
+| 4b   | Dois testes antigos passaram de 5 s na suíte completa                | testes novos pesados disputando CPU                                  | testes novos mais leves; 20 s para os dois pesados               |
 
 ## Como reproduzir
 
@@ -728,6 +983,8 @@ npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e seek (cerca de 3 min)
 npm run bench:rotas  # roteamento: estática × heurística (--rl <modelo> inclui o agente, --teacher o professor)
 npm run bench:manutencao  # detector de manutenção preditiva (--calibrate: grade de k e h)
+npm run bench:agenda      # agenda de manutenção com × sem, seed a seed (--calibrate: prazo no p10 e no p20)
+npm run bench:gargalo     # detector de gargalo em ensaios controlados (--calibrate: grade de limiares)
 npm run mutate       # conferência por mutação numa cópia temporária (~10 min)
 ai/.venv/Scripts/python ai/test_fidelity.py   # o Python e o TypeScript simulam igual
 ai/.venv/Scripts/python ai/train.py --name x  # treino PPO (ver o README)

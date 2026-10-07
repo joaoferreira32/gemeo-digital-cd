@@ -26,7 +26,7 @@ export function fingerprint(world: World): string {
     for (const p of inbound.backlog) mix(p.id);
   }
   for (const c of world.conveyors) {
-    mix(c.status === 'ok' ? 1 : 0);
+    mix(c.status === 'ok' ? 1 : c.status === 'broken' ? 0 : 2);
     mix(c.packets.length);
     for (const p of c.packets) {
       mix(p.id);
@@ -47,6 +47,22 @@ export function fingerprint(world: World): string {
   for (let i = 0; i < world.conveyors.length; i++) {
     mix(world.health.sum[i] as number);
     mix(world.health.temperature[i] as number);
+  }
+  // The maintenance schedule only exists when it is on (the earlier runs keep their prints).
+  const schedule = world.schedule;
+  if (schedule.enabled) {
+    mix(schedule.avoided);
+    mix(schedule.unneeded);
+    mix(schedule.lost);
+    for (const p of schedule.plans) {
+      mix(p.target);
+      mix(p.deadline);
+      mix(p.drainedBy);
+    }
+    for (const s of schedule.services) {
+      mix(s.target);
+      mix(s.endsAt);
+    }
   }
   if (world.fleet) {
     for (const r of world.fleet.robots) {

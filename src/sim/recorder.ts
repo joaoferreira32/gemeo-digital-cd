@@ -2,6 +2,7 @@ import type { FailureKind, SimEvent } from './failures';
 import type { RoutingPolicy } from './policy';
 import { ROBOT_STAGES, type RobotStage } from './fleet';
 import { fingerprint } from './fingerprint';
+import { waitingFor } from './queues';
 import { World, type Checkpoint, type SimConfig } from './world';
 
 /** Order rate of the load test: far above capacity, so piles grow past 2 000 packets. */
@@ -61,7 +62,7 @@ const WORKING: ReadonlySet<RobotStage> = new Set([
 ]);
 
 /** Growable typed array. */
-class Column<T extends Int32Array | Float32Array | Uint16Array> {
+class Column<T extends Int32Array | Float32Array | Uint16Array | Uint8Array> {
   length = 0;
   constructor(public data: T) {}
 
@@ -101,6 +102,19 @@ class Series {
   readonly robotBusy: Column<Uint16Array>;
   /** Robots busy during that second (for the live chart). */
   readonly busyNow = new Column(new Int32Array(1024));
+  /**
+   * Per second × belt or dock: packets waiting for it (queues.ts), the state
+   * of each belt (0 running · 1 broken · 2 maintenance), whether each dock is
+   * blocked, and whether an order surge is on: what the bottleneck detector
+   * reads (src/ai/bottleneck.ts), at any moment of the recording.
+   */
+  readonly conveyorQueue: Column<Uint16Array>;
+  readonly dockQueue: Column<Uint16Array>;
+  readonly conveyorState: Column<Uint8Array>;
+  readonly dockBlocked: Column<Uint8Array>;
+  readonly surge = new Column(new Uint8Array(1024));
+  private readonly scratchConveyors: Int32Array;
+  private readonly scratchDocks: Int32Array;
 
   constructor(
     readonly conveyors: number,
@@ -110,6 +124,12 @@ class Series {
     this.conveyorExits = new Column(new Int32Array(1024 * Math.max(1, conveyors)));
     this.dockDeliveries = new Column(new Int32Array(1024 * Math.max(1, docks)));
     this.robotBusy = new Column(new Uint16Array(1024 * Math.max(1, robots)));
+    this.conveyorQueue = new Column(new Uint16Array(1024 * Math.max(1, conveyors)));
+    this.dockQueue = new Column(new Uint16Array(1024 * Math.max(1, docks)));
+    this.conveyorState = new Column(new Uint8Array(1024 * Math.max(1, conveyors)));
+    this.dockBlocked = new Column(new Uint8Array(1024 * Math.max(1, docks)));
+    this.scratchConveyors = new Int32Array(conveyors);
+    this.scratchDocks = new Int32Array(docks);
   }
 
   sample(w: World, newCycles: readonly number[]): void {
@@ -129,6 +149,17 @@ class Series {
       this.robotBusy.push(before + working);
     }
     this.busyNow.push(busy);
+    waitingFor(w, this.scratchConveyors, this.scratchDocks);
+    for (let c = 0; c < this.conveyors; c++) {
+      this.conveyorQueue.push(Math.min(0xffff, this.scratchConveyors[c] as number));
+      const status = (w.conveyors[c] as { status: string }).status;
+      this.conveyorState.push(status === 'ok' ? 0 : status === 'broken' ? 1 : 2);
+    }
+    for (let d = 0; d < this.docks; d++) {
+      this.dockQueue.push(Math.min(0xffff, this.scratchDocks[d] as number));
+      this.dockBlocked.push((w.docks[d] as { blockedUntil: number }).blockedUntil > w.time ? 1 : 0);
+    }
+    this.surge.push(w.failures.active.some((f) => f.kind === 'surge') ? 1 : 0);
     this.seconds++;
   }
 
@@ -144,6 +175,11 @@ class Series {
     this.dockDeliveries.length = n * this.docks;
     this.robotBusy.length = n * this.robots;
     this.busyNow.length = n;
+    this.conveyorQueue.length = n * this.conveyors;
+    this.dockQueue.length = n * this.docks;
+    this.conveyorState.length = n * this.conveyors;
+    this.dockBlocked.length = n * this.docks;
+    this.surge.length = n;
   }
 
   get bytes(): number {
@@ -156,6 +192,11 @@ class Series {
       this.dockDeliveries,
       this.robotBusy,
       this.busyNow,
+      this.conveyorQueue,
+      this.dockQueue,
+      this.conveyorState,
+      this.dockBlocked,
+      this.surge,
     ].reduce((n, c) => n + c.bytes, 0);
   }
 }

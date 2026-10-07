@@ -1,0 +1,115 @@
+{
+  "tests": ["tests/bottleneck.test.ts", "tests/queues.test.ts"],
+  "mutations": [
+    {
+      "name": "fila contada só um passo à frente",
+      "edits": [
+        {
+          "file": "src/sim/queues.ts",
+          "find": "      at = to;",
+          "replace": "      return at;"
+        }
+      ]
+    },
+    {
+      "name": "pacotes de esteira parada não contam",
+      "edits": [
+        {
+          "file": "src/sim/queues.ts",
+          "find": "      if (h) add(c.edgeId, h);",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a doca não recebe a fila da sua esteira",
+      "edits": [
+        {
+          "file": "src/sim/queues.ts",
+          "find": "      next[c.edgeId] = -(dock + 1);",
+          "replace": "      next[c.edgeId] = NONE;"
+        }
+      ]
+    },
+    {
+      "name": "a pilha da entrada não conta",
+      "edits": [
+        {
+          "file": "src/sim/queues.ts",
+          "find": "    if (first !== undefined && inbound.backlog.length) add(root(first), inbound.backlog.length);",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "vítima vira gargalo (sem exigir uso)",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "      if (use < minUse || !(perMinute >= minRate)) return null;",
+          "replace": "      if (!(perMinute >= minRate)) return null;"
+        }
+      ]
+    },
+    {
+      "name": "esteira parada só conta com fila crescendo",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "    if (!stopped) {",
+          "replace": "    if (true) {"
+        }
+      ]
+    },
+    {
+      "name": "pico só conta se estiver ativo agora",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "    for (let sec = Math.max(0, t - c.growingFor - this.params.window); sec <= t && !surge; sec++) {",
+          "replace": "    for (let sec = t; sec <= t && !surge; sec++) {"
+        }
+      ]
+    },
+    {
+      "name": "sem fluxo desviado como causa",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "          if (!mine.includes(c.index)) continue;",
+          "replace": "          continue;"
+        }
+      ]
+    },
+    {
+      "name": "o pior ponto pelo crescimento, não pela fila",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "        c.queue > best.queue ||",
+          "replace": "        c.perMinute > best.perMinute ||"
+        }
+      ]
+    },
+    {
+      "name": "o aviso não se segura",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "    for (let t = last; t >= Math.max(0, last - this.params.hold); t--) {",
+          "replace": "    for (let t = last; t >= last; t--) {"
+        }
+      ]
+    },
+    {
+      "name": "a própria quebra vira causa provável",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "            certain: true,\n            text: `quebra desta esteira${bridged}`,",
+          "replace": "            certain: false,\n            text: `quebra desta esteira${bridged}`,"
+        }
+      ]
+    }
+  ]
+}

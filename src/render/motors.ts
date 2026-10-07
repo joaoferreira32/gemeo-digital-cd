@@ -21,12 +21,17 @@ import type { ResourceTracker } from './resources';
 const SIDE = 0.78;
 const BACK = 0.55;
 
+/** Seconds of simulated time the wave of a failure avoided takes to fade. */
+const AVOIDED_SECONDS = 3;
+
 /**
  * The drive motor of every belt, beside its discharge end, with a health
  * halo: dim cyan while the readings look normal, amber as the alarm sum
  * builds up, red and pulsing when the alarm is up (src/sim/health.ts; the
- * signals are simulated). A stopped motor has no halo: the breakdown alert
- * already marks it.
+ * signals are simulated). A broken motor has no halo: the breakdown alert
+ * already marks it. Stopped for a planned maintenance (src/sim/schedule.ts)
+ * it glows steady cyan, and a failure avoided sends a cyan wave out of it
+ * (in simulated time, so it replays with the recording).
  */
 export class MotorView {
   readonly housings: InstancedMesh;
@@ -37,6 +42,8 @@ export class MotorView {
   private readonly amber = new Color(PALETTE.amber);
   private readonly red = new Color(PALETTE.alert);
   private readonly tmp = new Color();
+  /** Color of a halo before its glow (scratch, so a frame allocates nothing). */
+  private readonly base = new Color();
   private readonly m = new Matrix4();
 
   constructor(layout: WarehouseLayout, tracker: ResourceTracker) {
@@ -71,8 +78,9 @@ export class MotorView {
         toneMapped: false,
       }),
     );
-    this.halos = new InstancedMesh(ring, ringMat, n);
-    this.halos.instanceColor = new InstancedBufferAttribute(new Float32Array(n * 3), 3);
+    // One halo per motor, plus room for the wave of a failure avoided on each.
+    this.halos = new InstancedMesh(ring, ringMat, n * 2);
+    this.halos.instanceColor = new InstancedBufferAttribute(new Float32Array(n * 2 * 3), 3);
     this.halos.frustumCulled = false;
     this.halos.renderOrder = 3;
   }
@@ -81,28 +89,49 @@ export class MotorView {
     const c = frame.s.conveyors;
     const colors = this.halos.instanceColor?.array as Float32Array;
     let shown = 0;
+    const now = frame.time;
+    const put = (x: number, z: number, scale: number, color: Color, glow: number) => {
+      this.m.makeScale(scale, 1, scale).setPosition(x, BELT_TOP - 0.1, z);
+      this.halos.setMatrixAt(shown, this.m);
+      this.tmp.copy(color).multiplyScalar(glow);
+      colors.set([this.tmp.r, this.tmp.g, this.tmp.b], shown * 3);
+      shown++;
+    };
     this.spots.forEach((s, i) => {
       const o = i * CONVEYOR_STRIDE;
-      if ((c[o + CONVEYOR.status] as number) > 0) return;
+      const avoidedAt = c[o + CONVEYOR.avoidedAt] as number;
+      const age = now - avoidedAt;
+      if (avoidedAt >= 0 && age >= 0 && age < AVOIDED_SECONDS) {
+        const t = age / AVOIDED_SECONDS;
+        put(
+          s.x,
+          s.z,
+          reducedMotion ? 2.2 : 1 + t * 3.5,
+          this.cyan,
+          reducedMotion ? 1.6 : 2.4 * (1 - t),
+        );
+      }
+      const status = c[o + CONVEYOR.status] as number;
+      if (status === 2) {
+        put(s.x, s.z, 1.15, this.cyan, reducedMotion ? 1.5 : 1.3 + 0.3 * Math.sin(time * 2 + i));
+        return;
+      }
+      if (status > 0) return;
       const risk = c[o + CONVEYOR.risk] as number;
       const alarm = (c[o + CONVEYOR.alarm] as number) > 0;
       let glow: number;
       if (alarm) {
-        this.tmp.copy(this.red);
+        this.base.copy(this.red);
         glow = reducedMotion ? 1.6 : 1.3 + 0.7 * Math.sin(time * 6 + i);
       } else if (risk < 0.5) {
-        this.tmp.copy(this.cyan).lerp(this.amber, risk * 2);
+        this.base.copy(this.cyan).lerp(this.amber, risk * 2);
         glow = 0.3 + risk * 1.6;
       } else {
-        this.tmp.copy(this.amber).lerp(this.red, (risk - 0.5) * 2);
+        this.base.copy(this.amber).lerp(this.red, (risk - 0.5) * 2);
         glow = 1 + (risk - 0.5);
       }
       const scale = alarm && !reducedMotion ? 1 + 0.15 * (0.5 + 0.5 * Math.sin(time * 6 + i)) : 1;
-      this.m.makeScale(scale, 1, scale).setPosition(s.x, BELT_TOP - 0.1, s.z);
-      this.halos.setMatrixAt(shown, this.m);
-      this.tmp.multiplyScalar(glow);
-      colors.set([this.tmp.r, this.tmp.g, this.tmp.b], shown * 3);
-      shown++;
+      put(s.x, s.z, scale, this.base, glow);
     });
     this.halos.count = shown;
     this.halos.instanceMatrix.needsUpdate = true;

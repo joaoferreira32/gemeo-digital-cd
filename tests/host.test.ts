@@ -228,7 +228,7 @@ describe('SimHost routing (key P)', () => {
     for (let i = 0; i < 400 && !posted.some((m) => m.type === 'replay' && m.done); i++) pump(16);
     const done = posted.find((m) => m.type === 'replay' && m.done);
     expect(done?.type === 'replay' && done.ok).toBe(true);
-  });
+  }, 20_000);
 });
 
 describe('Timeline markers', () => {

@@ -46,7 +46,14 @@ export type SimEventKind =
   | 'robot-stuck'
   | 'robot-moving'
   /** The motor monitoring raised an alarm on a conveyor (predictive maintenance). */
-  | 'maintenance';
+  | 'maintenance'
+  /** The maintenance schedule (schedule.ts): planned or postponed, started, done, too late. */
+  | 'service-planned'
+  | 'service-start'
+  | 'service-end'
+  | 'service-lost'
+  /** A planned maintenance found the wear: the breakdown will not happen. */
+  | 'failure-avoided';
 
 /** Something worth telling the viewer; the text is ready to show (pt-BR). */
 export interface SimEvent {
@@ -110,6 +117,15 @@ export class FailureInjector {
   readonly active: ActiveFailure[] = [];
   /** Conveyors wearing out toward a breakdown, in the order they started. */
   readonly degrading: Degradation[] = [];
+  /**
+   * When each breakdown a planned maintenance avoided would have ended. Until
+   * then it still takes its place in the limit of simultaneous automatic
+   * failures, as the breakdown would have: the automatic mode applies the
+   * same load with or without the maintenance schedule. (Without this, a
+   * wear cut short freed its place about a minute early, and the schedule
+   * faced a third more wear than the runs without it: measured, phase 4b.)
+   */
+  private readonly avoided: number[] = [];
   private auto = false;
   private readonly rng: Rng;
   private nextAutoAt = Infinity;
@@ -150,6 +166,7 @@ export class FailureInjector {
       w.float(d.breaksAt);
       w.float(d.duration);
     }
+    w.floats64(this.avoided);
   }
 
   load(r: StateReader): void {
@@ -179,6 +196,8 @@ export class FailureInjector {
         duration: r.float(),
       });
     }
+    this.avoided.length = 0;
+    this.avoided.push(...r.floats64());
   }
 
   setAuto(on: boolean, now: number): void {
@@ -193,6 +212,8 @@ export class FailureInjector {
   inject(kind: FailureKind, now: number, target?: number): ActiveFailure | null {
     const t = target ?? this.pickTarget(kind);
     if (t === null || this.isActive(kind, t)) return null;
+    // A belt stopped for maintenance cannot break down on top of it.
+    if (kind === 'conveyor' && this.host.isConveyorBroken(t)) return null;
     const [lo, hi] = DURATION[kind];
     const endsAt = now + lo + (hi - lo) * this.rng.next();
     // A sudden breakdown of a belt that was wearing out ends its wear (it gets repaired).
@@ -271,9 +292,13 @@ export class FailureInjector {
       this.degrading.splice(i, 1);
       this.start('conveyor', d.target, now, now + d.duration, d.id);
     }
+    for (let i = this.avoided.length - 1; i >= 0; i--) {
+      if (now >= (this.avoided[i] as number)) this.avoided.splice(i, 1);
+    }
     if (this.auto && now >= this.nextAutoAt) {
       // A belt wearing out counts: it will be a failure, so the limit holds when it breaks.
-      if (this.active.length + this.degrading.length < this.maxConcurrent) {
+      const busy = this.active.length + this.degrading.length + this.avoided.length;
+      if (busy < this.maxConcurrent) {
         const kind = KINDS[
           this.rng.weightedIndex(KINDS.map((k) => AUTO_WEIGHTS[k]))
         ] as FailureKind;
@@ -282,6 +307,15 @@ export class FailureInjector {
       }
       this.nextAutoAt = now + this.rng.exponential(1 / this.autoMeanInterval);
     }
+  }
+
+  /** A planned maintenance on a conveyor: its wear, if any, is gone. Returns the wear it found. */
+  service(target: number): Degradation | null {
+    const i = this.degrading.findIndex((d) => d.target === target);
+    if (i < 0) return null;
+    const wear = this.degrading.splice(i, 1)[0] as Degradation;
+    this.avoided.push(wear.breaksAt + wear.duration);
+    return wear;
   }
 
   private isWearing(target: number): boolean {

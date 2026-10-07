@@ -1,6 +1,7 @@
 import type { Packet } from './packet';
 
-export type ConveyorStatus = 'ok' | 'broken';
+/** `maintenance`: stopped for a planned maintenance (schedule.ts), not broken. */
+export type ConveyorStatus = 'ok' | 'broken' | 'maintenance';
 
 /**
  * A conveyor is a 1D lane: each packet has an arc-length position `s` in

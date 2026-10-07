@@ -1,0 +1,130 @@
+{
+  "tests": ["tests/schedule.test.ts"],
+  "mutations": [
+    {
+      "name": "a agenda ignora o alarme",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "    if (!this.enabled || this.stateOf(edgeId) !== 0) return;",
+          "replace": "    return;"
+        }
+      ]
+    },
+    {
+      "name": "a rota não desvia da esteira que esvazia",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "      this.heuristic.update(this.conveyors, this.lanes, this.schedule.closing);",
+          "replace": "      this.heuristic.update(this.conveyors, this.lanes);"
+        }
+      ]
+    },
+    {
+      "name": "não espera a esteira esvaziar",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "    if (c.packets.length > 0 && now < p.drainedBy - EPS) return false;",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "ignora o prazo",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "    if (now >= p.deadline - EPS) return true;",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "não espera a queda da demanda prevista",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "      if (this.host.forecastRate(t) > rate * (1 - this.params.demandDrop)) continue;",
+          "replace": "      continue;"
+        }
+      ]
+    },
+    {
+      "name": "a manutenção não corrige o desgaste",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "    const wear = this.host.serviceWear(p.target);",
+          "replace": "    const wear = null;"
+        }
+      ]
+    },
+    {
+      "name": "a esteira não volta depois da manutenção",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "      if (c.status === 'maintenance') this.host.setConveyorStatus(s.target, 'ok');",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "quebra durante a espera não é notada",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "      if (c.status !== 'ok') {",
+          "replace": "      if (false) {"
+        }
+      ]
+    },
+    {
+      "name": "falha evitada libera a vaga do limite antes da hora",
+      "edits": [
+        {
+          "file": "src/sim/failures.ts",
+          "find": "    this.avoided.push(wear.breaksAt + wear.duration);",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "esteira em manutenção pode quebrar",
+      "edits": [
+        {
+          "file": "src/sim/failures.ts",
+          "find": "    if (kind === 'conveyor' && this.host.isConveyorBroken(t)) return null;",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "checkpoint sem o estado da agenda",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "    this.schedule.save(w);\n",
+          "replace": ""
+        },
+        {
+          "file": "src/sim/world.ts",
+          "find": "    this.schedule.load(r);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "decide no mesmo segundo do alarme",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "      if (now >= p.alarmAt + 1 - EPS && this.ready(p, c, now)) {",
+          "replace": "      if (this.ready(p, c, now)) {"
+        }
+      ]
+    }
+  ]
+}

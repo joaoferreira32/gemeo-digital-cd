@@ -2,7 +2,11 @@ import type { Timeline, TimelineMarker } from '../worker/views';
 import { formatInt } from './format';
 import { formatMinSec } from './viz';
 
-/** Marker colors: the scene's alert red for breakdowns, amber for surges and maintenance alarms, cyan for the watchdog. */
+/**
+ * Marker colors: the scene's alert red for breakdowns (and a breakdown that
+ * came while its maintenance waited), amber for surges and motor alarms,
+ * cyan for the watchdog and for planned maintenance and the failures it avoided.
+ */
 const MARKER_COLOR: Record<TimelineMarker['kind'], string> = {
   conveyor: '#ff4d5e',
   robot: '#ff4d5e',
@@ -11,7 +15,18 @@ const MARKER_COLOR: Record<TimelineMarker['kind'], string> = {
   surge: '#f2a541',
   watchdog: '#38e1d6',
   maintenance: '#f2a541',
+  service: '#38e1d6',
+  avoided: '#38e1d6',
+  lost: '#ff4d5e',
 };
+
+/** Markers drawn as dots (moments); the others are bars (intervals). */
+const POINTS: ReadonlySet<TimelineMarker['kind']> = new Set([
+  'watchdog',
+  'maintenance',
+  'avoided',
+  'lost',
+]);
 
 export interface TimelineActions {
   seek(time: number): void;
@@ -163,18 +178,18 @@ export class TimelineBar {
       g.lineWidth = 1;
       g.stroke();
     }
-    // Failures and stuck robots as bars along the top; watchdog actions and maintenance alarms as dots.
+    // Failures, stuck robots and planned maintenance as bars along the top; moments as dots.
     for (const m of t.markers) {
       g.fillStyle = MARKER_COLOR[m.kind];
       const x0 = xOf(m.start);
-      if (m.kind === 'watchdog' || m.kind === 'maintenance') {
+      if (POINTS.has(m.kind)) {
         g.beginPath();
-        g.arc(x0, 4, 2.5, 0, Math.PI * 2);
+        g.arc(x0, 4, m.kind === 'avoided' || m.kind === 'lost' ? 3.5 : 2.5, 0, Math.PI * 2);
         g.fill();
         continue;
       }
       const x1 = xOf(m.end ?? t.head);
-      g.globalAlpha = m.kind === 'stuck' ? 0.7 : 0.9;
+      g.globalAlpha = m.kind === 'stuck' ? 0.7 : m.kind === 'service' ? 0.55 : 0.9;
       g.fillRect(x0, m.kind === 'stuck' ? 7 : 0, Math.max(2, x1 - x0), m.kind === 'stuck' ? 2 : 5);
       g.globalAlpha = 1;
     }
