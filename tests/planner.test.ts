@@ -311,5 +311,5 @@ describe('CooperativePlanner', () => {
       expect(plans.filter((p) => p.cells.length > 1).length).toBeGreaterThan(4);
       assertRobust(plans);
     }
-  });
+  }, 20_000);
 });

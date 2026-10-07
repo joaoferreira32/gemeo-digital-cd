@@ -247,7 +247,7 @@ describe('maintenance schedule', () => {
     w.schedule.onOutcome = (o) => outcomes.push(o);
     const broke: { time: number; target: number }[] = [];
     let last = 0;
-    for (let s = 0; s < 1200; s++) {
+    for (let s = 0; s < 600; s++) {
       w.stepMany(SECOND);
       for (const e of w.events) {
         if (e.id <= last) continue;

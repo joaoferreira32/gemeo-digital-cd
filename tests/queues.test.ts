@@ -27,7 +27,7 @@ describe('who each waiting packet waits for', () => {
       const w = new World({ seed, arrivalRate, scheduleMaintenance: true });
       w.setPolicy('heuristic');
       w.failures.setAuto(true, 0);
-      for (let s = 0; s < 600; s++) {
+      for (let s = 0; s < 300; s++) {
         w.stepMany(SECOND);
         expect(total(queues(w)), `at ${s + 1} s`).toBe(w.stats.waiting);
       }

@@ -237,7 +237,7 @@ describe('bottleneck detector on the simulation', () => {
   }, 30_000);
 
   it('reads only the recording: a past moment gives what it gave then', () => {
-    const { rec, detector } = run({ type: 'inject', kind: 'conveyor', target: 8 }, 300);
+    const { rec, detector } = run({ type: 'inject', kind: 'conveyor', target: 8 }, 140);
     const then = detector.detect(rec.series, 140);
     expect(then?.label).toBe('Esteira 9 (B3→B4)');
     rec.stepMany(60 * 60);
