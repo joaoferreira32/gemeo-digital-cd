@@ -101,24 +101,24 @@
       }
     ],
     "date": "2026-10-07",
-    "commit": "36bf5b0",
+    "commit": "7caa7ad",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "caos": {
     "rows": [
       {
         "what": "Detector de gargalo, falhas automáticas: causa certa",
-        "result": "**59%** (IC 95% 55% a 64%)",
+        "result": "sem memória **59%** (IC 95% 55% a 64%); com memória **75%** (IC 95% 71% a 79%)",
         "how": "`npm run bench:gargalo-caos`"
       },
       {
         "what": "Detector de gargalo, falhas automáticas: causa certa com duas ou mais falhas ligadas",
-        "result": "**80%** (IC 95% 75% a 85%)",
+        "result": "sem memória **80%** (IC 95% 75% a 85%); com memória **85%** (IC 95% 77% a 92%)",
         "how": "`npm run bench:gargalo-caos`"
       }
     ],
     "date": "2026-10-07",
-    "commit": "36bf5b0",
+    "commit": "7caa7ad",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "laboratorio": {

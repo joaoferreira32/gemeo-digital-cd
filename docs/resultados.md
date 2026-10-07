@@ -1202,6 +1202,100 @@ esteira acima no fluxo 10; defeito de robô 10. A falha tinha terminado havia 65
   "sobra da quebra desta esteira, consertada há 40 s", "sobra do bloqueio da Doca
   3, liberada há 40 s", "sobra do pico de pedidos, encerrado há 70 s".
 
+### Calibração (seeds de validação)
+
+`npm run bench:gargalo -- --memoria` e depois
+`npm run bench:gargalo-caos -- --calibrate --ensaios <saída do primeiro>`.
+
+**Ensaios controlados da 4b:** as 36 combinações mantêm as 291 de 293 falhas
+apontadas e a causa certa no primeiro aviso em 100%; a causa certa nos segundos
+de aviso sobe de 98,4% (sem memória) para 98,4% a 100% (as filas que sobram
+depois do conserto passam a ser da falha aplicada). Nenhuma foi excluída pela
+restrição.
+
+**Falhas automáticas** (as mesmas 10 h e a mesma verdade da Fase 5), as melhores
+e as piores:
+
+| Memória                                               | Explicações certas | Com 2+ falhas ligadas | Segundos na tela |
+| ----------------------------------------------------- | ------------------ | --------------------- | ---------------- |
+| **180 s, fluxo e rotas, a mais longa, antes do pico** | **75,3%**          | 84,6%                 | 83,5%            |
+| 180 s, pelo fluxo, a mais longa, antes do pico        | 75,2%              | 84,6%                 | 83,5%            |
+| 120 s, fluxo e rotas, a mais longa, antes do pico     | 74,0%              | 83,7%                 | 83,7%            |
+| 180 s, fluxo e rotas, a última, depois do pico        | 71,3%              | 85,6%                 | 82,3%            |
+| 60 s, fluxo e rotas, a mais longa, antes do pico      | 64,7%              | 81,0%                 | 78,9%            |
+| 180 s, só a própria, a última, antes do pico          | 61,8%              | 80,4%                 | 78,0%            |
+| 60 s, só a própria, a última, depois do pico          | 59,9%              | 80,4%                 | 77,1%            |
+| sem memória                                           | 59,4%              | 80,1%                 | 77,0%            |
+
+Pela regra registrada: **180 s, ligada pelo fluxo e pelas escolhas de rota, a
+parada mais longa, antes da regra do pico** (75,3% contra 59,4%). Duas ressalvas
+anotadas antes de medir no teste: "fluxo e rotas" ganhou de "pelo fluxo" por 0,1
+ponto (dentro do ruído; a regra pega o maior), e a janela escolhida coincide com
+a janela da verdade (180 s), por isso o teste mostra também a verdade com 600 s.
+O que pesa é o vínculo pelo fluxo: só a própria esteira ou doca fica perto de
+não ter memória (59,9% a 61,8%).
+
+### Resultado nas seeds de teste novas (passada única)
+
+Uma única passada nas seeds 30.031 a 30.040, depois da conferência por mutação
+(`npm run bench:gargalo-caos -- --set teste-memoria --final`): as mesmas
+gravações e a mesma verdade para os dois detectores. 455 falhas aplicadas (176
+de esteira, 58 de doca, 84 picos, 137 de robô). Nada mudou depois dela.
+
+| Explicações                               | Sem memória                              | **Com memória**                              | Com − sem, seed a seed                 |
+| ----------------------------------------- | ---------------------------------------- | -------------------------------------------- | -------------------------------------- |
+| Todas                                     | 58,5% (1.117 de 1.909; IC 52,2% a 64,8%) | **74,6%** (1.433 de 1.922; IC 69,4% a 79,7%) | **+17,1 pp (+10,6 a +23,6), 10 de 10** |
+| Nenhuma falha ligada no segundo julgado   | 39,0%                                    | 67,9%                                        | +29,6 pp (+21,4 a +37,8), 10 de 10     |
+| Uma falha ligada                          | 68,3%                                    | 77,3%                                        | +10,6 pp (+3,0 a +18,3), 9 de 10       |
+| Duas ou mais falhas ligadas (simultâneas) | 76,1%                                    | 82,2%                                        | +8,5 pp (+1,4 a +15,6), 8 de 10        |
+| Segundos na tela (fila ≥ 12)              | 75,7%                                    | 82,4%                                        | +6,6 pp (+3,5 a +9,8), 10 de 10        |
+| Com a verdade de 600 s                    | 54,4%                                    | 73,8%                                        |                                        |
+| Com a verdade de 60 s                     | 76,1%                                    | 48,5%                                        |                                        |
+
+O "com − sem" é a média das diferenças seed a seed (IC 95%, t de Student), por
+isso não é exatamente a diferença das porcentagens somadas. Os 55,7% das seeds
+30.021 a 30.030 (Fase 5) e os 58,5% destas, sem memória, são o mesmo detector em
+seeds diferentes.
+
+**Onde a memória ajuda e onde atrapalha** (pela causa verdadeira, teste):
+
+| Causa verdadeira                  | Sem memória | Com memória |
+| --------------------------------- | ----------- | ----------- |
+| Só esteira quebrada               | 47,8%       | **90,7%**   |
+| Só doca bloqueada                 | 59,3%       | 74,1%       |
+| Falhas de tipos diferentes        | 70,2%       | 95,5%       |
+| Só pico de pedidos                | 73,6%       | **62,1%**   |
+| Nenhuma falha (desenho e demanda) | 62,1%       | **25,5%**   |
+
+**Leitura honesta.** A memória resolve o caso que derrubava o número: a sobra de
+uma quebra que já terminou (47,8% → 90,7%). O custo aparece quando a fila não é
+de falha nenhuma: com uma falha a cada 50 s, quase sempre há uma parada recente
+ligada ao recurso, e o detector passa a nomeá-la ("desenho e demanda" agora é
+dito 121 vezes, contra 742, e acerta 76%); nas filas que são só do desenho e da
+demanda, o acerto cai de 62,1% para 25,5%. No pico de pedidos também cai (73,6% →
+62,1%): a parada mais longa vence o pico. As afirmações novas: "sobra da quebra
+de outra esteira" 63,5% (481 de 757), "sobra do pico de pedidos" 67,6%, "sobra do
+bloqueio de outra doca" 36,6% (15 de 41), as da própria esteira ou doca 66,7% e
+100%. As que já existiam não mudaram (quebra desta esteira 97,4%, doca bloqueada
+96,6%, desvio 82,8%). Com a verdade de 60 s a memória perde (48,5%): por esse
+critério, uma falha que terminou há mais de um minuto não pode ser a causa, e
+ela nomeia justamente essas.
+
+O controle da janela da verdade se repetiu nestas seeds: defeito de robô como
+causa em 0,3% enquanto ligado, até 3,3% até 180 s depois do fim, 10,3% a 12,5%
+depois.
+
+**Na tela** (Chromium, build de produção, falhas automáticas a 16×): "Causa
+provável: sobra da quebra da Esteira 16 (Q2→Q1), consertada há 79 s.", com a
+idade subindo a cada segundo; sem erros de console.
+
+**Conferência por mutação:** 13 de 13 da memória (janela, parada ainda ligada,
+escolha entre paradas, ordem com o pico, cada vínculo, o pico lembrado, a idade,
+o alcance do fluxo, a memória desligada); as do detector da 4b (11 de 11) e das
+causas por contrafactual (9 de 9) continuam pegas. A primeira versão dos testes
+não cobria três vínculos (a esteira antes, as esteiras de uma doca, as escolhas
+de rota); os testes vieram antes de rodar as mutações.
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |
