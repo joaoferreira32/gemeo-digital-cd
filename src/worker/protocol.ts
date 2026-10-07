@@ -1,4 +1,5 @@
 import type { Bottleneck } from '../ai/bottleneck';
+import type { DemoPhase, DemoResult } from '../demo/run';
 import type { FailureKind, SimEvent } from '../sim/failures';
 import type { Kpis, RunReport } from '../sim/recorder';
 import type { SimConfig } from '../sim/world';
@@ -37,7 +38,13 @@ export type SimCommand =
   /** History of an entity ("robot:3", "conveyor:7", "dock:2") at the moment shown. */
   | { type: 'history'; entity: string }
   /** Hands a snapshot buffer back for reuse. */
-  | { type: 'release'; buffer: ArrayBuffer };
+  | { type: 'release'; buffer: ArrayBuffer }
+  /**
+   * The demo (src/demo/run.ts): a new run of the script; the jump back to
+   * just before the breakdown and on without AI (the page shows the past
+   * first, with a seek); or back to the ordinary app.
+   */
+  | { type: 'demo'; action: 'start' | 'compare' | 'stop' };
 
 /** Messages from the simulation to the page. */
 export type SimMessage =
@@ -55,6 +62,8 @@ export type SimMessage =
   | { type: 'history'; history: EntityHistory }
   | { type: 'export'; filename: string; mime: string; text: string }
   | { type: 'replay'; progress: number; done: boolean; ok?: boolean; fingerprint?: string }
+  /** Where the demo is; the result once both runs have reached the end. */
+  | { type: 'demo'; phase: DemoPhase; result: DemoResult | null }
   | { type: 'error'; message: string };
 
 export const SPEEDS = [1, 4, 16] as const;
