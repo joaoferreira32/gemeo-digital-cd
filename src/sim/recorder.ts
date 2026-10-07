@@ -22,7 +22,9 @@ export type SimInput =
   /** Routing shares chosen outside the simulation (the learning agent). */
   | { type: 'shares'; shares: number[] }
   /** A conveyor starts wearing out (drawn when no target is given) and breaks 1 to 3 minutes later. */
-  | { type: 'wear'; target?: number };
+  | { type: 'wear'; target?: number }
+  /** The maintenance schedule on or off from now on (src/sim/schedule.ts). */
+  | { type: 'maintenance'; on: boolean };
 
 export function applyInput(world: World, input: SimInput): void {
   switch (input.type) {
@@ -43,6 +45,9 @@ export function applyInput(world: World, input: SimInput): void {
       return;
     case 'wear':
       world.failures.degrade(world.time, input.target);
+      return;
+    case 'maintenance':
+      world.schedule.setEnabled(input.on);
       return;
   }
 }

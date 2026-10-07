@@ -846,7 +846,8 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
     this.updateTrucks(dt);
     if (second) {
       this.health.update(now, this.conveyors, this.failures.degrading, this.alarm);
-      if (this.schedule.enabled) this.schedule.update(now);
+      // Switched off during a run, a maintenance under way still has to finish.
+      if (this.schedule.enabled || this.schedule.services.length) this.schedule.update(now);
     }
     this.metrics.evict(now);
   }
