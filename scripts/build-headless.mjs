@@ -25,6 +25,7 @@ await build({
     'bench/manutencao-job.ts',
     'bench/agenda-job.ts',
     'bench/gargalo-job.ts',
+    'bench/gargalo-caos-job.ts',
     'bench/lab-job.ts',
   ],
   // Loaded from node_modules at run time: it ships WebAssembly next to its code.

@@ -124,6 +124,7 @@ export class FailureInjector {
    * same load with or without the maintenance schedule. (Without this, a
    * wear cut short freed its place about a minute early, and the schedule
    * faced a third more wear than the runs without it: measured, phase 4b.)
+   * Failures suppressed for a counterfactual run hold their place the same way.
    */
   private readonly avoided: number[] = [];
   private auto = false;
@@ -137,6 +138,13 @@ export class FailureInjector {
     /** Mean seconds between automatic failures. */
     private readonly autoMeanInterval = 50,
     private readonly maxConcurrent = 2,
+    /**
+     * Failures (by id) drawn as usual but never applied: the counterfactual runs
+     * of the evaluation ("this run without that failure"). Nothing else changes:
+     * the same draws, and the failure keeps its place in the limit until it would
+     * have ended, so the automatic mode goes on exactly as in the original.
+     */
+    private readonly suppressed: ReadonlySet<number> = new Set(),
   ) {
     this.rng = new Rng(deriveSeed(seed, 'failures'));
   }
@@ -217,8 +225,9 @@ export class FailureInjector {
     const [lo, hi] = DURATION[kind];
     const endsAt = now + lo + (hi - lo) * this.rng.next();
     // A sudden breakdown of a belt that was wearing out ends its wear (it gets repaired).
-    if (kind === 'conveyor') this.cancelWear(t);
-    return this.start(kind, t, now, endsAt, this.nextId++);
+    const id = this.nextId++;
+    if (kind === 'conveyor' && !this.suppressed.has(id)) this.cancelWear(t);
+    return this.start(kind, t, now, endsAt, id);
   }
 
   /**
@@ -248,6 +257,10 @@ export class FailureInjector {
     id: number,
   ): ActiveFailure {
     const f: ActiveFailure = { id, kind, target: t, startedAt: now, endsAt };
+    if (this.suppressed.has(id)) {
+      this.avoided.push(endsAt);
+      return f;
+    }
     const h = this.host;
     switch (kind) {
       case 'conveyor':

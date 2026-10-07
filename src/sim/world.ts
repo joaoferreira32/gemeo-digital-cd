@@ -82,6 +82,11 @@ export interface SimConfig {
    * the earlier phases.
    */
   readonly demand?: DemandProfile;
+  /**
+   * Failures (by id) drawn but not applied: the counterfactual runs of the
+   * evaluation of the bottleneck causes (failures.ts). Empty in every real run.
+   */
+  readonly suppressFailures?: readonly number[];
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -297,7 +302,13 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
     } else {
       this.fleet = null;
     }
-    this.failures = new FailureInjector(this, this.config.seed);
+    this.failures = new FailureInjector(
+      this,
+      this.config.seed,
+      undefined,
+      undefined,
+      new Set(this.config.suppressFailures ?? []),
+    );
     this.health = new MotorHealth(this.conveyors.length, this.config.seed, this.config.detector);
     this.schedule = new MaintenanceSchedule(
       this,
