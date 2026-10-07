@@ -549,10 +549,10 @@ seed; proporções somadas nas seeds, com o intervalo pela variação entre elas
 
 | O que                                                                          | Resultado                                                                                                                    | Como reproduzir                                                        |
 | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Laboratório no navegador (20 rodadas de um dia simulado)                       | 1 worker 84,1 s · 2: 44,6 s (1,9×) · 4: 25,0 s (3,4×) · 8: 19,0 s (4,4×); os mesmos números no Node                          | tecla <kbd>B</kbd>, `npm run bench:lab`                                |
+| Laboratório no navegador (20 rodadas de um dia simulado)                       | 1 worker 84,1 s · 2: 44,6 s (1,9×) · 4: 25,0 s (3,4×) · 8: 19,0 s (4,4×); os mesmos números no Node; a cena segue a 60 FPS   | tecla <kbd>B</kbd>, `npm run bench:lab`                                |
 | Demanda da Olist × constante (mesmo volume no dia, seeds do laboratório)       | p95 do ciclo 36,8 → 120,1 s (+83,3 s, IC 95% +74,6 a +91,9), pior em 10 de 10 seeds; vazão −9,5/min (o dia termina com fila) | `npm run bench:lab`                                                    |
 | Causas do gargalo com falhas automáticas (seeds de teste novas, contrafactual) | **55,7%** das explicações certas (IC 95% 52,4% a 59,0%); 74,2% com duas ou mais falhas ligadas; 75,4% dos segundos na tela   | `npm run bench:gargalo-caos` (teste: `--set teste-5 --final`, uma vez) |
-| Conferência por mutação                                                        | 94 de 94 (31 novas; a primeira rodada achou 3 lacunas nos testes, fechadas)                                                  | `npm run mutate`                                                       |
+| Conferência por mutação                                                        | 95 de 95 (32 novas; a primeira rodada achou 3 lacunas nos testes, fechadas)                                                  | `npm run mutate`                                                       |
 
 ### Fase 4b
 

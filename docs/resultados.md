@@ -967,6 +967,31 @@ demanda constante levou 6,7 a 8,8 s e uma da Olist, 2,4 a 3,4 s (seeds 50.001 a
 50.003). Com 20 rodadas em 8 workers, o fim provavelmente espera as mais longas,
 mas isso não foi medido à parte.
 
+**A cena enquanto o laboratório roda** (mesmo navegador, 8 workers, quadros
+contados com `requestAnimationFrame` em 5 s): 60,2 FPS sem o laboratório e 60,1
+FPS com ele rodando, pior quadro de 16,8 ms nos dois casos; o relógio da
+simulação da tela avançou 5 s nesses 5 s.
+
+### Conferência dos atalhos e dos dados (revisão antes do merge)
+
+- **⇧R segurado** (com as repetições de tecla de um teclado de verdade), no
+  Chromium: a simulação reinicia e a câmera fica exatamente na posição inicial
+  (0,000 de diferença); <kbd>R</kbd> sozinho inclina (a câmera anda 34 unidades).
+- **Esc** num gráfico do painel K com o cursor ligado limpava o cursor e, ao
+  subir até a janela, também fechava o laboratório, a ajuda ou o histórico
+  abertos. Agora o primeiro Esc só limpa o cursor; o segundo fecha. Conferido no
+  navegador antes e depois da correção (antes: o laboratório fechava no primeiro
+  Esc).
+- **Teste de duplicidade dos atalhos** conferido por mutação: o laboratório na
+  tecla do painel K é pego ("no key does two things").
+- **`.gitignore` da Olist:** os padrões só pegavam "olist" e "Olist" com `.csv`
+  minúsculo; num clone sensível a maiúsculas (Linux, macOS), `OLIST_ORDERS.CSV`
+  passaria, e o zip do Kaggle também. Agora valem em qualquer caixa, com o zip, e
+  um teste confere com `core.ignorecase=false` (falha com as regras antigas).
+- **Volume mensal** recontado direto do CSV: bate mês a mês com a tabela do
+  README (99.092 pedidos de janeiro de 2017 a agosto de 2018; sem os 3.008 da
+  semana da Black Friday, os 96.084 do perfil).
+
 ### Laboratório: demanda da Olist × constante
 
 Seeds 50.001 a 50.010, segunda-feira, a mesma quantidade de pedidos no dia nos
@@ -1106,10 +1131,11 @@ mudado nesta fase; lembrar as falhas recentes é o próximo passo natural.
 
 ### Conferência por mutação
 
-`npm run mutate`: 94 de 94 mutações pegas, mais uma equivalente com o motivo
-registrado. São 31 novas: 11 da demanda (incluindo o script da Olist), 9 do
+`npm run mutate`: 95 de 95 mutações pegas, mais uma equivalente com o motivo
+registrado. São 32 novas: 11 da demanda (incluindo o script da Olist), 9 do
 laboratório (estatística, pool e a reescala do dia), 9 das causas por
-contrafactual (supressão, replay, critério) e 2 dos atalhos. A primeira rodada
+contrafactual (supressão, replay, critério) e 3 dos atalhos (uma delas, a tecla
+repetida, acrescentada na revisão antes do merge). A primeira rodada
 achou três lacunas nos testes, fechadas antes da passada no teste:
 
 - os pedidos das prateleiras podiam ignorar o peso da hora (o teste só olhava as
