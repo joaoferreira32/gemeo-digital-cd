@@ -173,7 +173,7 @@ function score(runs: readonly TrialRun[], p: number): Score {
       robot: { formed: 0, pointed: 0, rightFirst: 0 },
     },
   };
-  for (const seed of seeds) {
+  for (const seed of seeds.filter((x) => runs.some((r) => r.spec.seed === x))) {
     const reference = runs.find((r) => r.spec.seed === seed && r.spec.failure === null)!;
     const ref = reference.findings[p] as TrialRun['findings'][number];
     s.falseEpisodes += episodes(ref);
@@ -367,7 +367,15 @@ if (flag('--calibrate')) {
   const s = score(runs, 0);
   report(s);
   details(runs, 0);
-  Object.assign(output, { params: DEFAULT_BOTTLENECK, score: s });
+  // Seed by seed too: the intervals of the README table (npm run bench) take the seed as the unit.
+  const bySeed = seeds.map((seed) => ({
+    seed,
+    ...score(
+      runs.filter((r) => r.spec.seed === seed),
+      0,
+    ),
+  }));
+  Object.assign(output, { params: DEFAULT_BOTTLENECK, score: s, bySeed });
 }
 const out = value('--out');
 if (out) writeFileSync(out, JSON.stringify(output, null, 1));

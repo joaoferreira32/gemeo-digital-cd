@@ -3,8 +3,11 @@
  * median is reported, with every sample kept so run-to-run variation can be
  * studied. Output: JSON on stdout, or written to the path given as argument.
  *
- *   npm run bench               # prints JSON
- *   npm run bench -- out.json   # writes JSON
+ *   npm run bench:motor               # prints JSON
+ *   npm run bench:motor -- out.json   # writes JSON
+ *
+ * The CI gate calls `npx tsx bench/run.ts` directly, so it also runs on base
+ * commits from before `npm run bench` became the README table (bench/tabela.ts).
  */
 import { writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';

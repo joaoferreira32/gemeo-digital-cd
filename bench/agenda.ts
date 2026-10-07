@@ -194,7 +194,12 @@ function report(label: string, without: readonly Tagged[], withIt: readonly Tagg
   console.log(`| Falhas que o modo automático aplicou, com a agenda | ${load(withIt)} |`);
   console.log(`| Esteiras que a rota consegue esvaziar | ${kind(true)} |`);
   console.log(`| Esteiras sem outro caminho para o fluxo | ${kind(false)} |`);
-  return { label, score: s, rows };
+  // Seed by seed too: the intervals of the README table (npm run bench) take the seed as the unit.
+  const bySeed = withIt.map((r) => {
+    const x = scoreSchedule(r);
+    return { seed: r.seed, avoided: x.avoided, wears: x.wears, breakdowns: x.breakdowns };
+  });
+  return { label, score: s, rows, bySeed };
 }
 
 function sum(runs: readonly ScheduleRun[], f: (r: ScheduleRun) => number): number {
