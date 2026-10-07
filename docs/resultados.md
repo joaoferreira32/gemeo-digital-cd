@@ -1149,6 +1149,59 @@ A equivalente: a checagem do id da resposta no pool de workers, que não tem com
 receber a resposta de outro pedido no uso real (um worker só recebe um pedido
 depois de responder o anterior, e cancelar troca todos os workers).
 
+## Detector de gargalo com memória de falhas recentes
+
+### Protocolo (registrado antes de calibrar e de medir)
+
+Pedido de 2026-10-07, depois da Fase 5: o detector passa a lembrar falhas
+recentes, num PR separado; calibrar só nas seeds de validação; registrar o
+protocolo antes de medir; medir uma única vez num conjunto de teste novo (30.031
+a 30.040); reportar lado a lado sem memória e com memória, nas mesmas condições;
+a mensagem na tela diz a origem ("sobra da quebra da Esteira 9, consertada há
+90 s").
+
+**Por que a memória (seeds de validação, antes de qualquer mudança).** Das 791
+explicações erradas da Fase 5, 660 têm todas as causas verdadeiras já encerradas
+no segundo julgado. Pela ligação entre o recurso apontado e a falha que fez a
+fila: esteira abaixo no fluxo (o represamento subiu a corrente) 237; esteira
+acima de uma doca (a onda liberada chegou nela) 142; pico de pedidos 74; doca
+abaixo de uma esteira 55; esteira sem ligação com a doca 37; a própria esteira 27;
+outra doca 26; o outro caminho de uma escolha de rota 25; a própria doca 17;
+esteira acima no fluxo 10; defeito de robô 10. A falha tinha terminado havia 65 a
+150 s (medianas por ligação).
+
+- **O que muda:** só a causa. A detecção (qual recurso e quando) não muda. Quando
+  nem a falha do próprio recurso nem o desvio de uma esteira parada explicam a
+  fila, o detector procura paradas que terminaram nos últimos M segundos e que se
+  ligam ao recurso pelo galpão, e nomeia uma delas. Ele continua lendo só a
+  gravação (o estado de cada esteira e doca e o pico, a cada segundo).
+- **Ligações:** a própria esteira ou doca; as esteiras abaixo no fluxo (o
+  represamento sobe a corrente); as acima (a onda de pacotes liberada desce); a
+  doca abaixo de uma esteira, e as esteiras acima de uma doca; o pico de pedidos
+  (vale para qualquer recurso); numa variante, também o outro caminho de uma
+  escolha de rota.
+- **Grade de calibração** (36 combinações, só nas seeds de validação 20.001 a
+  20.010): janela M de 60, 120 ou 180 s; ligação "só a própria", "pelo fluxo" ou
+  "pelo fluxo e pelas escolhas de rota"; entre várias paradas ligadas, a que
+  terminou por último ou a mais longa; a memória antes ou depois da regra do pico
+  de pedidos.
+- **Regra de escolha:** entre as combinações que mantêm, nos ensaios controlados
+  da 4b (seeds de validação), a causa certa no primeiro aviso em 100% e a causa
+  certa nos segundos de aviso pelo menos igual à de hoje, a de maior percentual
+  de explicações certas com falhas automáticas (seeds de validação, a mesma
+  verdade da Fase 5: contrafactual, janela de 180 s, metade da fila). Empate:
+  janela menor, ligação mais restrita, "a que terminou por último", memória
+  depois do pico. Se nenhuma combinação melhorar a validação, a memória não entra
+  no app, e isso é reportado.
+- **Medida final:** uma única passada nas seeds 30.031 a 30.040, depois da
+  conferência por mutação, com as mesmas gravações e a mesma verdade para os dois
+  detectores, sem memória e com a memória escolhida, lado a lado
+  (`npm run bench:gargalo-caos -- --set teste-memoria --final`). Os 55,7% das
+  seeds 30.021 a 30.030 ficam como referência; a comparação é a destas seeds.
+- **Na tela:** "sobra da quebra da Esteira 9 (B3→B4), consertada há 90 s",
+  "sobra da quebra desta esteira, consertada há 40 s", "sobra do bloqueio da Doca
+  3, liberada há 40 s", "sobra do pico de pedidos, encerrado há 70 s".
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |
