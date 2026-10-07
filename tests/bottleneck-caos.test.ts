@@ -83,6 +83,8 @@ describe('the causes under the automatic failures', () => {
     expect(rightAbout('layout', -1, [belt])).toBe(false);
     expect(rightAbout('surge', -1, [{ kind: 'surge', target: -1 }])).toBe(true);
     expect(rightAbout('conveyor', 0, [{ kind: 'robot', target: 0 }])).toBe(false);
+    // A robot defect made the queue: "the layout" is wrong too.
+    expect(rightAbout('layout', -1, [{ kind: 'robot', target: 0 }])).toBe(false);
   });
 
   it('a cause takes at least half of the queue away, within the window', () => {

@@ -40,6 +40,12 @@ describe('demand profile', () => {
     expect(w.currentArrivalRate).toBeCloseTo(2 * (0.5 + 23 / 24), 12);
     w.stepMany(15 * SECOND);
     expect(w.currentArrivalRate).toBeCloseTo(2 * (0.5 + 0 / 24), 12);
+    // The orders of the racks (robots) follow the same weight.
+    const r = new World({ seed: 3, demand: ramp });
+    const rack = r.config.rackOrderRate;
+    expect(r.fleet!.rackOrderRate).toBeCloseTo(rack * demandWeight(ramp, 0), 12);
+    r.stepMany(10 * SECOND);
+    expect(r.fleet!.rackOrderRate).toBeCloseTo(rack * (0.5 + 23 / 24), 12);
   });
 
   it('a surge multiplies the rate of the hour, and the hour takes over again after it', () => {
@@ -144,7 +150,7 @@ describe('scripts/demanda_olist.py', () => {
             row('2016-12-15 10:00:00'), // before the period
             row('2017-01-02 10:15:00'), // Monday 10h
             row('2017-01-09 10:59:59'), // Monday 10h
-            row('2017-01-03 15:30:00'), // Tuesday 15h
+            row('2017-01-07 15:30:00'), // Saturday 15h
             row('2017-11-24 12:00:00'), // Black Friday week
             row('2018-09-03 09:00:00'), // after the period
           ].join('\n') + '\n',
@@ -155,7 +161,9 @@ describe('scripts/demanda_olist.py', () => {
         expect(run.status, run.stderr).toBe(0);
         const p = JSON.parse(readFileSync(out, 'utf-8')) as { orders: number; weights: number[] };
         expect(p.orders).toBe(3);
-        // How many Mondays and Tuesdays the period has, Black Friday week left out.
+        // How many Mondays and Saturdays the period has, Black Friday week left out: 86 and 85
+        // (87 and 86 with it). Not a Tuesday: as many Tuesdays as Mondays, and the ratio of the
+        // two weights would not see that week.
         const count = (weekday: number) => {
           let n = 0;
           for (
@@ -170,10 +178,10 @@ describe('scripts/demanda_olist.py', () => {
           return n;
         };
         const monday = 2 / count(0);
-        const tuesday = 1 / count(1);
-        const mean = (monday + tuesday) / 168;
+        const saturday = 1 / count(5);
+        const mean = (monday + saturday) / 168;
         expect(p.weights[10]).toBeCloseTo(monday / mean, 3);
-        expect(p.weights[24 + 15]).toBeCloseTo(tuesday / mean, 3);
+        expect(p.weights[5 * 24 + 15]).toBeCloseTo(saturday / mean, 3);
         expect(p.weights.filter((x) => x !== 0)).toHaveLength(2);
       } finally {
         rmSync(dir, { recursive: true, force: true });
