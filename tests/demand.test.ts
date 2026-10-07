@@ -133,6 +133,33 @@ function python(): string | null {
   return null;
 }
 
+describe('the Olist dataset stays out of the repository', () => {
+  it('ignores its CSVs and archives in any case, and keeps only the derived profile', () => {
+    // As on Linux and macOS, where OLIST.CSV and olist.csv are different files.
+    const ignored = (paths: string[]) =>
+      spawnSync('git', ['-c', 'core.ignorecase=false', 'check-ignore', ...paths], {
+        encoding: 'utf-8',
+      })
+        .stdout.split(/\r?\n/)
+        .filter(Boolean);
+    const dataset = [
+      'olist_orders_dataset.csv',
+      'OLIST_ORDERS_DATASET.CSV',
+      'olist_orders_dataset.CSV',
+      'public/Olist_orders.csv',
+      'dados-olist/qualquer.csv',
+      'brazilian-ecommerce.zip',
+      'Brazilian-Ecommerce/olist_customers_dataset.csv',
+      'olist.zip',
+    ];
+    expect(ignored(dataset)).toEqual(dataset);
+    const ours = ['public/demanda-olist.json', 'public/demanda-olist.LICENSE.txt'];
+    expect(ignored(ours)).toEqual([]);
+    const tracked = spawnSync('git', ['ls-files'], { encoding: 'utf-8' }).stdout.split(/\r?\n/);
+    expect(tracked.filter((f) => /olist/i.test(f) && /\.(csv|zip)$/i.test(f))).toEqual([]);
+  });
+});
+
 describe('scripts/demanda_olist.py', () => {
   const py = python();
   it.skipIf(!py)(
