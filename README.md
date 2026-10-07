@@ -31,7 +31,8 @@ npm run dev          # http://localhost:5173
 npm test             # testes do motor (Vitest)
 npm run lint         # ESLint + Prettier
 npm run build        # build estático em dist/
-npm run bench        # benchmark curto do motor (o mesmo do CI)
+npm run bench        # tabela de benchmarks do README, com IC 95% (todas as partes; ou só algumas: -- motor laboratorio)
+npm run bench:motor  # benchmark curto do motor (o mesmo do CI)
 npm run bench:mapf   # estatísticas do planejamento multiagente
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e latência do seek (~3 min)
@@ -39,6 +40,8 @@ npm run bench:rotas  # roteamento estático × heurística (× IA com --rl <mode
 npm run bench:manutencao  # detector de manutenção preditiva, seeds de validação
 npm run bench:agenda      # agenda de manutenção com × sem, seed a seed (seeds de validação)
 npm run bench:gargalo     # detector de gargalo em ensaios controlados (seeds de validação)
+npm run bench:gargalo-caos  # causas do gargalo com falhas automáticas simultâneas (seeds de validação)
+npm run bench:lab    # laboratório de cenários na linha de comando (A × B, 10 seeds)
 npm run mutate       # conferência por mutação, numa cópia temporária (~25 min)
 npm run hooks        # liga a trava antes do push (uma vez por clone)
 ```
@@ -453,6 +456,47 @@ onda ciano sai dele quando uma falha é evitada. O feed destaca "Falha evitada",
 linha do tempo marca manutenções e falhas evitadas, e o painel <kbd>K</kbd> conta
 falhas evitadas, alarmes falsos e quebras durante a espera.
 
+## Laboratório de cenários (Fase 5)
+
+A tecla <kbd>B</kbd> (ou o botão **Laboratório**) abre o painel "E se…?": dois
+cenários lado a lado, A e B, com robôs, velocidade das esteiras, uma esteira
+parada o dia todo, pedidos por segundo, demanda (constante ou a da Olist, hora a
+hora), roteamento (estático, heurística ou a IA treinada), falhas automáticas e
+agenda de manutenção. Cada cenário roda em 5, 10 ou 20 seeds, em vários Web
+Workers ao mesmo tempo (automático: os núcleos da máquina menos um, até 8), com
+barra de progresso e botão de cancelar. A simulação da tela continua rodando.
+
+- **Mesmas seeds nos dois lados.** Cada seed dá a A e a B os mesmos pedidos e os
+  mesmos sorteios, então a diferença seed a seed é do cenário, não da sorte. As
+  seeds começam em 50.001, fora dos conjuntos de treino, validação e teste.
+- **Um dia simulado por rodada:** 24 minutos, em que uma hora do perfil da Olist
+  dura um minuto (o dia comprimido 60 vezes; a escala aparece no painel). O
+  primeiro minuto, com o galpão ainda enchendo, fica fora das medidas.
+- **Resultado:** média e intervalo de confiança de 95% (t de Student) do tempo de
+  ciclo médio, do p95 do ciclo, da vazão e do uso de esteiras, docas e robôs, para
+  A, para B e para a diferença B − A seed a seed, com quantas seeds pioraram ou
+  melhoraram. O gráfico mostra cada seed como um par A–B ligado por uma linha, com
+  as médias e os intervalos em cima; os valores de cada seed ficam numa tabela
+  logo abaixo. As duas cores (A turquesa, B âmbar) foram conferidas para
+  daltonismo e contraste.
+- **Determinismo:** uma rodada do laboratório é bit a bit a mesma de um episódio
+  da avaliação (mesma impressão digital do motor), e o resultado não depende de
+  quantos workers rodaram (testado com 1 e 3). O Node e o Chromium dão os mesmos
+  números.
+
+O mesmo laboratório roda na linha de comando: `npm run bench:lab` (A demanda
+constante × B demanda da Olist, 10 seeds; `--b '{"robots":20}'` troca o B).
+
+**Demanda da Olist.** O perfil (168 pesos, um por hora da semana, média 1) sai
+de `scripts/demanda_olist.py`, que lê o CSV público fora do repositório e grava
+só o JSON pequeno (`public/demanda-olist.json`; fonte, período e licença em
+"Dados e licenças"). O motor multiplica a taxa média de pedidos pelo peso da hora
+atual, nas chegadas e nos pedidos das prateleiras; a previsão de demanda da
+agenda de manutenção também passa a enxergar o perfil. No laboratório, o perfil é
+reescalado para o dia simulado ter a taxa escolhida como média: a segunda-feira da
+Olist tem 15,7% mais pedidos que a média da semana, e sem isso a comparação com a
+demanda constante misturaria volume e formato.
+
 ## Números medidos
 
 Todos os números de cada fase, com método e forma de reproduzir, estão em
@@ -460,6 +504,15 @@ Todos os números de cada fase, com método e forma de reproduzir, estão em
 
 Máquina de desenvolvimento: Chromium com GPU dedicada (RTX 5060 Ti); um
 notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
+
+### Tabela de benchmarks (`npm run bench`)
+
+Gerada pelo comando, não escrita à mão: ele roda os benchmarks e reescreve esta
+tabela entre os marcadores. `npm run bench -- motor laboratorio` refaz só essas
+partes (as outras ficam com a última medida, guardada em `bench/tabela.json`).
+
+<!-- bench:inicio (gerado por npm run bench; não editar à mão) -->
+<!-- bench:fim -->
 
 ### Fase 4b
 
@@ -489,7 +542,7 @@ notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
 | Memória da gravação                                                      | 15,5 MB por hora simulada (14,5 MB de checkpoints, média 122 KB, máximo 172 KB)                                  | `npm run bench:tempo`            |
 | Reconstrução                                                             | idêntica bit a bit em 48 instantes de execuções caóticas e no meio de esperas; 11 de 11 campos omitidos pegos    | `tests/checkpoint.test.ts`       |
 | 50 viagens no tempo                                                      | GPU: 101 geometrias e 62 texturas antes e depois · heap da simulação estável (+0,03 MB nas 60 viagens seguintes) | Chromium + `npm run bench:tempo` |
-| Custo de gravar no motor ao vivo                                         | 4.231 passos/s gravando contra 4.210 sem gravar (dentro do ruído)                                                | `npm run bench`                  |
+| Custo de gravar no motor ao vivo                                         | 4.231 passos/s gravando contra 4.210 sem gravar (dentro do ruído)                                                | `npm run bench:motor`            |
 | Dois robôs frente a frente num portão, pedidos de passagem falhando      | sem vigia: parados para sempre (36 de 36) · com vigia: os dois passam em até 18,6 s                              | `npm run bench:vigia`            |
 | Robô quebrado dentro do portão por 60 s                                  | quem tem outra baia espera 7 s (antes 60 s); quem fica preso atrás espera o conserto (60 s)                      | `npm run bench:vigia`            |
 | Tentativa de planejamento sem caminho (robô preso)                       | 19–20 ms → 0,002 ms, com resultado idêntico (400 casos comparados)                                               | `tests/planner.test.ts`          |
@@ -505,7 +558,7 @@ notebook comum fica abaixo, por isso existe o ajuste automático de qualidade.
 | Interface com a simulação pesada (16×, teste de carga, salto de 2 min a cada 3 s)    | worker: 0 tarefas longas, pior quadro 16,8 ms, 60 FPS · mesma simulação na thread da página: 8 tarefas longas (4,8 s), pior quadro 250 ms, 47 FPS | Long Tasks API no Chromium, `?sim=main`   |
 | Mapa de calor: CPU por quadro                                                        | GPU 0,04–0,07 ms · versão de referência na CPU 0,46–0,67 ms (≈10× menos)                                                                          | `__gemeo.benchHeat()` no console          |
 | Desempenho                                                                           | 2.369 pacotes desenhados + 40 robôs a 60 FPS em qualidade alta, com bloom                                                                         | teste de carga (<kbd>T</kbd>)             |
-| Motor no Node (mediana de 5)                                                         | 4.086 passos/s com 40 robôs (≈68× o tempo real); 941 mil passos/s sem robôs                                                                       | `npm run bench`                           |
+| Motor no Node (mediana de 5)                                                         | 4.086 passos/s com 40 robôs (≈68× o tempo real); 941 mil passos/s sem robôs                                                                       | `npm run bench:motor`                     |
 | 5 reinícios seguidos                                                                 | geometrias e texturas na GPU estáveis (sem vazamento)                                                                                             | `Shift+R`                                 |
 
 ### Fase 1
