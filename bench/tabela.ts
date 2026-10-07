@@ -170,24 +170,28 @@ const parts: Part[] = [
     args: ['bench/gargalo-caos.ts', '--out', '{out}'],
     rows: (json: {
       runs: {
-        explanations: { judged: { correct: boolean; simultaneous: number } }[];
+        variants: { explanations: { judged: { correct: boolean; simultaneous: number } }[] }[];
       }[];
     }) => {
-      const runs = json.runs;
-      const of = (keep: (j: { correct: boolean; simultaneous: number }) => boolean) =>
-        pooledShare(
-          runs.map((r) => r.explanations.filter((e) => keep(e.judged) && e.judged.correct).length),
-          runs.map((r) => r.explanations.filter((e) => keep(e.judged)).length),
+      // Variant 0: without the memory of failures; 1: the detector as configured.
+      const of = (k: number, keep: (j: { correct: boolean; simultaneous: number }) => boolean) => {
+        const list = json.runs.map((r) => r.variants[k]?.explanations ?? []);
+        return pooledShare(
+          list.map((l) => l.filter((e) => keep(e.judged) && e.judged.correct).length),
+          list.map((l) => l.filter((e) => keep(e.judged)).length),
         );
+      };
+      const both = (keep: (j: { correct: boolean; simultaneous: number }) => boolean) =>
+        `sem memória ${share(of(0, keep))}; com memória ${share(of(1, keep))}`;
       return [
         {
           what: 'Detector de gargalo, falhas automáticas: causa certa',
-          result: share(of(() => true)),
+          result: both(() => true),
           how: '`npm run bench:gargalo-caos`',
         },
         {
           what: 'Detector de gargalo, falhas automáticas: causa certa com duas ou mais falhas ligadas',
-          result: share(of((j) => j.simultaneous >= 2)),
+          result: both((j) => j.simultaneous >= 2),
           how: '`npm run bench:gargalo-caos`',
         },
       ];
