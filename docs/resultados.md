@@ -946,6 +946,27 @@ agenda desligada, o motor das fases anteriores não mudou um bit.
 
 ## Fase 5 — laboratório de cenários e demanda real
 
+### Laboratório: tempo no navegador
+
+Chromium, 16 núcleos lógicos, build de produção, 10 seeds × 2 cenários = 20
+rodadas de um dia simulado (1.440 s cada), demanda constante × Olist, heurística:
+
+| Workers | Tempo  | Aceleração |
+| ------- | ------ | ---------- |
+| 1       | 84,1 s | 1,0×       |
+| 2       | 44,6 s | 1,9×       |
+| 4       | 25,0 s | 3,4×       |
+| 8       | 19,0 s | 4,4×       |
+
+O automático usa 8 (os núcleos menos um, até 8); numa segunda rodada com ele,
+17,9 s. Os números de cada rodada são os mesmos com qualquer quantidade de
+workers e no Node (`npm run bench:lab` dá a mesma tabela, casa por casa): a seed
+fixa tudo, o worker só escolhe onde roda. De 4 para 8 workers o ganho cresce
+menos (3,4× → 4,4×). As rodadas não têm o mesmo tamanho: no Node, uma rodada com
+demanda constante levou 6,7 a 8,8 s e uma da Olist, 2,4 a 3,4 s (seeds 50.001 a
+50.003). Com 20 rodadas em 8 workers, o fim provavelmente espera as mais longas,
+mas isso não foi medido à parte.
+
 ### Laboratório: demanda da Olist × constante
 
 Seeds 50.001 a 50.010, segunda-feira, a mesma quantidade de pedidos no dia nos
@@ -1046,6 +1067,61 @@ vista (a própria falha do recurso). Vem da **memória**: quando nenhuma falha e
 ligada, a fila costuma ser a sobra de uma quebra que já terminou, e o detector,
 que só olha o estado atual, diz "desenho e demanda" (certo em 38% das vezes) ou
 "pico de pedidos" quando houve um pico recente mas a fila é de outra falha.
+
+### Causas com falhas automáticas: resultado nas seeds de teste (passada única)
+
+Uma única passada nas seeds 30.021 a 30.030, depois da conferência por mutação
+(`npm run bench:gargalo-caos -- --set teste-5 --final`). Nada mudou depois dela.
+427 falhas aplicadas (168 de esteira, 59 de doca, 93 picos, 107 de robô); 1.870
+explicações.
+
+| Explicações                               | Validação | **Teste**                                    |
+| ----------------------------------------- | --------- | -------------------------------------------- |
+| Todas                                     | 59,4%     | **55,7%** (1.042 de 1.870; IC 52,4% a 59,0%) |
+| Nenhuma falha ligada no segundo julgado   | 43,2%     | 43,3% (339 de 783; IC 37,3% a 49,3%)         |
+| Uma falha ligada                          | 68,2%     | 61,9% (522 de 843; IC 57,5% a 66,3%)         |
+| Duas ou mais falhas ligadas (simultâneas) | 80,1%     | **74,2%** (181 de 244; IC 65,8% a 82,5%)     |
+| Segundos na tela (fila ≥ 12)              | 77,0%     | 75,4% (15.329 de 20.337 s; IC 72,7% a 78,1%) |
+| Segundos com duas ou mais falhas ligadas  | 92,9%     | 90,9% (3.669 de 4.037 s)                     |
+| Com a janela de 60 s                      | 78,1%     | 72,9%                                        |
+| Com a janela de 600 s                     | 52,8%     | 52,2%                                        |
+
+Pela causa que o detector deu (teste): "quebra desta esteira" 96% (304 de 316);
+"doca bloqueada" 100% (86 de 86); "esteira quebrada desvia o fluxo para cá" 86%
+(100 de 116); "pico de pedidos" 49% (290 de 592); "desenho e demanda" 34% (262
+de 760). Pela causa verdadeira: só esteira quebrada 47% (335 de 719); só doca
+bloqueada 57% (68 de 119); só pico 68% (186 de 272); falhas de tipos diferentes
+57% (191 de 334); nenhuma falha 62% (262 de 425).
+
+O controle da janela se repetiu: o defeito de robô aparece como causa em 0% das
+vezes enquanto ligado e em no máximo 2,9% até 180 s depois do fim (remoções que
+aumentam a fila em metade: 0,8% a 2%).
+
+**Resumo honesto.** Com uma falha de cada vez, 98% a 100%; com as falhas
+automáticas, **55,7%**. Quando o detector nomeia uma falha que está ligada, ele
+quase sempre acerta (96% a 100%, e 86% no desvio). O que derruba o número são
+as filas que sobram depois que a falha termina: o detector olha só o estado
+atual e as chama de "desenho e demanda" ou de "pico de pedidos". Ele não foi
+mudado nesta fase; lembrar as falhas recentes é o próximo passo natural.
+
+### Conferência por mutação
+
+`npm run mutate`: 94 de 94 mutações pegas, mais uma equivalente com o motivo
+registrado. São 31 novas: 11 da demanda (incluindo o script da Olist), 9 do
+laboratório (estatística, pool e a reescala do dia), 9 das causas por
+contrafactual (supressão, replay, critério) e 2 dos atalhos. A primeira rodada
+achou três lacunas nos testes, fechadas antes da passada no teste:
+
+- os pedidos das prateleiras podiam ignorar o peso da hora (o teste só olhava as
+  chegadas);
+- o script da Olist podia deixar de descontar a semana da Black Friday na
+  contagem de dias: o teste usava segunda e terça, e o período tem tantas terças
+  quanto segundas, então a razão entre os pesos não mudava (passou a usar sábado);
+- dizer "desenho" quando a fila é de um defeito de robô contava como certo.
+
+A equivalente: a checagem do id da resposta no pool de workers, que não tem como
+receber a resposta de outro pedido no uso real (um worker só recebe um pedido
+depois de responder o anterior, e cancelar troca todos os workers).
 
 ## Bugs que só apareceram medindo
 

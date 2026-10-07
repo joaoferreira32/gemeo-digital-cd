@@ -211,7 +211,7 @@ const parts: Part[] = [
         `**${signed(e.mean, 1, unit)}** (${signed(e.low, 1, unit)} a ${signed(e.high, 1, unit)})`;
       return [
         {
-          what: 'Laboratório: demanda da Olist × constante (mesma média), p95 do ciclo',
+          what: 'Laboratório: demanda da Olist × constante (mesmo volume no dia), p95 do ciclo',
           result: `${num(p95.a.mean)} s → ${num(p95.b.mean)} s: ${d(p95.difference, ' s')}, pior em ${p95.difference.higher} de ${p95.difference.n} seeds`,
           how: '`npm run bench:lab`',
         },
@@ -233,12 +233,23 @@ if (unknown.length) {
   );
   process.exit(2);
 }
+/** Each part keeps where it was measured: a partial run leaves the other parts as they were. */
+interface Measured {
+  readonly rows: Row[];
+  readonly date: string;
+  readonly commit: string;
+  readonly machine: string;
+}
 const store = existsSync(STORE)
-  ? (JSON.parse(readFileSync(STORE, 'utf-8')) as Record<string, { rows: Row[]; date: string }>)
+  ? (JSON.parse(readFileSync(STORE, 'utf-8')) as Record<string, Measured>)
   : {};
 mkdirSync(TMP, { recursive: true });
 const tsx = 'node_modules/tsx/dist/cli.mjs';
 const today = new Date().toISOString().slice(0, 10);
+const commit = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+  encoding: 'utf-8',
+}).stdout.trim();
+const machine = `Node ${process.version}, ${cpus()[0]?.model.trim() ?? 'CPU desconhecida'} (${cpus().length} núcleos lógicos)`;
 for (const part of parts) {
   if (wanted.length && !wanted.includes(part.key)) continue;
   const out = `${TMP}/${part.key}.json`;
@@ -251,19 +262,27 @@ for (const part of parts) {
     process.exit(1);
   }
   const rows = (part.rows as (json: unknown) => Row[])(JSON.parse(readFileSync(out, 'utf-8')));
-  store[part.key] = { rows, date: today };
+  store[part.key] = { rows, date: today, commit, machine };
   console.log(`(${part.key}: ${((performance.now() - t0) / 1000).toFixed(0)} s)`);
 }
 
 const missing = parts.filter((p) => !store[p.key]).map((p) => p.key);
-const commit = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
-  encoding: 'utf-8',
-}).stdout.trim();
-const cpu = cpus()[0]?.model.trim() ?? 'CPU desconhecida';
+// Where the numbers come from: one line when every part was measured together.
+const runs = new Map<string, string[]>();
+for (const p of parts) {
+  const m = store[p.key];
+  if (!m) continue;
+  const where = `${m.date} (commit \`${m.commit}\`), ${m.machine}`;
+  runs.set(where, [...(runs.get(where) ?? []), p.key]);
+}
+const when =
+  runs.size === 1
+    ? [`Medida em ${[...runs.keys()][0]}.`]
+    : [...runs].map(([where, keys]) => `${keys.join(', ')}: medidas em ${where}.`);
 const lines = [
   BEGIN,
   '',
-  `Medida em ${today} (commit \`${commit}\`), Node ${process.version}, ${cpu} (${cpus().length} núcleos lógicos).`,
+  ...when,
   'Seeds de validação (20.001 a 20.010) e do laboratório (50.001 a 50.010); as seeds de teste',
   'ficam de fora (usadas uma única vez; os resultados delas estão nas tabelas por fase abaixo).',
   'IC 95%: t de Student entre seeds (no motor, entre repetições); diferenças pareadas seed a',

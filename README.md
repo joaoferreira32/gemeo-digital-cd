@@ -14,12 +14,14 @@ camada de IA de operações escolhe por onde os pacotes seguem (heurística ou
 rede treinada por reforço, comparadas ao vivo com o roteamento estático),
 avisa antes de uma esteira quebrar (manutenção preditiva sobre sinais
 simulados), agenda a manutenção para a quebra não acontecer e aponta o gargalo
-do momento, dizendo a causa. O motor de simulação é determinístico, roda num
-Web Worker e é testado sem navegador.
+do momento, dizendo a causa. Um laboratório compara dois cenários ("e se…?") em
+várias seeds ao mesmo tempo, com intervalo de confiança, usando a demanda real
+de um e-commerce (Olist) hora a hora. O motor de simulação é determinístico,
+roda num Web Worker e é testado sem navegador.
 
-> **Status:** Fase 4 de 6 concluída (IA de operações), com a Fase 4b (gargalo
-> explicado e manutenção agendada). Laboratório de cenários e modo cinema vêm
-> depois; o roteiro original está em [`docs/roteiro.md`](docs/roteiro.md).
+> **Status:** Fase 5 de 6 concluída (laboratório de cenários com estatística e
+> demanda real). O modo cinema vem depois; o roteiro original está em
+> [`docs/roteiro.md`](docs/roteiro.md).
 
 ## Como rodar
 
@@ -31,7 +33,7 @@ npm run dev          # http://localhost:5173
 npm test             # testes do motor (Vitest)
 npm run lint         # ESLint + Prettier
 npm run build        # build estático em dist/
-npm run bench        # tabela de benchmarks do README, com IC 95% (todas as partes; ou só algumas: -- motor laboratorio)
+npm run bench        # tabela de benchmarks do README, com IC 95% (~7 min; ou só algumas partes: -- motor laboratorio)
 npm run bench:motor  # benchmark curto do motor (o mesmo do CI)
 npm run bench:mapf   # estatísticas do planejamento multiagente
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
@@ -97,6 +99,7 @@ npm run bench:rotas -- --rl teste
 | Linha do tempo         | arrastar na barra de baixo · <kbd>[</kbd> <kbd>]</kbd> volta / avança 10 s                                   |
 | Voltar ao vivo         | <kbd>L</kbd>                                                                                                 |
 | Continuar daqui        | <kbd>C</kbd>, <kbd>Espaço</kbd> ou qualquer falha injetada no passado (descarta o que vinha depois)          |
+| Laboratório "e se…?"   | <kbd>B</kbd> (dois cenários em várias seeds, em paralelo; média, IC 95% e B − A)                             |
 | Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, roteamento, manutenção, utilização, robôs, últimos 5 min)   |
 | Histórico              | clique num robô, numa esteira ou numa doca                                                                   |
 | Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução         |
@@ -512,7 +515,44 @@ tabela entre os marcadores. `npm run bench -- motor laboratorio` refaz só essas
 partes (as outras ficam com a última medida, guardada em `bench/tabela.json`).
 
 <!-- bench:inicio (gerado por npm run bench; não editar à mão) -->
+
+Medida em 2026-10-07 (commit `36bf5b0`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
+Seeds de validação (20.001 a 20.010) e do laboratório (50.001 a 50.010); as seeds de teste
+ficam de fora (usadas uma única vez; os resultados delas estão nas tabelas por fase abaixo).
+IC 95%: t de Student entre seeds (no motor, entre repetições); diferenças pareadas seed a
+seed; proporções somadas nas seeds, com o intervalo pela variação entre elas.
+
+| O que                                                                                | Resultado                                                                 | Como reproduzir              |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------- |
+| Motor sem robôs                                                                      | **1.065.190 passos/s** (IC 95% 1.038.976 a 1.091.403), 5 repetições       | `npm run bench:motor`        |
+| Motor com 40 robôs                                                                   | **4.173 passos/s** (IC 95% 4.142 a 4.204), 5 repetições                   | `npm run bench:motor`        |
+| Motor gravando, 40 robôs                                                             | **4.163 passos/s** (IC 95% 4.136 a 4.189), 5 repetições                   | `npm run bench:motor`        |
+| Teste de carga + 40 robôs                                                            | **4.071 passos/s** (IC 95% 4.043 a 4.100), 5 repetições                   | `npm run bench:motor`        |
+| Heurística × roteamento estático, p95 do ciclo: normal                               | ganho **+1,7%** (+1,2% a +2,1%), 10 de 10 seeds                           | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: esteira com alternativa quebrada     | ganho **+56,6%** (+53,7% a +59,5%), 10 de 10 seeds                        | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: pico de pedidos                      | ganho **+34,0%** (+31,0% a +36,9%), 10 de 10 seeds                        | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: falhas automáticas                   | ganho **+21,5%** (+13,7% a +29,2%), 10 de 10 seeds                        | `npm run bench:rotas`        |
+| Manutenção preditiva: precisão dos alarmes                                           | **98%** (IC 95% 94% a 100%)                                               | `npm run bench:manutencao`   |
+| Manutenção preditiva: quebras com desgaste detectadas (recall)                       | **77%** (IC 95% 68% a 87%)                                                | `npm run bench:manutencao`   |
+| Agenda de manutenção: quebras com desgaste evitadas                                  | **76%** (IC 95% 68% a 84%)                                                | `npm run bench:agenda`       |
+| Agenda de manutenção (30 s), p95 do ciclo                                            | ganho **+34,9%** (+25,0% a +44,8%), 10 de 10 seeds                        | `npm run bench:agenda`       |
+| Detector de gargalo, uma falha por vez: falhas com fila apontadas                    | **99%** (IC 95% 98% a 100%)                                               | `npm run bench:gargalo`      |
+| Detector de gargalo, uma falha por vez: causa certa no primeiro aviso                | **100%** (IC 95% 100% a 100%)                                             | `npm run bench:gargalo`      |
+| Detector de gargalo, falhas automáticas: causa certa                                 | **59%** (IC 95% 55% a 64%)                                                | `npm run bench:gargalo-caos` |
+| Detector de gargalo, falhas automáticas: causa certa com duas ou mais falhas ligadas | **80%** (IC 95% 75% a 85%)                                                | `npm run bench:gargalo-caos` |
+| Laboratório: demanda da Olist × constante (mesmo volume no dia), p95 do ciclo        | 36,8 s → 120,1 s: **+83,3 s** (+74,6 s a +91,9 s), pior em 10 de 10 seeds | `npm run bench:lab`          |
+| Laboratório: demanda da Olist × constante, vazão                                     | **−9,5** (−11,0 a −7,9) pacotes/min                                       | `npm run bench:lab`          |
+
 <!-- bench:fim -->
+
+### Fase 5
+
+| O que                                                                          | Resultado                                                                                                                    | Como reproduzir                                                        |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Laboratório no navegador (20 rodadas de um dia simulado)                       | 1 worker 84,1 s · 2: 44,6 s (1,9×) · 4: 25,0 s (3,4×) · 8: 19,0 s (4,4×); os mesmos números no Node                          | tecla <kbd>B</kbd>, `npm run bench:lab`                                |
+| Demanda da Olist × constante (mesmo volume no dia, seeds do laboratório)       | p95 do ciclo 36,8 → 120,1 s (+83,3 s, IC 95% +74,6 a +91,9), pior em 10 de 10 seeds; vazão −9,5/min (o dia termina com fila) | `npm run bench:lab`                                                    |
+| Causas do gargalo com falhas automáticas (seeds de teste novas, contrafactual) | **55,7%** das explicações certas (IC 95% 52,4% a 59,0%); 74,2% com duas ou mais falhas ligadas; 75,4% dos segundos na tela   | `npm run bench:gargalo-caos` (teste: `--set teste-5 --final`, uma vez) |
+| Conferência por mutação                                                        | 94 de 94 (31 novas; a primeira rodada achou 3 lacunas nos testes, fechadas)                                                  | `npm run mutate`                                                       |
 
 ### Fase 4b
 
@@ -656,18 +696,26 @@ Bugs encontrados medindo, não supondo:
   (seeds de validação).
 - **O "horário de baixa demanda" hoje só enxerga picos de pedidos.** Fora deles a
   demanda prevista é constante, e o prazo curto (11 s) quase nunca deixa escolha:
-  a espera é o esvaziamento da esteira. O perfil de demanda da Olist (Fase 5)
-  traz variação ao longo do dia para a mesma regra usar.
+  a espera é o esvaziamento da esteira. Com o perfil da Olist (no laboratório),
+  a previsão passa a ver as horas do dia; o efeito disso na agenda não foi medido
+  à parte.
 - **O desvio antes da parada nem sempre esvazia a esteira:** 43% das paradas em
   esteiras que a rota consegue esvaziar começam vazias.
-- **A precisão das causas do gargalo (98% a 100%) foi medida com uma falha de
-  cada vez**, em ensaios controlados. Com várias falhas ao mesmo tempo, o detector
-  escolhe a mais provável pela ordem descrita, e essa situação ainda não tem
-  medida própria: a Fase 5 mede a precisão também no cenário de falhas
-  automáticas, com falhas simultâneas, e o número entra aqui mesmo que caia.
-  Defeito de robô nunca é dado como causa (nenhum formou fila nos ensaios), e a
-  fila que uma falha deixa depois de terminar pode aparecer como "desenho do
-  galpão".
+- **A precisão das causas do gargalo cai com as falhas automáticas: de 98% a
+  100% para 55,7%.** O primeiro número veio de ensaios com uma falha de cada vez.
+  O segundo vem do modo automático (seeds de teste novas, IC 95% 52,4% a 59,0%),
+  julgado por contrafactual exato: cada falha é removida sozinha e a mesma seed
+  roda de novo; é causa a que tira pelo menos metade da fila (método e controle
+  em [`docs/resultados.md`](docs/resultados.md)). A queda não vem das falhas
+  simultâneas (com duas ou mais ligadas: 74,2%), vem da **memória**: uma esteira
+  quebrada deixa um acúmulo que leva minutos para escoar depois do conserto, e o
+  detector, que só olha o estado atual, chama essa fila de "desenho e demanda"
+  (certo em 34% das vezes) ou de "pico de pedidos" (49%). Quando nomeia uma falha
+  que está ligada, acerta: quebra da própria esteira 96%, doca bloqueada 100%,
+  desvio de esteira quebrada 86%. Lembrar as falhas recentes ("sobra da quebra da
+  esteira 9, encerrada há 90 s") é o próximo passo; o detector não mudou nesta
+  fase. Defeito de robô nunca é dado como causa (quase nunca forma fila de esteira
+  ou doca).
 - **Não feito:** balanceamento entre docas e redistribuição de robôs na
   heurística, previstos no roteiro original da Fase 4 (`docs/roteiro.md`).
 - A cópia estática do painel recebe as mesmas entradas, mas as falhas
