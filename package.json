@@ -21,6 +21,7 @@
     "bench:manutencao": "tsx bench/manutencao.ts",
     "bench:agenda": "tsx bench/agenda.ts",
     "bench:gargalo": "tsx bench/gargalo.ts",
+    "bench:lab": "tsx bench/lab.ts",
     "bench:oscilacao": "tsx bench/oscilacao.ts",
     "mutate": "node scripts/mutate.mjs",
     "hooks": "git config core.hooksPath .githooks"
