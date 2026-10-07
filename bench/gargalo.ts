@@ -19,7 +19,7 @@
  * the sets with at most one finding per hour in the reference runs, the most
  * queue-forming failures pointed out with the right cause at the first
  * finding; then fewer findings without failure; then a shorter median time to
- * point out; then the current default.
+ * point out; then the current values (the most parameters left as they are).
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -59,6 +59,8 @@ const seeds = seedsOf(set);
 /** Failure at 150 s (the building has filled up), run until 330 s: every failure has ended by then. */
 const T0 = 150;
 const SECONDS = 330;
+/** The reference run of each seed goes on for 30 minutes: the findings with no failure at all. */
+const REFERENCE_SECONDS = 1800;
 /** Packets a failure must add to the queues to count as forming one. */
 const MIN_EXTRA = 10;
 /** Seconds after the end of a failure still credited to it. */
@@ -83,7 +85,7 @@ const failures: { kind: FailureKind; target?: number }[] = [
   ...ROBOTS.map((target) => ({ kind: 'robot' as const, target })),
 ];
 const specs: TrialSpec[] = seeds.flatMap((seed) => [
-  { seed, failure: null, t0: T0, seconds: SECONDS },
+  { seed, failure: null, t0: T0, seconds: REFERENCE_SECONDS },
   ...failures.map((failure) => ({ seed, failure, t0: T0, seconds: SECONDS })),
 ]);
 
@@ -175,7 +177,7 @@ function score(runs: readonly TrialRun[], p: number): Score {
     const reference = runs.find((r) => r.spec.seed === seed && r.spec.failure === null)!;
     const ref = reference.findings[p] as TrialRun['findings'][number];
     s.falseEpisodes += episodes(ref);
-    s.referenceHours += (SECONDS - reference.from) / 3600;
+    s.referenceHours += (reference.spec.seconds - reference.from) / 3600;
     for (const trial of runs) {
       const failure = trial.spec.failure;
       if (trial.spec.seed !== seed || !failure || !trial.applied) continue;
@@ -250,6 +252,60 @@ function report(s: Score) {
   }
 }
 
+/** The failures that formed a queue and were missed, and the first causes that were wrong. */
+function details(runs: readonly TrialRun[], p: number) {
+  const describe = (f: { kind: FailureKind; target?: number }) =>
+    f.kind === 'conveyor'
+      ? `Esteira ${(f.target as number) + 1}`
+      : f.kind === 'dock'
+        ? `Doca ${(f.target as number) + 1}`
+        : f.kind === 'surge'
+          ? 'pico'
+          : `robô ${(f.target as number) + 1}`;
+  const lines: string[] = [];
+  // What was pointed out with no failure at all (the start of each episode).
+  for (const reference of runs.filter((r) => r.spec.failure === null)) {
+    const ref = reference.findings[p] as TrialRun['findings'][number];
+    ref.forEach((f, i) => {
+      if (i > 0 && (ref[i - 1] as { second: number }).second === f.second - 1) return;
+      const length = ref.slice(i).findIndex((g, j) => j > 0 && g.second !== f.second + j);
+      lines.push(
+        `- seed ${reference.spec.seed}, sem falha, aos ${f.second} s: ${f.kind === 'conveyor' ? 'esteira' : 'doca'} ${f.index + 1}, causa "${f.cause}", por ${length < 0 ? ref.length - i : length} s`,
+      );
+    });
+  }
+  for (const trial of runs) {
+    const failure = trial.spec.failure;
+    if (!failure || !trial.applied) continue;
+    const reference = runs.find((r) => r.spec.seed === trial.spec.seed && r.spec.failure === null)!;
+    const end = Math.min(
+      SECONDS - 1,
+      (Number.isFinite(trial.endsAt) ? trial.endsAt : SECONDS) + AFTER,
+    );
+    const extra = extraWaiting(trial, reference, T0, end);
+    if (extra < MIN_EXTRA) continue;
+    const credited = (trial.findings[p] as TrialRun['findings'][number]).filter(
+      (f) => f.second >= T0 && f.second <= end,
+    );
+    const first = credited[0];
+    if (!first) {
+      lines.push(
+        `- seed ${trial.spec.seed}, ${describe(failure)}: não apontada (${extra.toFixed(0)} pacotes a mais na fila)`,
+      );
+    } else if (!causeMatches(failure, first)) {
+      const said = first.target >= 0 ? `${first.cause} ${first.target + 1}` : first.cause;
+      lines.push(
+        `- seed ${trial.spec.seed}, ${describe(failure)}: primeiro aviso em ${first.kind} ${first.index + 1}, causa "${said}" (${first.second - T0} s depois)`,
+      );
+    }
+  }
+  if (lines.length) {
+    console.log(
+      ['', 'Gargalos sem falha, falhas não apontadas e causas erradas:', ...lines].join('\n'),
+    );
+  }
+}
+
 const t0 = performance.now();
 console.log(
   `Detector de gargalo, ensaios controlados: ${seeds.length} seeds de ${set} (${seeds.join(', ')}); em cada uma, uma rodada sem falha e ${failures.length} com uma falha só, aplicada aos ${T0} s (24 esteiras, 6 docas, 1 pico, ${ROBOTS.length} robôs), roteamento pela heurística.\n`,
@@ -265,11 +321,16 @@ if (flag('--calibrate')) {
     s: score(runs, p),
   }));
   const eligible = rows.filter((r) => perHour(r.s) <= 1);
+  // The last tie-break keeps the current values: the most parameters left as they are.
+  const unchanged = (r: (typeof rows)[number]) =>
+    (['minQueue', 'minRate', 'minUse'] as const).filter(
+      (k) => r.params[k] === DEFAULT_BOTTLENECK[k],
+    ).length;
   const key = (r: (typeof rows)[number]) => [
     -r.s.rightFirst,
     perHour(r.s),
     q(r.s.delays, 0.5),
-    JSON.stringify(r.params) === JSON.stringify(DEFAULT_BOTTLENECK) ? 0 : 1,
+    -unchanged(r),
   ];
   eligible.sort((a, b) => {
     const ka = key(a);
@@ -293,6 +354,7 @@ if (flag('--calibrate')) {
       `\nEscolha (regra fixada antes de medir): fila mínima ${pick.params.minQueue}, crescimento mínimo ${pick.params.minRate}/min, uso mínimo ${pick.params.minUse}.\n`,
     );
     report(pick.s);
+    details(runs, rows.indexOf(pick));
   } else {
     console.log('\nNenhum conjunto ficou abaixo de um gargalo por hora sem falha.');
   }
@@ -304,6 +366,7 @@ if (flag('--calibrate')) {
   console.log(`Detector: ${JSON.stringify(DEFAULT_BOTTLENECK)}\n`);
   const s = score(runs, 0);
   report(s);
+  details(runs, 0);
   Object.assign(output, { params: DEFAULT_BOTTLENECK, score: s });
 }
 const out = value('--out');

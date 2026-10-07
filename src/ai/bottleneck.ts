@@ -73,13 +73,21 @@ export interface BottleneckParams {
   readonly hold: number;
 }
 
-/** Calibrated on the controlled trials of the validation seeds (npm run bench:gargalo). */
+/**
+ * Calibrated on the controlled trials of the validation seeds (npm run
+ * bench:gargalo -- --calibrate, a 3 × 3 × 3 grid of the three thresholds):
+ * with 12 packets and 70 % of use, 291 of the 293 failures that formed a
+ * queue were pointed out, every first cause right, 0.8 findings per hour with
+ * no failure. Smaller queues found the same failures a few seconds earlier but
+ * pointed out 3 to 17 bottlenecks per hour with no failure; the growth rate
+ * made no difference there (4, 6 and 10 per minute alike), so it stays at 6.
+ */
 export const DEFAULT_BOTTLENECK: BottleneckParams = {
   window: 60,
   trend: 20,
-  minQueue: 8,
+  minQueue: 12,
   minRate: 6,
-  minUse: 0.8,
+  minUse: 0.7,
   minGrowing: 5,
   hold: 5,
 };
