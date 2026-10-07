@@ -1,0 +1,115 @@
+{
+  "tests": ["tests/demand.test.ts"],
+  "mutations": [
+    {
+      "name": "a hora da semana ignora a hora inicial",
+      "edits": [
+        {
+          "file": "src/sim/demand.ts",
+          "find": "const h = d.startHour + Math.floor(t / d.secondsPerHour + 1e-9);",
+          "replace": "const h = Math.floor(t / d.secondsPerHour + 1e-9);"
+        }
+      ]
+    },
+    {
+      "name": "a semana não recomeça depois do domingo",
+      "edits": [
+        {
+          "file": "src/sim/demand.ts",
+          "find": "return ((h % HOURS_PER_WEEK) + HOURS_PER_WEEK) % HOURS_PER_WEEK;",
+          "replace": "return h;"
+        }
+      ]
+    },
+    {
+      "name": "as chegadas não seguem o peso da hora",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "this.arrivalRate = this.baseArrivalRate * this.surgeFactor * weight;",
+          "replace": "this.arrivalRate = this.baseArrivalRate * this.surgeFactor;"
+        }
+      ]
+    },
+    {
+      "name": "os pedidos das prateleiras não seguem o peso da hora",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "this.config.rackOrderRate * (this.surgeFactor > 1 ? 2 : 1) * weight,",
+          "replace": "this.config.rackOrderRate * (this.surgeFactor > 1 ? 2 : 1),"
+        }
+      ]
+    },
+    {
+      "name": "a troca de hora não atualiza as taxas",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "        this.demandHour = hour;\n        this.refreshRates();",
+          "replace": "        this.demandHour = hour;"
+        }
+      ]
+    },
+    {
+      "name": "a previsão da agenda ignora o perfil",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "return this.config.demand ? rate * demandWeight(this.config.demand, t) : rate;",
+          "replace": "return rate;"
+        }
+      ]
+    },
+    {
+      "name": "a primeira hora começa sem o peso dela",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "const startWeight = demand ? demandWeight(demand, 0) : 1;",
+          "replace": "const startWeight = 1;"
+        }
+      ]
+    },
+    {
+      "name": "o pico de pedidos com perfil ignora o peso da hora",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "    if (this.config.demand) {\n      this.refreshRates();\n      return;\n    }\n    this.arrivalRate = this.baseArrivalRate * factor;",
+          "replace": "    this.arrivalRate = this.baseArrivalRate * factor;"
+        }
+      ]
+    },
+    {
+      "name": "script: a semana da Black Friday entra",
+      "edits": [
+        {
+          "file": "scripts/demanda_olist.py",
+          "find": "            if not START <= t < END or EXCLUDED[0] <= t < EXCLUDED[1]:",
+          "replace": "            if not START <= t < END:"
+        }
+      ]
+    },
+    {
+      "name": "script: o fim do período entra",
+      "edits": [
+        {
+          "file": "scripts/demanda_olist.py",
+          "find": "            if not START <= t < END or EXCLUDED[0] <= t < EXCLUDED[1]:",
+          "replace": "            if not START <= t <= END + dt.timedelta(days=3) or EXCLUDED[0] <= t < EXCLUDED[1]:"
+        }
+      ]
+    },
+    {
+      "name": "script: média por dia sem descontar a semana excluída",
+      "edits": [
+        {
+          "file": "scripts/demanda_olist.py",
+          "find": "        if not EXCLUDED[0] <= d < EXCLUDED[1]:\n            days[d.weekday()] += 1",
+          "replace": "        days[d.weekday()] += 1"
+        }
+      ]
+    }
+  ]
+}

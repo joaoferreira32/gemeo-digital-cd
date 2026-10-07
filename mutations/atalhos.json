@@ -1,0 +1,25 @@
+{
+  "tests": ["tests/shortcuts.test.ts"],
+  "mutations": [
+    {
+      "name": "Shift ignorado ao escolher o atalho",
+      "edits": [
+        {
+          "file": "src/ui/shortcuts.ts",
+          "find": "  return (shift ? pick(true) : undefined) ?? pick(false);",
+          "replace": "  return pick(false) ?? pick(true);"
+        }
+      ]
+    },
+    {
+      "name": "a câmera não larga a tecla com Shift",
+      "edits": [
+        {
+          "file": "src/ui/shortcuts.ts",
+          "find": "  return SHORTCUTS.some((s) => s.shift && s.codes.includes(code));",
+          "replace": "  return false;"
+        }
+      ]
+    }
+  ]
+}

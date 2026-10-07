@@ -1,0 +1,95 @@
+{
+  "tests": ["tests/bottleneck-caos.test.ts"],
+  "mutations": [
+    {
+      "name": "a falha suprimida é aplicada",
+      "edits": [
+        {
+          "file": "src/sim/failures.ts",
+          "find": "    if (this.suppressed.has(id)) {\n      this.avoided.push(endsAt);\n      return f;\n    }\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a falha suprimida não guarda o lugar no limite",
+      "edits": [
+        {
+          "file": "src/sim/failures.ts",
+          "find": "    if (this.suppressed.has(id)) {\n      this.avoided.push(endsAt);\n      return f;\n    }",
+          "replace": "    if (this.suppressed.has(id)) {\n      return f;\n    }"
+        }
+      ]
+    },
+    {
+      "name": "o replay não reaplica as entradas",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck-caos.ts",
+          "find": "      applyInput(world, (rec.inputs[i] as { input: SimInput }).input);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o replay começa nas entradas de antes do checkpoint",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck-caos.ts",
+          "find": "  let i = rec.inputs.findIndex((x) => x.tick >= cp.tick);",
+          "replace": "  let i = rec.inputs.findIndex((x) => x.tick > cp.tick);"
+        }
+      ]
+    },
+    {
+      "name": "\"desenho\" conta como certo mesmo havendo causa",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck-caos.ts",
+          "find": "  if (causes.length === 0) return kind === 'layout';",
+          "replace": "  if (causes.length === 0 || kind === 'layout') return kind === 'layout';"
+        }
+      ]
+    },
+    {
+      "name": "qualquer esteira serve como causa",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck-caos.ts",
+          "find": "        return kind === 'conveyor' && target === truth.target;",
+          "replace": "        return kind === 'conveyor';"
+        }
+      ]
+    },
+    {
+      "name": "defeito de robô conta como explicado",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck-caos.ts",
+          "find": "        // The detector names belts and docks; a robot defect is never its explanation.\n        return false;",
+          "replace": "        return kind === 'layout';"
+        }
+      ]
+    },
+    {
+      "name": "causa sem tirar metade da fila",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck-caos.ts",
+          "find": "c.endsAt >= j.second - window && c.shrink >= Math.max(MIN_SHRINK, j.queue / 2)",
+          "replace": "c.endsAt >= j.second - window && c.shrink >= MIN_SHRINK"
+        }
+      ]
+    },
+    {
+      "name": "a janela da causa é ignorada",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck-caos.ts",
+          "find": "c.endsAt >= j.second - window && c.shrink >= Math.max(MIN_SHRINK, j.queue / 2)",
+          "replace": "c.shrink >= Math.max(MIN_SHRINK, j.queue / 2)"
+        }
+      ]
+    }
+  ]
+}
