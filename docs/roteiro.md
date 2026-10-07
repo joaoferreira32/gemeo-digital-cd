@@ -150,6 +150,20 @@ feito em cada fase está no README e em `docs/resultados.md`.
   atalhos são conferidos para não haver conflito. A licença do dataset da Olist
   é confirmada pelo usuário antes de a fase começar.
 
+- **2026-10-07, antes da Fase 5.** Registrar no README que a precisão das
+  causas do gargalo (98% a 100%) foi medida com uma falha de cada vez; na Fase 5,
+  medir também a precisão no cenário de falhas automáticas, com falhas
+  simultâneas, e reportar mesmo que caia. Criar uma trava de pre-push versionada
+  no repositório (lint, checagem de tipos, testes e autor e committer noreply em
+  todos os commits a enviar), com a instalação no README.
+- **2026-10-07, dados da Fase 5.** O dataset da Olist fica fora do repositório (e
+  o `.gitignore` garante que nenhum CSV dela entre). Licença confirmada no
+  Kaggle: CC BY-NC-SA 4.0. O código continua MIT; o perfil de demanda derivado
+  (`public/demanda-olist.json`) leva CC BY-NC-SA 4.0, com atribuição à Olist e
+  link para o dataset, num arquivo de licença ao lado dele e numa seção "Dados e
+  licenças" do README. Usar só o período de volume estável (por exemplo, janeiro
+  de 2017 a agosto de 2018), conferido pelo volume mensal e justificado no README.
+
 ## Apêndice: a primeira versão das fases 2 a 4
 
 Do primeiro pedido. Substituída depois da Fase 1 pelas fases 2 a 6 acima; vários

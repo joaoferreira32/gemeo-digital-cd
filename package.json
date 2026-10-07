@@ -22,7 +22,8 @@
     "bench:agenda": "tsx bench/agenda.ts",
     "bench:gargalo": "tsx bench/gargalo.ts",
     "bench:oscilacao": "tsx bench/oscilacao.ts",
-    "mutate": "node scripts/mutate.mjs"
+    "mutate": "node scripts/mutate.mjs",
+    "hooks": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Trava antes do push. Instale uma vez por clone com: npm run hooks
+#
+# Bloqueia o push quando:
+#  - algum commit a enviar tem autor ou committer sem e-mail noreply do GitHub;
+#  - o que vai ser enviado não é o que está checado out, ou há mudanças não
+#    commitadas ou arquivos fora do git: as verificações rodam na árvore de
+#    trabalho, que precisa ser exatamente o que vai ser enviado;
+#  - lint, checagem de tipos ou testes falham.
+#
+# É uma trava local. No GitHub, o CI continua sendo a verificação obrigatória.
+set -u
+
+remote="$1"
+zero=0000000000000000000000000000000000000000
+head=$(git rev-parse HEAD)
+
+fail() {
+  echo "pre-push: $*" >&2
+  echo "pre-push: push bloqueado." >&2
+  exit 1
+}
+
+# O e-mail pessoal nunca aparece num commit; o do GitHub (merge pela web) é noreply também.
+noreply() {
+  case "$1" in
+    *@users.noreply.github.com | noreply@github.com) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+pushing=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Apagar um branch remoto não envia commit nenhum.
+  [ "$local_sha" = "$zero" ] && continue
+  pushing=1
+  # Os commits que o remoto ainda não tem. Se o remoto aponta para um commit que
+  # não existe aqui (push forçado), conta tudo o que nenhum branch remoto tem.
+  if [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    commits=$(git rev-list "$remote_sha..$local_sha")
+  else
+    commits=$(git rev-list "$local_sha" --not --remotes="$remote")
+  fi
+  for c in $commits; do
+    what=$(git log -1 --format='%h "%s"' "$c")
+    noreply "$(git log -1 --format=%ae "$c")" || fail "o autor do commit $what não tem e-mail noreply."
+    noreply "$(git log -1 --format=%ce "$c")" || fail "o committer do commit $what não tem e-mail noreply."
+  done
+  [ "$local_sha" = "$head" ] ||
+    fail "$local_ref não é o que está checado out; faça checkout dele antes do push."
+done
+[ "$pushing" = 1 ] || exit 0
+
+[ -z "$(git status --porcelain)" ] ||
+  fail "há mudanças não commitadas ou arquivos fora do git (git status)."
+command -v npm >/dev/null 2>&1 || fail "npm não encontrado no PATH."
+
+echo "pre-push: lint (eslint e prettier)"
+npm run --silent lint || fail "o lint falhou."
+echo "pre-push: checagem de tipos"
+{ npx tsc --noEmit && npx tsc --noEmit -p tsconfig.node.json; } || fail "a checagem de tipos falhou."
+echo "pre-push: testes"
+npx vitest run || fail "os testes falharam."
+echo "pre-push: tudo certo, enviando."
