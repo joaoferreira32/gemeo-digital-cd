@@ -167,6 +167,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
     label: [k('K')],
     help: 'painel de operação: vazão, tempo de ciclo, roteamento, manutenção, utilização',
   },
+  {
+    action: 'lab',
+    codes: ['KeyB'],
+    label: [k('B')],
+    help: 'laboratório "e se…?": dois cenários nas mesmas seeds, com intervalo de confiança',
+  },
   { action: 'help', codes: ['KeyH'], label: [k('H')], help: 'atalhos e legenda' },
   { action: 'close', codes: ['Escape'], label: [k('Esc')], help: 'fechar painéis' },
   {

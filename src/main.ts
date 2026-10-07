@@ -27,6 +27,8 @@ import { DEFAULT_CONFIG } from './sim/world';
 import { Hud } from './ui/hud';
 import { HistoryPanel } from './ui/history';
 import { KpiPanel } from './ui/kpi';
+import { adaptWorker } from './lab/pool';
+import { LabPanel } from './ui/lab';
 import { pickEntity } from './ui/pick';
 import { SHORTCUTS, shortcutFor } from './ui/shortcuts';
 import { TimelineBar } from './ui/timeline';
@@ -90,6 +92,16 @@ const link = createLink();
 const frames = new FrameBuffer((buffer) => link.send({ type: 'release', buffer }, [buffer]));
 const kpiPanel = new KpiPanel(document.getElementById('kpi-panel') as HTMLElement, layout);
 const historyPanel = new HistoryPanel(document.getElementById('history-panel') as HTMLElement);
+const labPanel = new LabPanel(document.getElementById('lab-panel') as HTMLElement, {
+  conveyorLabels: layout.graph.edges.map(
+    (e) => `${e.name} (${layout.graph.node(e.from).name}→${layout.graph.node(e.to).name})`,
+  ),
+  modelUrl: new URL('models/roteamento', document.baseURI).href,
+  demandUrl: new URL('demanda-olist.json', document.baseURI).href,
+  spawn: () =>
+    adaptWorker(new Worker(new URL('./lab/lab.worker.ts', import.meta.url), { type: 'module' })),
+  cores: navigator.hardwareConcurrency || 4,
+});
 const timeline = new TimelineBar(document.getElementById('timeline') as HTMLElement, {
   seek: (time) => send({ type: 'seek', time }),
   live: () => send({ type: 'live' }),
@@ -396,6 +408,7 @@ function bindControls() {
   document.getElementById('btn-quality')!.addEventListener('click', () => governor.cycle());
   document.getElementById('btn-help')!.addEventListener('click', () => toggleHelp());
   document.getElementById('btn-kpi')!.addEventListener('click', () => toggleKpi());
+  document.getElementById('btn-lab')!.addEventListener('click', () => labPanel.toggle());
   // Panels above the control bar follow its real height (it wraps on narrow screens).
   const controls = document.querySelector('.hud--controls') as HTMLElement;
   new ResizeObserver(() => {
@@ -477,12 +490,15 @@ function bindControls() {
         break;
       case 'close':
         toggleHelp(false);
+        labPanel.toggle(false);
         if (historyPanel.entity) historyPanel.close();
         break;
       case 'restart':
         restart();
         break;
       case 'lab':
+        labPanel.toggle();
+        break;
       case 'camera':
       case 'pick':
         break;

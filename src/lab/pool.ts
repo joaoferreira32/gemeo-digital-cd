@@ -47,7 +47,8 @@ export class LabPool {
 
   run(
     requests: readonly Omit<LabRequest, 'id'>[],
-    onProgress?: (done: number, total: number) => void,
+    /** After each job: how many are done, of how many, and which job gave what. */
+    onProgress?: (done: number, total: number, index: number, outcome: LabOutcome) => void,
   ): Promise<LabOutcome[]> {
     const generation = ++this.generation;
     // A run still pending is over: its results would no longer be wanted.
@@ -67,7 +68,7 @@ export class LabPool {
         if (!live() || results[index]) return;
         results[index] = outcome;
         done++;
-        onProgress?.(done, total);
+        onProgress?.(done, total, index, outcome);
         if (done === total) {
           this.stop = null;
           resolve(results);
@@ -124,4 +125,17 @@ function errorText(e: unknown): string {
   if (e && typeof e === 'object' && 'message' in e)
     return String((e as { message: unknown }).message);
   return String(e);
+}
+
+/** A Web Worker of the page as a pool worker. */
+export function adaptWorker(worker: Worker): WorkerLike {
+  const like: WorkerLike = {
+    postMessage: (request) => worker.postMessage(request),
+    onmessage: null,
+    onerror: null,
+    terminate: () => worker.terminate(),
+  };
+  worker.onmessage = (e: MessageEvent<LabReply>) => like.onmessage?.({ data: e.data });
+  worker.onerror = (e) => like.onerror?.(e);
+  return like;
 }
