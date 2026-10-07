@@ -1,7 +1,7 @@
 import { ROBOT_STAGES, type RobotStage } from '../sim/fleet';
 import type { WarehouseLayout } from '../sim/layout';
 import type { Kpis } from '../sim/recorder';
-import type { RoutingStatus } from '../worker/protocol';
+import type { MaintenanceStatus, RoutingStatus } from '../worker/protocol';
 import type { Measures, PolicyChoice } from '../worker/routing';
 import { formatInt, formatRate, formatSeconds } from './format';
 import {
@@ -43,6 +43,8 @@ export class KpiPanel {
   readonly root: HTMLElement;
   private readonly tiles: HTMLElement;
   private readonly routing: HTMLElement;
+  private readonly maintenance: HTMLElement;
+  private maintenanceStatus: MaintenanceStatus | null = null;
   private routingStatus: { r: RoutingStatus; labels: Record<PolicyChoice, string> } | null = null;
   private readonly when: HTMLElement;
   private readonly states: HTMLElement;
@@ -83,6 +85,10 @@ export class KpiPanel {
     root.append(html('h3', 'kpi__section', 'Roteamento'));
     this.routing = html('div', 'kpi__routing');
     root.append(this.routing);
+
+    root.append(html('h3', 'kpi__section', 'Manutenção preditiva'));
+    this.maintenance = html('div', 'kpi__routing');
+    root.append(this.maintenance);
 
     root.append(html('h3', 'kpi__section', 'Robôs agora'));
     this.states = html('div', 'states');
@@ -179,6 +185,7 @@ export class KpiPanel {
     if (open && this.routingStatus) {
       this.updateRouting(this.routingStatus.r, this.routingStatus.labels);
     }
+    if (open && this.maintenanceStatus) this.updateMaintenance(this.maintenanceStatus);
     return open;
   }
 
@@ -194,6 +201,43 @@ export class KpiPanel {
     this.renderCharts(k);
     if (!this.table.hidden) this.renderTable();
     this.renderUse(k);
+  }
+
+  /** What the maintenance schedule has done so far in the run, and what it is doing now. */
+  updateMaintenance(m: MaintenanceStatus): void {
+    this.maintenanceStatus = m;
+    if (!this.open) return;
+    if (!m.enabled) {
+      this.maintenance.replaceChildren(
+        html('p', 'kpi__note muted', 'Agenda de manutenção desligada.'),
+      );
+      return;
+    }
+    const plural = (n: number, one: string, many: string) =>
+      `${formatInt(n)} ${n === 1 ? one : many}`;
+    const head = html('p', 'kpi__note');
+    head.append(
+      html('strong', '', plural(m.avoided, 'falha evitada', 'falhas evitadas')),
+      html(
+        'span',
+        'muted',
+        ` · ${plural(m.unneeded, 'manutenção', 'manutenções')} sem desgaste encontrado · ` +
+          `${plural(m.lost, 'quebra', 'quebras')} enquanto a manutenção esperava`,
+      ),
+    );
+    const now: string[] = [];
+    if (m.inService.length) now.push(`Em manutenção: ${m.inService.join(', ')}`);
+    if (m.planned.length) now.push(`Esvaziando para a manutenção: ${m.planned.join(', ')}`);
+    this.maintenance.replaceChildren(
+      head,
+      html(
+        'p',
+        'kpi__note muted',
+        now.length
+          ? now.join(' · ')
+          : 'No alarme de um motor, a IA desvia o fluxo, esvazia a esteira e para para manutenção antes da quebra.',
+      ),
+    );
   }
 
   /**

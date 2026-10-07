@@ -1,3 +1,4 @@
+import type { Bottleneck } from '../ai/bottleneck';
 import type { FloorGrid } from '../sim/floor';
 import type { SimEvent } from '../sim/failures';
 import type { RobotStage } from '../sim/fleet';
@@ -65,6 +66,10 @@ export class Hud {
   private readonly rRoute = el('r-route');
   private readonly rSpeed = el('r-speed');
   private readonly shown: { node: HTMLLIElement; until: number }[] = [];
+  private readonly bottleneck = el('bottleneck');
+  private readonly bottleneckWhat = el('bottleneck-what');
+  private readonly bottleneckCause = el('bottleneck-cause');
+  private readonly bottleneckNumbers = el('bottleneck-numbers');
 
   constructor(private readonly grid: FloorGrid) {}
 
@@ -174,6 +179,30 @@ export class Hud {
       cells > 1 ? `${formatInt(cells - 1)} células · chega em ${formatSeconds(eta)}` : 'parado',
     );
     this.set(this.rSpeed, `${formatRate(r[o + ROBOT.speed] as number)} m/s`);
+  }
+
+  /**
+   * The bottleneck of the moment shown (from the status messages), or none.
+   * What and why are announced to screen readers when they change; the
+   * numbers, which change every update, are not.
+   */
+  showBottleneck(b: Bottleneck | null): void {
+    this.bottleneck.hidden = b === null;
+    if (!b) return;
+    this.set(
+      this.bottleneckWhat,
+      b.stopped ? `${b.label} ${b.kind === 'dock' ? 'bloqueada' : 'parada'}` : b.label,
+    );
+    this.set(
+      this.bottleneckCause,
+      `${b.cause.certain ? 'Causa' : 'Causa provável'}: ${b.cause.text}.`,
+    );
+    const numbers = [`fila de ${formatInt(b.queue)} pacotes`];
+    if (b.growing) {
+      numbers.push(`crescendo há ${formatInt(b.growingFor)} s (+${formatInt(b.perMinute)}/min)`);
+    }
+    if (!b.stopped) numbers.push(`${formatInt(b.use * 100)}% de uso no último minuto`);
+    this.set(this.bottleneckNumbers, numbers.join(' · '));
   }
 
   /** Shows new events in the on-screen feed (newest at the bottom, at most four). */

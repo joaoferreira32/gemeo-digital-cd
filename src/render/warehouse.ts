@@ -39,6 +39,8 @@ export class WarehouseView {
   readonly belts: BeltView[] = [];
   readonly beltOkMaterial: MeshStandardMaterial;
   readonly beltBrokenMaterial: MeshStandardMaterial;
+  /** A belt stopped for a planned maintenance: still, with a cyan glow (the AI's color). */
+  readonly beltServiceMaterial: MeshStandardMaterial;
   readonly reflector: Reflector;
   readonly floor: Mesh<PlaneGeometry, MeshStandardMaterial>;
   /** Roof girders and light fixtures; hidden when the camera is above the roof (cutaway). */
@@ -53,7 +55,8 @@ export class WarehouseView {
     const t = tracker;
     const okTex = beltTexture(t, 'cyan');
     const brokenTex = beltTexture(t, 'alert');
-    this.beltTextures.push(okTex, brokenTex);
+    const serviceTex = beltTexture(t, 'cyan');
+    this.beltTextures.push(okTex, brokenTex, serviceTex);
     this.beltOkMaterial = t.track(
       new MeshStandardMaterial({ map: okTex, roughness: 0.85, metalness: 0.05 }),
     );
@@ -63,6 +66,14 @@ export class WarehouseView {
         roughness: 0.85,
         emissive: PALETTE.alert,
         emissiveIntensity: 0.25,
+      }),
+    );
+    this.beltServiceMaterial = t.track(
+      new MeshStandardMaterial({
+        map: serviceTex,
+        roughness: 0.85,
+        emissive: PALETTE.cyan,
+        emissiveIntensity: 0.22,
       }),
     );
 
@@ -82,11 +93,17 @@ export class WarehouseView {
     okTex.offset.x = (okTex.offset.x - distance / BELT_PERIOD) % 1;
   }
 
-  setBeltBroken(edgeId: number, broken: boolean): void {
+  /** 0 running · 1 broken · 2 stopped for a planned maintenance (as in the snapshot). */
+  setBeltState(edgeId: number, state: number): void {
     const belt = this.belts[edgeId];
     if (!belt) return;
-    for (const m of belt.meshes)
-      m.material = broken ? this.beltBrokenMaterial : this.beltOkMaterial;
+    const material =
+      state === 1
+        ? this.beltBrokenMaterial
+        : state === 2
+          ? this.beltServiceMaterial
+          : this.beltOkMaterial;
+    for (const m of belt.meshes) m.material = material;
   }
 
   private std(

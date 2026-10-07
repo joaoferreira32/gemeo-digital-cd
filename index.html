@@ -37,6 +37,15 @@
 
     <ol id="events" class="hud--events" aria-live="polite" aria-label="Eventos da simulação"></ol>
 
+    <aside id="bottleneck" class="hud hud--bottleneck" aria-label="Gargalo agora" hidden>
+      <p class="bottleneck__eyebrow">Gargalo agora</p>
+      <div aria-live="polite">
+        <p class="bottleneck__what" id="bottleneck-what"></p>
+        <p class="bottleneck__cause" id="bottleneck-cause"></p>
+      </div>
+      <p class="bottleneck__numbers mono" id="bottleneck-numbers"></p>
+    </aside>
+
     <section class="hud hud--metrics" aria-label="Métricas da simulação">
       <article class="metric" data-tone="alert">
         <h2 class="metric__label">Pacotes na fila</h2>
@@ -247,8 +256,9 @@
         <dd>falhas automáticas</dd>
         <dt><kbd>0</kbd></dt>
         <dd>
-          desgaste numa esteira: ela quebra em 1 a 3 minutos, e o halo do motor e o alarme de
-          manutenção avisam antes (sinais simulados)
+          desgaste numa esteira: ela quebraria em 1 a 3 minutos; o halo do motor e o alarme de
+          manutenção avisam antes (sinais simulados), e a IA agenda a manutenção para evitar a
+          quebra
         </dd>
         <dt><kbd>P</kbd></dt>
         <dd>
@@ -297,11 +307,21 @@
           Halo no motor de cada esteira: ciano = leituras normais, âmbar = desvio acumulando,
           vermelho pulsando = alarme de manutenção (vibração e temperatura simuladas)
         </li>
+        <li>
+          Esteira e halo ciano parados: manutenção agendada pela IA (a rota esvazia a esteira
+          antes); onda ciano saindo do motor = falha evitada
+        </li>
+        <li>
+          Cartão “Gargalo agora” e anel âmbar no piso: o recurso que segura o fluxo neste momento,
+          com a causa provável
+        </li>
         <li>Setas ciano nos entroncamentos: quanto do fluxo segue cada caminho agora</li>
         <li>
           Linha do tempo: faixa clara = pacotes na fila; barras vermelhas = falhas e robôs travados;
-          âmbar = pico de pedidos; pontos ciano = ações do vigia; pontos âmbar = alarmes de
-          manutenção; traço branco = onde a simulação continuou a partir do passado
+          âmbar = pico de pedidos; barras ciano = manutenção agendada; pontos ciano = ações do vigia
+          (pequenos) e falhas evitadas (grandes); pontos âmbar = alarmes de manutenção; pontos
+          vermelhos = quebra enquanto a manutenção esperava; traço branco = onde a simulação
+          continuou a partir do passado
         </li>
       </ul>
       <p class="muted">

@@ -1,3 +1,4 @@
+import { BottleneckDetector, topologyOf } from '../ai/bottleneck';
 import { ACTION_LEVELS, observe } from '../ai/env';
 import { eventLogCsv } from '../sim/export';
 import { fingerprint } from '../sim/fingerprint';
@@ -72,6 +73,8 @@ export class SimHost {
   private decisions = 0;
   private decisionMs = 0;
   private readonly shadow = new StaticShadow();
+  /** Reads the recording: the bottleneck of any moment shown, live or past. */
+  private detector: BottleneckDetector;
 
   constructor(
     private readonly post: (msg: SimMessage, transfer: Transferable[]) => void,
@@ -82,6 +85,7 @@ export class SimHost {
     this.agent = new LazyAgent(agentLoader);
     this.recorder = new Recorder(this.config);
     this.writer = new SnapshotWriter(this.recorder.shown);
+    this.detector = new BottleneckDetector(topologyOf(this.recorder.live));
     this.lastPump = clock();
   }
 
@@ -210,6 +214,7 @@ export class SimHost {
   private restart(config: Partial<SimConfig> = this.config, keepStress = true): void {
     const stress = keepStress && this.recorder.live.baseRate === STRESS_ARRIVAL_RATE;
     this.recorder = new Recorder(config);
+    this.detector = new BottleneckDetector(topologyOf(this.recorder.live));
     if (stress) this.recorder.input({ type: 'stress', on: true });
     // The routing chosen stays on across a restart too, as an input at tick 0.
     if (keepStress && this.choice !== 'static') {
@@ -390,8 +395,26 @@ export class SimHost {
       decisions: this.decisions,
       compare: rec.viewing ? null : this.shadow.compare(rec.live),
     };
+    const second = Math.min(rec.series.seconds - 1, Math.floor(shown.time + 1e-9));
+    const schedule = shown.schedule;
+    const maintenance = {
+      enabled: schedule.enabled,
+      avoided: schedule.avoided,
+      unneeded: schedule.unneeded,
+      lost: schedule.lost,
+      planned: schedule.plans.map((p) => shown.conveyorLabel(p.target)),
+      inService: schedule.services.map((s) => shown.conveyorLabel(s.target)),
+    };
     this.post(
-      { type: 'status', timeline: timeline(rec), kpis: rec.kpis(shown.time), stages, routing },
+      {
+        type: 'status',
+        timeline: timeline(rec),
+        kpis: rec.kpis(shown.time),
+        stages,
+        routing,
+        bottleneck: this.detector.detect(rec.series, second),
+        maintenance,
+      },
       [],
     );
     this.lastStatus = now;

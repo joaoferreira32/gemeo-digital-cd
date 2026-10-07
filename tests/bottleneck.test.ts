@@ -107,7 +107,7 @@ describe('bottleneck detector', () => {
   it('a stopped belt with packets waiting is the bottleneck, growing or not; the cause is certain', () => {
     const broken = series({
       seconds: 101,
-      queue: (t, c) => (c === 0 ? 20 : 0),
+      queue: (_t, c) => (c === 0 ? 20 : 0),
       state: (t, c) => (c === 0 && t >= 50 ? 1 : 0),
     });
     const b = detector.detect(broken, 100)!;
@@ -124,8 +124,8 @@ describe('bottleneck detector', () => {
 
     const serviced = series({
       seconds: 101,
-      queue: (t, c) => (c === 1 ? 20 : 0),
-      state: (t, c) => (c === 1 ? 2 : 0),
+      queue: (_t, c) => (c === 1 ? 20 : 0),
+      state: (_t, c) => (c === 1 ? 2 : 0),
     });
     expect(detector.detect(serviced, 100)!.cause).toMatchObject({
       kind: 'service',

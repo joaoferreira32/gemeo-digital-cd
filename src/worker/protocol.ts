@@ -1,3 +1,4 @@
+import type { Bottleneck } from '../ai/bottleneck';
 import type { FailureKind, SimEvent } from '../sim/failures';
 import type { Kpis, RunReport } from '../sim/recorder';
 import type { SimConfig } from '../sim/world';
@@ -41,13 +42,35 @@ export type SimCommand =
 /** Messages from the simulation to the page. */
 export type SimMessage =
   | { type: 'snapshot'; buffer: ArrayBuffer; events: SimEvent[] }
-  | { type: 'status'; timeline: Timeline; kpis: Kpis; stages: number[]; routing: RoutingStatus }
+  | {
+      type: 'status';
+      timeline: Timeline;
+      kpis: Kpis;
+      stages: number[];
+      routing: RoutingStatus;
+      /** The bottleneck at the moment shown (src/ai/bottleneck.ts), or null. */
+      bottleneck: Bottleneck | null;
+      maintenance: MaintenanceStatus;
+    }
   | { type: 'history'; history: EntityHistory }
   | { type: 'export'; filename: string; mime: string; text: string }
   | { type: 'replay'; progress: number; done: boolean; ok?: boolean; fingerprint?: string }
   | { type: 'error'; message: string };
 
 export const SPEEDS = [1, 4, 16] as const;
+
+/** The maintenance schedule at the moment shown (src/sim/schedule.ts). */
+export interface MaintenanceStatus {
+  readonly enabled: boolean;
+  readonly avoided: number;
+  /** Maintenance that found no wear (false alarms). */
+  readonly unneeded: number;
+  /** Belts that broke while their maintenance waited. */
+  readonly lost: number;
+  /** Labels of the belts with a maintenance planned (being emptied), and under way. */
+  readonly planned: readonly string[];
+  readonly inService: readonly string[];
+}
 
 export interface RoutingStatus {
   /** Who routes in the moment shown (the past keeps its own). */

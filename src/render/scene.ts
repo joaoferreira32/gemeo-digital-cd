@@ -14,6 +14,7 @@ import type { WarehouseLayout } from '../sim/layout';
 import { CONVEYOR_STRIDE, HEADER, ROBOT, ROBOT_STRIDE, STAGES } from '../sim/snapshot';
 import type { SimFrame } from '../link/frames';
 import { AlertView } from './alerts';
+import { BottleneckView } from './bottleneck';
 import { FlowView } from './flows';
 import { OrbitCamera, type CameraPreset } from './camera';
 import { ROOF_Y } from './floorplan';
@@ -55,6 +56,7 @@ export class SceneView {
   readonly alerts: AlertView;
   readonly motors: MotorView;
   readonly flows: FlowView;
+  readonly bottleneck: BottleneckView;
   /** Robot followed by the follow camera. */
   followRobot = 0;
   private readonly tracker = new ResourceTracker();
@@ -64,7 +66,8 @@ export class SceneView {
   private readonly routes: RouteView;
   private readonly post: PostFX;
   private readonly sun: DirectionalLight;
-  private readonly beltBroken: boolean[];
+  /** What each belt looks like now: 0 running · 1 broken · 2 in maintenance. */
+  private readonly beltState: number[];
   private readonly followPoint = new Vector3();
   private wallTime = 0;
   private trailsOn = true;
@@ -128,11 +131,13 @@ export class SceneView {
     this.scene.add(this.alerts.rings, this.alerts.beams);
     this.motors = new MotorView(layout, this.tracker);
     this.scene.add(this.motors.housings, this.motors.halos);
+    this.bottleneck = new BottleneckView(layout, this.tracker);
+    this.scene.add(this.bottleneck.dashes, this.bottleneck.pulse);
     this.flows = new FlowView(layout, this.tracker);
     this.scene.add(this.flows.mesh);
     this.heat = new HeatmapView(renderer, layout, this.tracker);
     this.scene.add(this.heat.overlay);
-    this.beltBroken = layout.graph.edges.map(() => false);
+    this.beltState = layout.graph.edges.map(() => 0);
 
     this.orbit = new OrbitCamera(canvas, bounds, reducedMotion);
     this.post = new PostFX(renderer, this.scene, this.orbit.camera);
@@ -205,11 +210,11 @@ export class SceneView {
       ? this.rewindTarget
       : this.rewindAmount + (this.rewindTarget - this.rewindAmount) * Math.min(1, realDt * 6);
     this.poses.update(frame, alpha);
-    for (let e = 0; e < this.beltBroken.length; e++) {
-      const broken = (s.conveyors[e * CONVEYOR_STRIDE] as number) > 0;
-      if (this.beltBroken[e] !== broken) {
-        this.beltBroken[e] = broken;
-        this.warehouse.setBeltBroken(e, broken);
+    for (let e = 0; e < this.beltState.length; e++) {
+      const state = s.conveyors[e * CONVEYOR_STRIDE] as number;
+      if (this.beltState[e] !== state) {
+        this.beltState[e] = state;
+        this.warehouse.setBeltState(e, state);
       }
     }
     this.warehouse.scrollBelts(simDt * this.opts.conveyorSpeed);
@@ -219,6 +224,7 @@ export class SceneView {
     if (this.trailsOn && !this.reducedMotion) this.trails.update(this.poses, realDt);
     this.alerts.update(frame, this.poses, this.wallTime, this.reducedMotion);
     this.motors.update(frame, this.wallTime, this.reducedMotion);
+    this.bottleneck.update(this.wallTime, this.reducedMotion);
     this.flows.update(frame, this.wallTime, this.reducedMotion);
     this.heat.update(frame, alpha, this.poses, simDt);
 
@@ -273,6 +279,11 @@ export class SceneView {
     return this.rewindAmount;
   }
 
+  /** Marks the bottleneck the detector points out at the moment shown (status messages). */
+  setBottleneck(b: { readonly kind: 'conveyor' | 'dock'; readonly index: number } | null): void {
+    this.bottleneck.set(b);
+  }
+
   dispose(): void {
     this.orbit.dispose();
     this.post.dispose();
@@ -281,6 +292,7 @@ export class SceneView {
     this.robots.dispose();
     this.alerts.dispose();
     this.motors.dispose();
+    this.bottleneck.dispose();
     this.flows.dispose();
     this.scene.traverse((o) => {
       if ('isInstancedMesh' in o && o.isInstancedMesh)

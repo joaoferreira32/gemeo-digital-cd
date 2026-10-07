@@ -117,6 +117,8 @@ export interface Bottleneck {
   readonly perMinute: number;
   /** Seconds since the queue was at its low point. */
   readonly growingFor: number;
+  /** The queue is still growing (a stopped resource may hold a queue that no longer does). */
+  readonly growing: boolean;
   readonly cause: Cause;
   /** The whole finding in one sentence (pt-BR). */
   readonly text: string;
@@ -246,12 +248,12 @@ export class BottleneckDetector {
     const head = c.stopped
       ? `${label} ${c.kind === 'dock' ? 'bloqueada' : 'parada'}`
       : `${label} com ${Math.round(c.use * 100)}% de uso no último minuto`;
-    const growing =
-      c.perMinute >= this.params.minRate && c.growingFor > 0
-        ? ` crescendo há ${c.growingFor} s (+${Math.round(c.perMinute)} por minuto)`
-        : '';
+    const growing = c.perMinute >= this.params.minRate && c.growingFor > 0;
+    const trend = growing
+      ? ` crescendo há ${c.growingFor} s (+${Math.round(c.perMinute)} por minuto)`
+      : '';
     const text =
-      `Gargalo: ${head}; fila de ${c.queue} pacotes${growing}. ` +
+      `Gargalo: ${head}; fila de ${c.queue} pacotes${trend}. ` +
       `${cause.certain ? 'Causa' : 'Causa provável'}: ${cause.text}.`;
     return {
       kind: c.kind,
@@ -263,6 +265,7 @@ export class BottleneckDetector {
       queue: c.queue,
       perMinute: c.perMinute,
       growingFor: c.growingFor,
+      growing,
       cause,
       text,
     };

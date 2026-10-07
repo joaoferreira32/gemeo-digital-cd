@@ -514,6 +514,69 @@ button#btn-stress[aria-pressed='true'] {
   border-left-color: var(--amber);
 }
 
+/* Phase 4b: the maintenance schedule in the feed; a failure avoided stands out. */
+.hud--events li[data-kind='maintenance'],
+.hud--events li[data-kind='service-planned'] {
+  border-left-color: var(--amber);
+}
+
+.hud--events li[data-kind='service-lost'] {
+  border-left-color: var(--alert);
+}
+
+.hud--events li[data-kind='failure-avoided'] {
+  border-left-width: 5px;
+  background: linear-gradient(90deg, rgb(56 225 214 / 0.24), var(--panel) 75%);
+  font-size: 1.12rem;
+}
+
+/* The bottleneck right now: what holds the flow back, and why (src/ai/bottleneck.ts). */
+.hud--bottleneck {
+  top: calc(var(--gutter) + 104px);
+  left: var(--gutter);
+  width: min(360px, calc(100vw - 2 * var(--gutter)));
+  padding: 10px 14px 12px;
+  border-left: 3px solid var(--amber);
+}
+
+.bottleneck__eyebrow {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.bottleneck__what {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.bottleneck__cause {
+  margin: 2px 0 0;
+  font-size: 0.98rem;
+}
+
+.bottleneck__numbers {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .hud--bottleneck {
+    top: calc(var(--gutter) + 196px);
+    right: var(--gutter);
+    width: auto;
+    padding: 8px 12px 9px;
+  }
+  .bottleneck__numbers {
+    display: none;
+  }
+}
+
 @keyframes event-in {
   from {
     opacity: 0;
@@ -642,8 +705,17 @@ button#btn-stress[aria-pressed='true'] {
   .hud--heat {
     display: none;
   }
+  /* Below the metrics, whose labels wrap to two lines at phone width (they end near 190 px). */
   .hud--events {
-    top: calc(var(--gutter) + 150px);
+    top: calc(var(--gutter) + 196px);
+  }
+  /* The bottleneck card takes that place; the feed goes under it. */
+  body:has(#bottleneck:not([hidden])) .hud--events {
+    top: calc(var(--gutter) + 306px);
+  }
+  /* And keeps its two newest lines, so it stays above the controls. */
+  body:has(#bottleneck:not([hidden])) .hud--events li:nth-last-child(n + 3) {
+    display: none;
   }
 }
 
