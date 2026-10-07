@@ -633,6 +633,43 @@ Bugs encontrados medindo, não supondo:
   baia; um robô preso atrás de um robô quebrado, sem outro caminho, espera o
   conserto (40 a 60 s).
 
+## Dados e licenças
+
+- **Código:** MIT (arquivo [`LICENSE`](LICENSE)).
+- **Perfil de demanda** ([`public/demanda-olist.json`](public/demanda-olist.json)):
+  derivado do
+  [Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+  (Olist, Kaggle) e licenciado como ele, sob
+  [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/):
+  atribuição à Olist, uso não comercial e compartilhamento pela mesma licença. A
+  licença e as alterações feitas estão em
+  [`public/demanda-olist.LICENSE.txt`](public/demanda-olist.LICENSE.txt), ao lado
+  do arquivo. A licença MIT do código não se aplica a ele.
+- **O dataset não está no repositório**, e o `.gitignore` barra qualquer CSV da
+  Olist. Para gerar o perfil de novo, baixe `olist_orders_dataset.csv` do Kaggle e
+  rode `ai/.venv/Scripts/python scripts/demanda_olist.py caminho/para/olist_orders_dataset.csv`
+  (só biblioteca padrão do Python).
+- **O que entra no perfil:** só a data e a hora da compra
+  (`order_purchase_timestamp`). Nenhum pedido, cliente ou vendedor individual: são
+  168 pesos, um por hora da semana (segunda 00h a domingo 23h), com média 1, que
+  multiplicam a taxa média de pedidos da simulação.
+
+**Período usado: janeiro de 2017 a agosto de 2018**, conferido pelo volume mensal
+de pedidos:
+
+| Meses                       | Pedidos por mês                                        | O que é                                  |
+| --------------------------- | ------------------------------------------------------ | ---------------------------------------- |
+| setembro a dezembro de 2016 | 4, 324, 0 e 1                                          | começo da plataforma, com buracos        |
+| janeiro a dezembro de 2017  | de 800 (janeiro) a 5.673 (dezembro); 7.544 em novembro | crescimento; novembro tem a Black Friday |
+| janeiro a agosto de 2018    | de 6.167 a 7.269                                       | volume estável                           |
+| setembro e outubro de 2018  | 16 e 4                                                 | fim do dataset                           |
+
+2017 cresce e 2018 é estável, mas a forma da semana (o peso de cada hora de cada
+dia) é a mesma nos dois anos (correlação de 0,977), por isso o período inteiro
+entra: 96.084 pedidos. Fica de fora só a semana da Black Friday de 2017 (20 a 26
+de novembro): um único dia com 1.176 pedidos, contra 162 numa sexta típica,
+aumentaria em 5,8% o peso de todas as sextas-feiras.
+
 ## Créditos
 
 Fontes Barlow Condensed e JetBrains Mono (SIL Open Font License), empacotadas

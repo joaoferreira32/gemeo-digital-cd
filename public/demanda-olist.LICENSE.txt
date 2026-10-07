@@ -1,0 +1,28 @@
+demanda-olist.json — licença e atribuição
+
+O arquivo demanda-olist.json é derivado do "Brazilian E-Commerce Public Dataset
+by Olist" (Olist), publicado no Kaggle:
+https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce
+
+Ele é distribuído sob a mesma licença do dataset, Creative Commons
+Atribuição-NãoComercial-CompartilhaIgual 4.0 Internacional (CC BY-NC-SA 4.0):
+https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+Alterações feitas: só a data e a hora da compra (order_purchase_timestamp, de
+olist_orders_dataset.csv) foram usadas, de janeiro de 2017 a agosto de 2018, sem
+a semana da Black Friday de 2017 (20 a 26 de novembro). Os pedidos foram
+contados por hora da semana (segunda 00h a domingo 23h), a contagem foi dividida
+pelo número de semanas do período e os 168 valores foram escalados para média 1.
+Nenhum pedido, cliente ou vendedor individual está no arquivo. O script que o
+gera é scripts/demanda_olist.py.
+
+O restante deste repositório (o código) é licenciado sob MIT (arquivo LICENSE
+na raiz); essa licença não se aplica a demanda-olist.json.
+
+---
+
+demanda-olist.json is derived from the "Brazilian E-Commerce Public Dataset by
+Olist" (Olist, Kaggle) and is licensed under CC BY-NC-SA 4.0, like the dataset.
+Changes: purchase timestamps only, January 2017 to August 2018 without the 2017
+Black Friday week, counted per hour of the week, averaged and scaled to a mean
+of 1. The code of this repository is MIT; that license does not cover this file.

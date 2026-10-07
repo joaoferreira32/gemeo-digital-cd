@@ -4,3 +4,5 @@ package-lock.json
 # Exported networks and their metadata (written by ai/train.py)
 ai/models/
 public/models/
+# Demand profile written by scripts/demanda_olist.py (phase 5)
+public/demanda-olist.json
