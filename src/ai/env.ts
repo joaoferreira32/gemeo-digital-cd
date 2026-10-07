@@ -114,7 +114,8 @@ export function observe(world: World): Float32Array {
   for (const lane of world.lanes) out.push(lane.active ? 1 : 0, lane.pickup.length / lane.capacity);
   for (const inbound of world.inbounds) out.push(Math.min(1, inbound.backlog.length / 200));
   for (const s of world.routing.share) out.push(s);
-  out.push(world.currentArrivalRate > world.baseRate + 1e-9 ? 1 : 0, world.currentArrivalRate / 10);
+  // "A surge is on" from the surge itself: with a demand profile the rate also moves by the hour.
+  out.push(world.surging ? 1 : 0, world.currentArrivalRate / 10);
   for (const d of world.docks) out.push(d.blockedUntil > world.time ? 1 : 0);
   return Float32Array.from(out);
 }

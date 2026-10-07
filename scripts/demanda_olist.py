@@ -2,7 +2,7 @@
 (phase 5), from the orders of the Olist dataset (Kaggle), which never enters
 the repository:
 
-    ai/.venv/Scripts/python scripts/demanda_olist.py C:/dados/olist_orders_dataset.csv
+    ai/.venv/Scripts/python scripts/demanda_olist.py C:/dados/olist_orders_dataset.csv [saida.json]
 
 Only `order_purchase_timestamp` is read. The profile is the average number of
 orders in each of the 168 hours of the week (Monday 00h ... Sunday 23h),
@@ -32,7 +32,7 @@ EXCLUDED = (dt.datetime(2017, 11, 20), dt.datetime(2017, 11, 27))  # Black Frida
 OUT = pathlib.Path(__file__).resolve().parent.parent / "public" / "demanda-olist.json"
 
 
-def main(path: str) -> None:
+def main(path: str, out: pathlib.Path = OUT) -> None:
     counts = [0] * 168
     orders = 0
     with open(path, newline="", encoding="utf-8") as f:
@@ -64,11 +64,11 @@ def main(path: str) -> None:
         "hours": "168 weights: Monday 00h, Monday 01h, ..., Sunday 23h (local time of the purchases)",
         "weights": weights,
     }
-    OUT.write_text(json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
-    print(f"{OUT}: {orders} pedidos, pesos de {min(weights)} a {max(weights)}, média {sum(weights) / 168:.4f}")
+    out.write_text(json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print(f"{out}: {orders} pedidos, pesos de {min(weights)} a {max(weights)}, média {sum(weights) / 168:.4f}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("uso: python scripts/demanda_olist.py caminho/para/olist_orders_dataset.csv")
-    main(sys.argv[1])
+    if len(sys.argv) not in (2, 3):
+        sys.exit("uso: python scripts/demanda_olist.py caminho/para/olist_orders_dataset.csv [saida.json]")
+    main(sys.argv[1], pathlib.Path(sys.argv[2]) if len(sys.argv) == 3 else OUT)
