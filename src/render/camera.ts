@@ -61,6 +61,19 @@ export class OrbitCamera {
     this.reducedMotion = v;
   }
 
+  /**
+   * A shot of the demo's director: the camera glides (with the usual damping)
+   * to look at `target` from `radius` meters, at these angles.
+   */
+  aim(target: Vector3, radius: number, phi: number, theta: number): void {
+    this.preset = null;
+    this.goal.target.copy(target);
+    // Shots are framed for 16:9; narrower screens pull back, as the presets do.
+    this.goal.radius = radius * Math.max(1, Math.sqrt(1.6 / this.camera.aspect));
+    this.goal.phi = phi;
+    this.goal.theta = this.pose.theta + wrapAngle(theta - this.pose.theta);
+  }
+
   setPreset(preset: CameraPreset): void {
     this.preset = preset;
     if (preset === 'follow') {
