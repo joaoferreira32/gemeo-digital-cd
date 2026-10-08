@@ -1,4 +1,60 @@
-# Retomada da Fase 4 (IA de operações)
+# Retomada da Fase 6 (demo, gravação e entrega final)
+
+Parado em 2026-10-08, a pedido (máquina desligada). Branch `fase-6`, enviado ao
+GitHub como backup, **ainda sem PR**. Empilhado sobre `gargalo-memoria` (PR #9);
+os PRs #7, #8 e #9 continuam abertos.
+
+## Onde parou
+
+- **Pronto e commitado:** p95 de espera (motor, painel K, laboratório, bench,
+  cartão); agenda de manutenção ligável por entrada; demo determinística (tecla
+  V) com diretor de câmera e cartão "Resultado nesta execução"; gravação MP4
+  (H.264) com o formato na tela, aviso de WebM e contagem de quadros lida do
+  próprio MP4 (`src/demo/mp4.ts`); GIF do README e os dois scripts; README final
+  (diagrama, decisões, limitações, próximos passos, tabela da Fase 6);
+  `docs/resultados.md` da Fase 6; correção do `npm run mutate` (a cópia
+  temporária agora é um repositório git).
+- **Mutação completa (2026-10-08):** 138 de 138 em 14 especificações, mais 1
+  equivalente. Antes da correção, a `demanda.json` não rodava (linha de base
+  falhava sem git na cópia) e o comando saía com código 1.
+- **Teste de vazamento: pendente.** Uma medida foi feita (`demo_leak.py` no
+  scratchpad: 3 demos seguidas e 1 gravada, GC forçado antes de cada leitura):
+  geometrias 104, texturas 61 e programas 28 **constantes**; heap da página
+  16,3 → 19,1 → 33,4 → 33,4 → 33,6 MB. O salto entre a 1ª e a 2ª demo e a
+  estabilidade depois não bastam para concluir: repetir com mais rodadas (por
+  exemplo 6) e ver se o heap estabiliza; o worker não foi medido.
+
+## O que falta para abrir o PR da Fase 6
+
+1. Conferir o estado ao retomar: `git status`, `git diff`, `git stash list`,
+   `git worktree list`, nenhum processo antigo (porta 4173).
+2. Terminar o teste de vazamento (acima) e pôr o resultado no README (tabela da
+   Fase 6), em `docs/resultados.md` e no PR.
+3. `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
+4. Push do `fase-6` (a trava de pre-push confere autor e committer noreply).
+5. Abrir o PR com base `gargalo-memoria` (rascunho pronto no scratchpad da sessão,
+   `pr-fase6.md`, com a conferência item a item contra o roteiro); esperar o CI.
+
+## Pedidos para o relatório final
+
+- **Ordem dos merges:** #7 → #8 → #9 → Fase 6; ajustar a base para a `main`
+  quando necessário ("Update branch" se a proteção pedir); não apagar branches
+  até os três estarem na `main`.
+- **Cartão "nesta execução":** confirmar que diz "Resultado nesta execução",
+  "Com IA × sem IA (roteamento estático, sem manutenção preditiva)" e aponta a
+  tabela com IC do README como resultado oficial.
+- **Formato do vídeo:** MP4 (H.264) 1920×1080 no Chromium, formato mostrado na
+  tela; aviso quando só houver WebM. Medido: 55,5 e 58,9 FPS no arquivo, parada de
+  ~0,5 s no primeiro segundo.
+- **Conferência do "94 de 94":** esse número não aparece no repositório. Os
+  registrados são 95 de 95 (Fase 5, README) e 138 de 138 mais 1 equivalente
+  (rodada completa de 2026-10-08). Descobrir de onde veio o 94 antes de citar.
+- Também relatar: a ordem das etapas da demo difere do roteiro num ponto (o
+  reroteamento vem logo depois da quebra, antes da fila e do gargalo).
+
+---
+
+## Retomada da Fase 4 (IA de operações)
 
 > **Concluída em 2026-10-06.** Todos os passos abaixo foram feitos: rodada 2
 > refeita com checkpoints, avaliação na validação, teste causal da suavização,
@@ -9,7 +65,7 @@ Parado em 2026-10-05, às 17h45, a pedido (máquina desligada). Retomado em
 2026-10-06: checkpoints no `train.py` feitos (passo 2) e a rodada 2 rodando de
 novo (passo 3). Branch `fase-4`, enviado ao GitHub como backup (ainda sem PR).
 
-## Onde parou
+### Onde parou
 
 - **Pronto e commitado:** desgaste antes das quebras, sinais simulados dos
   motores e detector CUSUM (calibrado, k = 3 e h = 48); heurística de roteamento
@@ -44,7 +100,7 @@ novo (passo 3). Branch `fase-4`, enviado ao GitHub como backup (ainda sem PR).
   uma única vez, numa passada só com as 4 políticas; a candidata é escolhida e
   registrada por escrito, só com base na validação, antes dessa passada.
 
-## Próximos passos, na ordem
+### Próximos passos, na ordem
 
 1. Conferir o estado ao retomar: `git status`, `git diff`, `git stash list`,
    `git worktree list`, e que nenhum processo antigo ficou rodando.
@@ -80,7 +136,7 @@ novo (passo 3). Branch `fase-4`, enviado ao GitHub como backup (ainda sem PR).
     autores dos commits (noreply); push, PR e parar para revisão, com as
     explicações do PPO (até 10 linhas) e do CUSUM (até 5 linhas).
 
-## Pendente de decisão do usuário
+### Pendente de decisão do usuário
 
 - CUSUM por sinal, além do combinado, para pegar parte dos 23% de desgastes que
   aparecem num sinal só (troca por mais alarmes falsos com pancadas e enroscos).

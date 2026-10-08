@@ -3,27 +3,27 @@
     "rows": [
       {
         "what": "Motor sem robôs",
-        "result": "**1.065.190 passos/s** (IC 95% 1.038.976 a 1.091.403), 5 repetições",
+        "result": "**1.029.828 passos/s** (IC 95% 997.937 a 1.061.719), 5 repetições",
         "how": "`npm run bench:motor`"
       },
       {
         "what": "Motor com 40 robôs",
-        "result": "**4.173 passos/s** (IC 95% 4.142 a 4.204), 5 repetições",
+        "result": "**4.214 passos/s** (IC 95% 4.189 a 4.239), 5 repetições",
         "how": "`npm run bench:motor`"
       },
       {
         "what": "Motor gravando, 40 robôs",
-        "result": "**4.163 passos/s** (IC 95% 4.136 a 4.189), 5 repetições",
+        "result": "**4.223 passos/s** (IC 95% 4.199 a 4.248), 5 repetições",
         "how": "`npm run bench:motor`"
       },
       {
         "what": "Teste de carga + 40 robôs",
-        "result": "**4.071 passos/s** (IC 95% 4.043 a 4.100), 5 repetições",
+        "result": "**4.123 passos/s** (IC 95% 4.110 a 4.136), 5 repetições",
         "how": "`npm run bench:motor`"
       }
     ],
-    "date": "2026-10-07",
-    "commit": "36bf5b0",
+    "date": "2026-10-08",
+    "commit": "004ab46",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "rotas": {
@@ -49,8 +49,8 @@
         "how": "`npm run bench:rotas`"
       }
     ],
-    "date": "2026-10-07",
-    "commit": "36bf5b0",
+    "date": "2026-10-08",
+    "commit": "cb26fce",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "manutencao": {
@@ -66,8 +66,8 @@
         "how": "`npm run bench:manutencao`"
       }
     ],
-    "date": "2026-10-07",
-    "commit": "36bf5b0",
+    "date": "2026-10-08",
+    "commit": "cb26fce",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "agenda": {
@@ -83,8 +83,8 @@
         "how": "`npm run bench:agenda`"
       }
     ],
-    "date": "2026-10-07",
-    "commit": "36bf5b0",
+    "date": "2026-10-08",
+    "commit": "cb26fce",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "gargalo": {
@@ -100,8 +100,8 @@
         "how": "`npm run bench:gargalo`"
       }
     ],
-    "date": "2026-10-07",
-    "commit": "7caa7ad",
+    "date": "2026-10-08",
+    "commit": "cb26fce",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "caos": {
@@ -117,8 +117,8 @@
         "how": "`npm run bench:gargalo-caos`"
       }
     ],
-    "date": "2026-10-07",
-    "commit": "7caa7ad",
+    "date": "2026-10-08",
+    "commit": "cb26fce",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   },
   "laboratorio": {
@@ -129,13 +129,18 @@
         "how": "`npm run bench:lab`"
       },
       {
+        "what": "Laboratório: demanda da Olist × constante, p95 de espera (a parte do ciclo parada em fila)",
+        "result": "3,6 s → 89,7 s: **+86,1 s** (+77,4 s a +94,9 s), pior em 10 de 10 seeds",
+        "how": "`npm run bench:lab`"
+      },
+      {
         "what": "Laboratório: demanda da Olist × constante, vazão",
         "result": "**−9,5** (−11,0 a −7,9) pacotes/min",
         "how": "`npm run bench:lab`"
       }
     ],
-    "date": "2026-10-07",
-    "commit": "36bf5b0",
+    "date": "2026-10-08",
+    "commit": "cb26fce",
     "machine": "Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos)"
   }
 }
