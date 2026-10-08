@@ -56,8 +56,9 @@ export interface Beat {
    * that moment, `{evento}` the last event of the beat's kinds (live texts).
    */
   readonly text: string;
-  /** Events the caption follows ({evento}). */
+  /** Events the caption follows ({evento}), and what it says before the first one. */
   readonly events?: readonly string[];
+  readonly idle?: string;
   readonly shot: Shot;
   /** Heat map layer during the beat. */
   readonly heat: 'off' | 'espera';
@@ -187,6 +188,7 @@ export function demoBeats(script: DemoScript = DEMO): Beat[] {
       title: 'Manutenção preditiva',
       text: '{evento}',
       events: ['maintenance', 'service-planned', 'failure-avoided'],
+      idle: 'os sensores acompanham a vibração e a temperatura de cada motor; o da Esteira 16 (Q2→Q1) começou a se desgastar',
       shot: {
         target: { kind: 'belt', id: w.target },
         radius: 15,

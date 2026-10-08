@@ -113,7 +113,8 @@ describe('the demo script', () => {
     expect(byLabel('Entregas').ai).toBe(r.ai.delivered.toLocaleString('pt-BR'));
     const pct = Math.round(((r.ai.cycleP95 - r.noAi.cycleP95) / r.noAi.cycleP95) * 100);
     expect(byLabel('p95 do ciclo').change).toBe(`${pct > 0 ? '+' : '−'}${Math.abs(pct)}%`);
-    expect(byLabel('Quebras de esteira')).toMatchObject({ ai: '1, e 1 evitada', noAi: '2' });
+    expect(byLabel('Quebras de esteira')).toMatchObject({ ai: '1', noAi: '2' });
+    expect(byLabel('Quebras evitadas pela manutenção')).toMatchObject({ ai: '1', noAi: '0' });
     // In this run the AI delivers more, with shorter cycles and waits.
     expect(r.ai.delivered).toBeGreaterThan(r.noAi.delivered);
     expect(r.ai.cycleP95).toBeLessThan(r.noAi.cycleP95);

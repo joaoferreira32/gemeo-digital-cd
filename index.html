@@ -17,6 +17,13 @@
       aria-label="Vista 3D do centro de distribuição: esteiras levando pacotes das entradas até as docas e robôs circulando entre racks, docas e estações"
       role="img"
     ></canvas>
+    <canvas id="demo-overlay" aria-hidden="true" hidden></canvas>
+    <div id="demo-bar" class="demo-bar" hidden>
+      <p id="demo-note" class="demo-bar__note" role="status" aria-live="polite"></p>
+      <button type="button" id="btn-demo-exit" aria-keyshortcuts="Escape">
+        <kbd>Esc</kbd> Sair da demo
+      </button>
+    </div>
 
     <div id="loading" class="loading" role="status">
       <p class="loading__brand">Gêmeo Digital</p>
@@ -129,6 +136,10 @@
           aria-controls="lab-panel"
         >
           <kbd>B</kbd> Laboratório
+        </button>
+        <button type="button" id="btn-demo" aria-keyshortcuts="V"><kbd>V</kbd> Rodar demo</button>
+        <button type="button" id="btn-record" aria-keyshortcuts="Shift+V">
+          <kbd>⇧V</kbd> Gravar demo
         </button>
         <button type="button" id="btn-quality" aria-keyshortcuts="G"><kbd>G</kbd> Qualidade</button>
         <button

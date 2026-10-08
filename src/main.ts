@@ -33,11 +33,26 @@ import { pickEntity } from './ui/pick';
 import { SHORTCUTS, shortcutFor } from './ui/shortcuts';
 import { TimelineBar } from './ui/timeline';
 import type { RunReport } from './sim/recorder';
+import {
+  checkVideo,
+  chooseFormat,
+  VIDEO_FPS,
+  VIDEO_HEIGHT,
+  VIDEO_WIDTH,
+  VideoCapture,
+  type VideoCheck,
+} from './demo/capture';
+import { Director, type DirectorStage } from './demo/director';
+import { drawOverlay, type OverlayState } from './demo/overlay';
 import { CpuHeatmap } from './render/heatmap-cpu';
 import { SPEEDS, type RoutingStatus, type SimCommand } from './worker/protocol';
 import { POLICY_CHOICES, type PolicyChoice } from './worker/routing';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
+const overlayCanvas = document.getElementById('demo-overlay') as HTMLCanvasElement;
+const overlay = overlayCanvas.getContext('2d') as CanvasRenderingContext2D;
+const demoBar = document.getElementById('demo-bar') as HTMLElement;
+const demoNote = document.getElementById('demo-note') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
 const loadingText = document.getElementById('loading-text') as HTMLElement;
 
@@ -119,6 +134,26 @@ let heatIndex = 0;
 let following = false;
 let firstFrame: SimFrame | null = null;
 let routing: RoutingStatus | null = null;
+/** The video being recorded (the demo with ⇧V), or null. */
+let capture: VideoCapture | null = null;
+/** The last video recorded: its format, size and frames drawn (automated checks). */
+let lastVideo: { blob: Blob; label: string; drawn: number; seconds: number } | null = null;
+
+/** What the demo's director moves: the scene's camera, depth of field, heat map, robots. */
+const stage: DirectorStage = {
+  aim: (target, radius, phi, theta) => view.orbit.aim(target, radius, phi, theta),
+  focus: (on) => view.setFocus(on ? view.orbit.distance : null),
+  heat: (layer) => view.setHeatLayer(layer),
+  robot: (pick) => {
+    if (pick) view.nextFollow(frames.latest, false);
+    const n = view.poses.count;
+    if (n === 0) return null;
+    const r = Math.min(view.followRobot, n - 1);
+    return { x: view.poses.x[r] as number, z: view.poses.z[r] as number };
+  },
+  send: (cmd) => send(cmd),
+};
+const director = new Director(stage, layout, () => motionQuery.matches);
 
 const POLICY_LABEL: Record<PolicyChoice, string> = {
   static: 'Estático',
@@ -153,6 +188,7 @@ link.onMessage = (msg) => {
       frames.push(frame);
       firstFrame ??= frame;
       if (msg.events.length) hud.pushEvents(msg.events, performance.now() / 1000);
+      director.onEvents(msg.events);
       return;
     }
     case 'status':
@@ -160,6 +196,7 @@ link.onMessage = (msg) => {
       kpiPanel.update(msg.kpis, msg.stages, msg.timeline.shown, msg.timeline.viewing);
       showRouting(msg.routing);
       hud.showBottleneck(msg.bottleneck);
+      director.onBottleneck(msg.bottleneck);
       view.setBottleneck(msg.bottleneck);
       kpiPanel.updateMaintenance(msg.maintenance);
       return;
@@ -171,6 +208,9 @@ link.onMessage = (msg) => {
       return;
     case 'replay':
       showReplay(msg.progress, msg.done, msg.ok);
+      return;
+    case 'demo':
+      director.onDemo(msg);
       return;
     case 'error':
       console.error('Simulação:', msg.message);
@@ -247,13 +287,119 @@ function toggleKpi(force?: boolean) {
   kpiPanel.toggle(force);
 }
 
+/** The size the scene draws at: the window, or exactly the video's while recording. */
 function viewport() {
-  return { w: window.innerWidth, h: window.innerHeight };
+  return capture
+    ? { w: VIDEO_WIDTH, h: VIDEO_HEIGHT }
+    : { w: window.innerWidth, h: window.innerHeight };
 }
 
 function applyQuality(level: QualityLevel) {
   const { w, h } = viewport();
-  view.applyQuality(level, w, h);
+  view.applyQuality(level, w, h, capture ? 1 : undefined);
+}
+
+/**
+ * The demo (V), or the demo recorded to a video file (⇧V): the page shows the
+ * scene and the captions only, and the director plays the script.
+ */
+function startDemo(record: boolean) {
+  if (director.active) endDemo();
+  if (record) {
+    const format =
+      typeof MediaRecorder === 'undefined'
+        ? null
+        : chooseFormat((mime) => MediaRecorder.isTypeSupported(mime));
+    if (!format) {
+      note(
+        'Este navegador não grava vídeo a partir da página (MediaRecorder): a demo roda sem gravar.',
+      );
+    } else {
+      capture = new VideoCapture(format);
+      document.body.classList.add('recording');
+      governor.hold('alta');
+      demoNote.textContent =
+        `Gravando em ${format.label}, ${VIDEO_WIDTH}×${VIDEO_HEIGHT}, ${VIDEO_FPS} FPS. ` +
+        (format.warning ?? 'O arquivo é baixado no fim.');
+    }
+  }
+  if (!capture) demoNote.textContent = '';
+  hud.clearEvents();
+  historyPanel.close();
+  labPanel.toggle(false);
+  toggleHelp(false);
+  kpiPanel.toggle(false);
+  document.body.classList.add('demo-mode');
+  overlayCanvas.hidden = false;
+  demoBar.hidden = false;
+  buildView();
+  director.start();
+}
+
+/** Back to the ordinary app: a fresh run, the panels and the settings of before. */
+function endDemo() {
+  director.stop();
+  if (capture) {
+    void capture.stop();
+    capture = null;
+    note('Gravação interrompida: o vídeo não foi salvo.');
+  }
+  leaveDemo();
+}
+
+function leaveDemo() {
+  document.body.classList.remove('demo-mode', 'recording');
+  overlayCanvas.hidden = true;
+  demoBar.hidden = true;
+  governor.hold(null);
+  send({ type: 'init', config: { seed: DEFAULT_CONFIG.seed, scheduleMaintenance: true } });
+  hud.clearEvents();
+  buildView();
+  sendSpeed();
+  if (paused) setPaused(true);
+}
+
+/** The recording reached the end of the card: the file is saved, then back to the app. */
+async function finishRecording() {
+  const c = capture as VideoCapture;
+  capture = null;
+  director.stop();
+  const started = performance.now();
+  const blob = await c.stop();
+  const name = `gemeo-digital-demo.${c.format.ext}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  lastVideo = {
+    blob,
+    label: c.format.label,
+    drawn: c.drawn,
+    seconds: (performance.now() - started) / 1000,
+  };
+  leaveDemo();
+  const mb = (blob.size / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  note(
+    `Vídeo salvo: ${name} (${c.format.label}, ${mb} MB).` +
+      (c.format.warning ? ` ${c.format.warning}` : ''),
+  );
+}
+
+/** Draws the demo's captions over the scene, at the size the overlay canvas has on screen. */
+function drawDemoOverlay(state: OverlayState) {
+  const dpr = capture
+    ? VIDEO_WIDTH / Math.max(1, overlayCanvas.clientWidth)
+    : window.devicePixelRatio || 1;
+  const w = Math.round(overlayCanvas.clientWidth * dpr);
+  const h = Math.round(overlayCanvas.clientHeight * dpr);
+  if (overlayCanvas.width !== w || overlayCanvas.height !== h) {
+    overlayCanvas.width = w;
+    overlayCanvas.height = h;
+  }
+  overlay.clearRect(0, 0, w, h);
+  drawOverlay(overlay, w, h, state);
 }
 
 /** Builds a fresh view; the old view's GPU resources are released. */
@@ -409,6 +555,9 @@ function bindControls() {
   document.getElementById('btn-help')!.addEventListener('click', () => toggleHelp());
   document.getElementById('btn-kpi')!.addEventListener('click', () => toggleKpi());
   document.getElementById('btn-lab')!.addEventListener('click', () => labPanel.toggle());
+  document.getElementById('btn-demo')!.addEventListener('click', () => startDemo(false));
+  document.getElementById('btn-record')!.addEventListener('click', () => startDemo(true));
+  document.getElementById('btn-demo-exit')!.addEventListener('click', () => endDemo());
   // Panels above the control bar follow its real height (it wraps on narrow screens).
   const controls = document.querySelector('.hud--controls') as HTMLElement;
   new ResizeObserver(() => {
@@ -489,6 +638,10 @@ function bindControls() {
         toggleHelp();
         break;
       case 'close':
+        if (director.active) {
+          endDemo();
+          break;
+        }
         toggleHelp(false);
         labPanel.toggle(false);
         if (historyPanel.entity) historyPanel.close();
@@ -498,6 +651,12 @@ function bindControls() {
         break;
       case 'lab':
         labPanel.toggle();
+        break;
+      case 'demo':
+        startDemo(false);
+        break;
+      case 'record':
+        startDemo(true);
         break;
       case 'camera':
       case 'pick':
@@ -552,9 +711,28 @@ function frame(now: number) {
   frames.advance(realDt);
   const simDt = Number.isNaN(before) ? 0 : Math.max(0, frames.renderTime - before);
   const sample = frames.sample();
+  // The director moves the camera before the scene updates it.
+  const demo = director.frame(realDt, frames.renderTime);
   if (sample) view.update(realDt, sample.frame, sample.alpha, simDt);
   view.render();
   governor.frame(realDt);
+  if (demo) {
+    drawDemoOverlay(demo);
+    const c = capture;
+    if (c) {
+      // Recording starts with the demo's own run (not the frames of the run before it).
+      const shown = frames.latest?.time ?? 0;
+      if (!c.recording && director.phase === 'ai' && shown >= director.script.warmup - 0.5)
+        c.start();
+      if (c.recording) {
+        c.context.drawImage(canvas, 0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+        drawOverlay(c.context, VIDEO_WIDTH, VIDEO_HEIGHT, demo);
+        c.drawn++;
+      }
+      const card = director.beats.find((b) => b.id === 'resultado');
+      if (c.recording && director.cardSeconds >= (card?.hold ?? 8)) void finishRecording();
+    }
+  }
 
   hudTimer -= realDt;
   if (hudTimer <= 0 && sample) {
@@ -621,6 +799,36 @@ Object.defineProperty(window, '__gemeo', {
       return governor;
     },
     renderer: () => renderer,
+    director,
+    /** The last video recorded by the demo (format, bytes, frames drawn into it). */
+    lastVideo: () =>
+      lastVideo && { label: lastVideo.label, bytes: lastVideo.blob.size, drawn: lastVideo.drawn },
+    /** Plays the last video once and counts its frames (takes as long as the video). */
+    checkLastVideo: (): Promise<VideoCheck> | null =>
+      lastVideo ? checkVideo(lastVideo.blob) : null,
+    /**
+     * Milliseconds per frame without and with the depth of field (the GPU work
+     * included: one pixel is read back after each frame).
+     */
+    benchDof(n = 120) {
+      const gl = renderer.getContext();
+      const px = new Uint8Array(4);
+      const time = (on: boolean) => {
+        view.setFocus(on ? view.orbit.distance : null);
+        view.render();
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        const t = performance.now();
+        for (let i = 0; i < n; i++) {
+          view.render();
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        }
+        return (performance.now() - t) / n;
+      };
+      const off = time(false);
+      const on = time(true);
+      view.setFocus(null);
+      return { offMs: off, onMs: on };
+    },
     link,
     send,
     longTasks,

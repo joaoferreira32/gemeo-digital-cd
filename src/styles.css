@@ -1369,3 +1369,55 @@ button#btn-stress[aria-pressed='true'] {
     transition: none;
   }
 }
+
+/* The demo (phase 6): the scene with its captions only; the captions are a
+   canvas, so the video recording gets them too. */
+#demo-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+body.demo-mode .hud,
+body.demo-mode .hud--events {
+  display: none !important;
+}
+body.demo-mode #scene {
+  cursor: default;
+}
+.demo-bar {
+  position: fixed;
+  top: var(--gutter);
+  right: var(--gutter);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(640px, calc(100vw - 2 * var(--gutter)));
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+.demo-bar__note {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ice);
+}
+.demo-bar__note:empty {
+  display: none;
+}
+/* Recording: the canvas draws exactly 1920×1080, shown letterboxed. */
+body.recording {
+  background: #000;
+}
+body.recording #scene,
+body.recording #demo-overlay {
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  width: min(100vw, 177.78vh);
+  height: min(56.25vw, 100vh);
+  transform: translate(-50%, -50%);
+}

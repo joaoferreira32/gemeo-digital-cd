@@ -56,13 +56,11 @@ export function cardRows(r: DemoResult): CardRow[] {
       noAi: `${int(noAi.waitingMax)} pacotes`,
       change: change(ai.waitingMax, noAi.waitingMax),
     },
+    { label: 'Quebras de esteira', ai: int(ai.breakdowns), noAi: int(noAi.breakdowns), change: '' },
     {
-      label: 'Quebras de esteira',
-      ai:
-        ai.avoided > 0
-          ? `${int(ai.breakdowns)}, e ${int(ai.avoided)} evitada${ai.avoided > 1 ? 's' : ''}`
-          : int(ai.breakdowns),
-      noAi: int(noAi.breakdowns),
+      label: 'Quebras evitadas pela manutenção',
+      ai: int(ai.avoided),
+      noAi: int(noAi.avoided),
       change: '',
     },
   ];
