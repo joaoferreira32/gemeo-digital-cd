@@ -33,15 +33,8 @@ import { pickEntity } from './ui/pick';
 import { SHORTCUTS, shortcutFor } from './ui/shortcuts';
 import { TimelineBar } from './ui/timeline';
 import type { RunReport } from './sim/recorder';
-import {
-  checkVideo,
-  chooseFormat,
-  VIDEO_FPS,
-  VIDEO_HEIGHT,
-  VIDEO_WIDTH,
-  VideoCapture,
-  type VideoCheck,
-} from './demo/capture';
+import { chooseFormat, VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH, VideoCapture } from './demo/capture';
+import { mp4Frames, type Mp4Frames } from './demo/mp4';
 import { Director, type DirectorStage } from './demo/director';
 import { drawOverlay, type OverlayState } from './demo/overlay';
 import { CpuHeatmap } from './render/heatmap-cpu';
@@ -137,7 +130,8 @@ let routing: RoutingStatus | null = null;
 /** The video being recorded (the demo with ⇧V), or null. */
 let capture: VideoCapture | null = null;
 /** The last video recorded: its format, size and frames drawn (automated checks). */
-let lastVideo: { blob: Blob; label: string; drawn: number; seconds: number } | null = null;
+let lastVideo: { label: string; bytes: number; drawn: number; file: Mp4Frames | null } | null =
+  null;
 
 /** What the demo's director moves: the scene's camera, depth of field, heat map, robots. */
 const stage: DirectorStage = {
@@ -364,7 +358,6 @@ async function finishRecording() {
   const c = capture as VideoCapture;
   capture = null;
   director.stop();
-  const started = performance.now();
   const blob = await c.stop();
   const name = `gemeo-digital-demo.${c.format.ext}`;
   const url = URL.createObjectURL(blob);
@@ -373,16 +366,17 @@ async function finishRecording() {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  lastVideo = {
-    blob,
-    label: c.format.label,
-    drawn: c.drawn,
-    seconds: (performance.now() - started) / 1000,
-  };
+  // The frames the file really holds (an MP4 is read box by box; a WebM is not counted).
+  const file = c.format.ext === 'mp4' ? mp4Frames(new Uint8Array(await blob.arrayBuffer())) : null;
+  lastVideo = { label: c.format.label, bytes: blob.size, drawn: c.drawn, file };
   leaveDemo();
   const mb = (blob.size / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const one = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const frames = file
+    ? ` ${file.frames.toLocaleString('pt-BR')} quadros em ${one(file.seconds)} s (${one(file.fps)} FPS).`
+    : '';
   note(
-    `Vídeo salvo: ${name} (${c.format.label}, ${mb} MB).` +
+    `Vídeo salvo: ${name} (${c.format.label}, ${mb} MB).${frames}` +
       (c.format.warning ? ` ${c.format.warning}` : ''),
   );
 }
@@ -800,12 +794,8 @@ Object.defineProperty(window, '__gemeo', {
     },
     renderer: () => renderer,
     director,
-    /** The last video recorded by the demo (format, bytes, frames drawn into it). */
-    lastVideo: () =>
-      lastVideo && { label: lastVideo.label, bytes: lastVideo.blob.size, drawn: lastVideo.drawn },
-    /** Plays the last video once and counts its frames (takes as long as the video). */
-    checkLastVideo: (): Promise<VideoCheck> | null =>
-      lastVideo ? checkVideo(lastVideo.blob) : null,
+    /** The last video recorded by the demo: format, bytes, frames drawn, frames in the file. */
+    lastVideo: () => lastVideo,
     /**
      * Milliseconds per frame without and with the depth of field (the GPU work
      * included: one pixel is read back after each frame).
