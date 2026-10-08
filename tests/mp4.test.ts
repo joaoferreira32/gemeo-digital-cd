@@ -45,13 +45,13 @@ describe('frames inside an MP4 (as MediaRecorder writes it, in fragments)', () =
         trak(2, 48_000, 'soun'),
         box('mvex', box('trex', u32(0, 1, 1, 500, 0, 0))),
       ),
-      // Durations in the run (flag 0x100): one frame twice as long as the others.
+      // Durations in the run (flag 0x100): a stall in the middle (2000), not at the end.
       ...box(
         'moof',
-        box('traf', box('tfhd', u32(0, 1)), box('trun', u32(0x000100, 3, 500, 500, 1000))),
+        box('traf', box('tfhd', u32(0, 1)), box('trun', u32(0x000100, 3, 500, 2000, 500))),
       ),
-      // The default duration of the fragment (tfhd flag 0x8).
-      ...box('moof', box('traf', box('tfhd', u32(0x000008, 1, 500)), box('trun', u32(0, 2)))),
+      // The default duration of the fragment (tfhd flag 0x8), not the one of the track (500).
+      ...box('moof', box('traf', box('tfhd', u32(0x000008, 1, 1000)), box('trun', u32(0, 2)))),
       // Audio: not counted.
       ...box(
         'moof',
@@ -60,9 +60,9 @@ describe('frames inside an MP4 (as MediaRecorder writes it, in fragments)', () =
     ]);
     const r = mp4Frames(file)!;
     expect(r.frames).toBe(5);
-    expect(r.seconds).toBeCloseTo(3000 / 30_000, 12);
-    expect(r.fps).toBeCloseTo(5 / 0.1, 9);
-    expect(r.longestGap).toBeCloseTo(1000 / 30_000, 12);
+    expect(r.seconds).toBeCloseTo(5000 / 30_000, 12);
+    expect(r.fps).toBeCloseTo(5 / (5000 / 30_000), 9);
+    expect(r.longestGap).toBeCloseTo(2000 / 30_000, 12);
   });
 
   it('falls back on the default of the track when the fragment has none', () => {
@@ -71,6 +71,43 @@ describe('frames inside an MP4 (as MediaRecorder writes it, in fragments)', () =
       ...box('moof', box('traf', box('tfhd', u32(0, 1)), box('trun', u32(0, 120)))),
     ]);
     expect(mp4Frames(file)).toMatchObject({ frames: 120, seconds: 2, fps: 60 });
+  });
+
+  it('skips the data offset and the other per-sample fields of a run', () => {
+    // Flags 0x1 (data offset), 0x100 (duration) and 0x200 (size): each sample is two words.
+    const file = new Uint8Array([
+      ...box('moov', trak(1, 1000, 'vide'), box('mvex', box('trex', u32(0, 1, 1, 7, 0, 0)))),
+      ...box(
+        'moof',
+        box(
+          'traf',
+          box('tfhd', u32(0, 1)),
+          box('trun', u32(0x000301, 3, 64, 10, 900, 20, 800, 30, 700)),
+        ),
+      ),
+    ]);
+    expect(mp4Frames(file)).toMatchObject({ frames: 3, seconds: 0.06, longestGap: 0.03 });
+  });
+
+  it('reads the sample table of a file that is not fragmented', () => {
+    // stts: 3 frames of 1000 then 1 of 2000; the audio table does not count.
+    const stbl = (scale: number, handler: string, id: number, ...entries: number[]) =>
+      box(
+        'trak',
+        box('tkhd', u32(0, 0, 0, id, 0)),
+        box(
+          'mdia',
+          box('mdhd', u32(0, 0, 0, scale, 0)),
+          box('hdlr', u32(0, 0), text(handler), u32(0, 0, 0)),
+          box('minf', box('stbl', box('stts', u32(0, entries.length / 2, ...entries)))),
+        ),
+      );
+    const file = box(
+      'moov',
+      stbl(44_100, 'soun', 2, 50, 1024),
+      stbl(10_000, 'vide', 1, 3, 1000, 1, 2000),
+    );
+    expect(mp4Frames(file)).toMatchObject({ frames: 4, seconds: 0.5, fps: 8, longestGap: 0.2 });
   });
 
   it('nothing to count without a video track', () => {

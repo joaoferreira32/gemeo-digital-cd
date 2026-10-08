@@ -1,0 +1,75 @@
+{
+  "tests": ["tests/mp4.test.ts"],
+  "mutations": [
+    {
+      "name": "a faixa de áudio também conta (fragmentos)",
+      "edits": [
+        {
+          "file": "src/demo/mp4.ts",
+          "find": "} else if (kind === 'trun' && ctx.track === video) {",
+          "replace": "} else if (kind === 'trun') {"
+        }
+      ]
+    },
+    {
+      "name": "a faixa de áudio também conta (tabela de amostras)",
+      "edits": [
+        {
+          "file": "src/demo/mp4.ts",
+          "find": "} else if (kind === 'stts' && ctx.handler === 'vide') {",
+          "replace": "} else if (kind === 'stts') {"
+        }
+      ]
+    },
+    {
+      "name": "a duração padrão do fragmento é ignorada",
+      "edits": [
+        {
+          "file": "src/demo/mp4.ts",
+          "find": "ctx.tfhd = flags & 0x8 ? u32(off) : (trexDuration.get(ctx.track) ?? 0);",
+          "replace": "ctx.tfhd = trexDuration.get(ctx.track) ?? 0;"
+        }
+      ]
+    },
+    {
+      "name": "sem duração no fragmento, a da faixa é ignorada",
+      "edits": [
+        {
+          "file": "src/demo/mp4.ts",
+          "find": "ctx.tfhd = flags & 0x8 ? u32(off) : (trexDuration.get(ctx.track) ?? 0);",
+          "replace": "ctx.tfhd = flags & 0x8 ? u32(off) : 0;"
+        }
+      ]
+    },
+    {
+      "name": "o deslocamento dos dados não é pulado",
+      "edits": [
+        {
+          "file": "src/demo/mp4.ts",
+          "find": "        if (flags & 0x1) off += 4;\n        if (flags & 0x4) off += 4;",
+          "replace": "        if (flags & 0x4) off += 4;"
+        }
+      ]
+    },
+    {
+      "name": "cada amostra lida como uma palavra só",
+      "edits": [
+        {
+          "file": "src/demo/mp4.ts",
+          "find": "for (const bit of [0x100, 0x200, 0x400, 0x800]) if (flags & bit) per += 4;",
+          "replace": "per = 4;"
+        }
+      ]
+    },
+    {
+      "name": "o maior intervalo vira o último",
+      "edits": [
+        {
+          "file": "src/demo/mp4.ts",
+          "find": "    longest = Math.max(longest, d);",
+          "replace": "    longest = d;"
+        }
+      ]
+    }
+  ]
+}
