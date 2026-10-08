@@ -6,8 +6,8 @@
       "edits": [
         {
           "file": "src/sim/conveyor.ts",
-          "find": "    p.waited += v > 0 ? Math.max(0, dt - (next - p.s) / v) : dt;",
-          "replace": "    p.waited += v > 0 ? 0 : dt;"
+          "find": "    if (blocked) p.waited += v > 0 ? dt - (next - p.s) * perMeter : dt;",
+          "replace": "    if (blocked) p.waited += v > 0 ? 0 : dt;"
         }
       ]
     },
@@ -16,8 +16,8 @@
       "edits": [
         {
           "file": "src/sim/conveyor.ts",
-          "find": "    p.waited += v > 0 ? Math.max(0, dt - (next - p.s) / v) : dt;",
-          "replace": "    p.waited += v > 0 ? Math.max(0, dt - (next - p.s) / v) : 0;"
+          "find": "    if (blocked) p.waited += v > 0 ? dt - (next - p.s) * perMeter : dt;",
+          "replace": "    if (blocked) p.waited += v > 0 ? dt - (next - p.s) * perMeter : 0;"
         }
       ]
     },
@@ -78,6 +78,16 @@
           "file": "src/sim/recorder.ts",
           "find": "    this.waits.length = this.cycles.length;\n",
           "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "pacote que andou livre também soma",
+      "edits": [
+        {
+          "file": "src/sim/conveyor.ts",
+          "find": "    if (blocked) p.waited += v > 0 ? dt - (next - p.s) * perMeter : dt;",
+          "replace": "    p.waited += v > 0 ? dt - (next - p.s) * perMeter + 0.001 : dt;"
         }
       ]
     }
