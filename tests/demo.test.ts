@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { BottleneckDetector, topologyOf } from '../src/ai/bottleneck';
 import { beatAt, demoBeats, wallSeconds, type Beat } from '../src/demo/beats';
 import { cardRows } from '../src/demo/card';
-import { DEMO, DemoRunner, runDemo, type DemoResult } from '../src/demo/run';
+import { DEMO, DemoRunner, measure, runDemo, type DemoResult } from '../src/demo/run';
 import type { Recorder } from '../src/sim/recorder';
 import { SimHost } from '../src/worker/host';
 import type { SimMessage } from '../src/worker/protocol';
@@ -95,6 +95,19 @@ describe('the demo script', () => {
     ).toBe(true);
     expect(noAi.live.policy).toBe('static');
     expect(noAi.live.schedule.enabled).toBe(false);
+  });
+
+  it('measures the span from the breakdown to the end, by the rule of the panel K', () => {
+    const span = measure(ai, DEMO.failure.at, DEMO.end);
+    const before = measure(ai, 0, DEMO.failure.at);
+    const all = measure(ai, 0, DEMO.end);
+    expect(span.delivered + before.delivered).toBe(all.delivered);
+    expect(span.delivered).toBeLessThan(all.delivered);
+    const k = ai.kpis(DEMO.end, DEMO.end - DEMO.failure.at);
+    expect(span.delivered).toBe(k.deliveries);
+    expect(span.cycleP95).toBe(k.cycleP95);
+    expect(span.waitP95).toBe(k.waitP95);
+    expect(full.result.ai).toEqual(span);
   });
 
   it('the card shows the numbers of the two runs, as computed', () => {

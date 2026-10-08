@@ -22,6 +22,8 @@ describe('waiting time of a packet (the part of its cycle spent not moving)', ()
     w.stepMany(240 * SECOND);
     expect(rows.filter((r) => !r.rack).length).toBeGreaterThan(400);
     expect(rows.filter((r) => r.rack).length).toBeGreaterThan(50);
+    // A stock order waits on its shelf until a robot loads it.
+    expect(mean(rows.filter((r) => r.rack).map((r) => r.waited))).toBeGreaterThan(5);
     for (const r of rows) {
       expect(r.waited).toBeGreaterThanOrEqual(0);
       expect(r.waited).toBeLessThanOrEqual(r.cycle + 1e-9);
@@ -103,6 +105,17 @@ describe('waiting time of a packet (the part of its cycle spent not moving)', ()
     restored.stepMany(90 * SECOND);
     expect(b.length).toBeGreaterThan(100);
     expect(b).toEqual(a);
+  }, 30_000);
+
+  it('going back in time and on from there keeps each wait with its cycle', () => {
+    const rec = new Recorder({ seed: 4 });
+    rec.stepMany(150 * SECOND);
+    rec.seek(90 * SECOND);
+    rec.input({ type: 'stress', on: true });
+    rec.stepMany(30 * SECOND);
+    const s = rec.series;
+    expect(s.waits.length).toBe(s.cycles.length);
+    expect(s.cycles.length).toBe(s.cycleEnd.get(s.seconds - 1));
   }, 30_000);
 
   it('the panel K reads it from the recording, beside the cycle', () => {

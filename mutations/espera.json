@@ -1,0 +1,85 @@
+{
+  "tests": ["tests/espera.test.ts", "tests/metrics.test.ts"],
+  "mutations": [
+    {
+      "name": "na esteira andando, o tempo perdido não conta",
+      "edits": [
+        {
+          "file": "src/sim/conveyor.ts",
+          "find": "    p.waited += v > 0 ? Math.max(0, dt - (next - p.s) / v) : dt;",
+          "replace": "    p.waited += v > 0 ? 0 : dt;"
+        }
+      ]
+    },
+    {
+      "name": "na esteira parada, a espera não conta",
+      "edits": [
+        {
+          "file": "src/sim/conveyor.ts",
+          "find": "    p.waited += v > 0 ? Math.max(0, dt - (next - p.s) / v) : dt;",
+          "replace": "    p.waited += v > 0 ? Math.max(0, dt - (next - p.s) / v) : 0;"
+        }
+      ]
+    },
+    {
+      "name": "a pilha de entrada não conta",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "      head.waited += this.time - head.createdAt;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "os buffers dos robôs não contam",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "      for (const p of lane.pickup) p.waited += dt;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a prateleira não conta",
+      "edits": [
+        {
+          "file": "src/sim/fleet.ts",
+          "find": "          p.waited += now - p.createdAt;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o checkpoint esquece a espera",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "        waited: r.float(),",
+          "replace": "        waited: (r.float(), 0),"
+        }
+      ]
+    },
+    {
+      "name": "a compactação desalinha esperas e ciclos",
+      "edits": [
+        {
+          "file": "src/sim/metrics.ts",
+          "find": "      this.waits = this.waits.slice(this.head);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "voltar no tempo não corta as esperas",
+      "edits": [
+        {
+          "file": "src/sim/recorder.ts",
+          "find": "    this.waits.length = this.cycles.length;\n",
+          "replace": ""
+        }
+      ]
+    }
+  ]
+}
