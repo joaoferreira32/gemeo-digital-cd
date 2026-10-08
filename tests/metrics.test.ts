@@ -50,7 +50,9 @@ describe('Metrics', () => {
     }
     expect(m.windowDeliveries).toBe(n);
     expect(m.windowMeanCycleTime).toBeCloseTo(sum / n, 9);
-    // Each wait still belongs to its own delivery after the compactions.
+    // Each wait still belongs to its own delivery after the compactions, the whole window too.
     expect(m.lastWaits(50)).toEqual(m.lastCycles(50).map((c) => (c - 1) / 2));
+    expect(m.lastWaits(1e9)).toEqual(m.lastCycles(1e9).map((c) => (c - 1) / 2));
+    expect(m.lastWaits(1e9)).toHaveLength(n);
   });
 });

@@ -42,16 +42,6 @@
       ]
     },
     {
-      "name": "o p95 por outra regra",
-      "edits": [
-        {
-          "file": "src/demo/run.ts",
-          "find": "  return sorted.length ? (sorted[Math.ceil(0.95 * sorted.length) - 1] as number) : NaN;",
-          "replace": "  return sorted.length ? (sorted[Math.floor(0.95 * sorted.length)] as number) : NaN;"
-        }
-      ]
-    },
-    {
       "name": "cada lado não para no fim do roteiro",
       "edits": [
         {

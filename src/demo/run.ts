@@ -1,5 +1,5 @@
 import { fingerprint } from '../sim/fingerprint';
-import { Recorder, type SimInput } from '../sim/recorder';
+import { quantile, Recorder, type SimInput } from '../sim/recorder';
 import type { SimConfig } from '../sim/world';
 
 /**
@@ -80,12 +80,6 @@ export interface DemoResult {
   readonly noAi: DemoSide;
 }
 
-/** p95 by the same rule as the panel K (src/sim/recorder.ts). */
-function p95(values: ArrayLike<number>): number {
-  const sorted = Array.from(values).sort((a, b) => a - b);
-  return sorted.length ? (sorted[Math.ceil(0.95 * sorted.length) - 1] as number) : NaN;
-}
-
 /** The measures of the recording between two simulated seconds. */
 export function measure(rec: Recorder, from: number, to: number): DemoSide {
   const s = rec.series;
@@ -96,8 +90,9 @@ export function measure(rec: Recorder, from: number, to: number): DemoSide {
   const inSpan = (time: number) => time >= from && time <= to;
   return {
     delivered: c1 - c0,
-    cycleP95: p95(s.cycles.data.subarray(c0, c1)),
-    waitP95: p95(s.waits.data.subarray(c0, c1)),
+    // The same p95 as the panel K.
+    cycleP95: quantile(s.cycles.data.subarray(c0, c1), 0.95),
+    waitP95: quantile(s.waits.data.subarray(c0, c1), 0.95),
     waitingMax,
     breakdowns: rec.events.filter(
       (e) => e.kind === 'failure-start' && e.failure === 'conveyor' && inSpan(e.time),
