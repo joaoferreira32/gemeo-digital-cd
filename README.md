@@ -37,8 +37,27 @@ npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e latência do seek (~3 min)
 npm run bench:rotas  # roteamento estático × heurística (× IA com --rl <modelo>), seeds de validação
 npm run bench:manutencao  # detector de manutenção preditiva, seeds de validação
-npm run mutate       # conferência por mutação, numa cópia temporária (~10 min)
+npm run bench:agenda      # agenda de manutenção com × sem, seed a seed (seeds de validação)
+npm run bench:gargalo     # detector de gargalo em ensaios controlados (seeds de validação)
+npm run mutate       # conferência por mutação, numa cópia temporária (~25 min)
+npm run hooks        # liga a trava antes do push (uma vez por clone)
 ```
+
+### Trava antes do push
+
+Uma vez por clone, `npm run hooks` (o mesmo que `git config core.hooksPath
+.githooks`). A partir daí, todo `git push` roda [`.githooks/pre-push`](.githooks/pre-push)
+e é **bloqueado** quando:
+
+- algum commit a enviar tem autor ou committer sem e-mail noreply do GitHub;
+- o que vai ser enviado não é o que está checado out, ou há mudanças não
+  commitadas ou arquivos fora do git (as verificações rodam na árvore de
+  trabalho, que precisa ser exatamente o que vai ser enviado);
+- o lint (ESLint e Prettier), a checagem de tipos (`tsc`, do app e dos scripts)
+  ou os testes falham.
+
+Leva cerca de um minuto e meio. É uma trava local: no GitHub, o CI continua sendo
+a verificação obrigatória.
 
 Treino da IA de roteamento (opcional; o app já traz a rede treinada). Python
 3.12 num ambiente virtual próprio, nunca no Python global:
@@ -588,11 +607,14 @@ Bugs encontrados medindo, não supondo:
   traz variação ao longo do dia para a mesma regra usar.
 - **O desvio antes da parada nem sempre esvazia a esteira:** 43% das paradas em
   esteiras que a rota consegue esvaziar começam vazias.
-- **A causa do gargalo foi medida com uma falha de cada vez.** Com várias falhas
-  ao mesmo tempo, o detector escolhe a mais provável pela ordem descrita, sem uma
-  medida própria. Defeito de robô nunca é dado como causa (nenhum formou fila nos
-  ensaios), e a fila que uma falha deixa depois de terminar pode aparecer como
-  "desenho do galpão".
+- **A precisão das causas do gargalo (98% a 100%) foi medida com uma falha de
+  cada vez**, em ensaios controlados. Com várias falhas ao mesmo tempo, o detector
+  escolhe a mais provável pela ordem descrita, e essa situação ainda não tem
+  medida própria: a Fase 5 mede a precisão também no cenário de falhas
+  automáticas, com falhas simultâneas, e o número entra aqui mesmo que caia.
+  Defeito de robô nunca é dado como causa (nenhum formou fila nos ensaios), e a
+  fila que uma falha deixa depois de terminar pode aparecer como "desenho do
+  galpão".
 - **Não feito:** balanceamento entre docas e redistribuição de robôs na
   heurística, previstos no roteiro original da Fase 4 (`docs/roteiro.md`).
 - A cópia estática do painel recebe as mesmas entradas, mas as falhas
