@@ -693,7 +693,11 @@ export class Fleet {
     const job = r.job;
     if (r.stage === 'loading') {
       if (job?.kind === 'rack') {
-        for (const p of job.order.packets) p.state = 'robot';
+        for (const p of job.order.packets) {
+          p.state = 'robot';
+          // On the shelf since the order: waiting for this robot (a measure only).
+          p.waited += now - p.createdAt;
+        }
         r.load = job.order.packets.slice();
         this.goTo(r, this.pickDock(r, job.order.dock), 'toDrop', now);
       } else if (job?.kind === 'bypass') {

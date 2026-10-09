@@ -3,7 +3,9 @@
 [![CI](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml)
 [![Deploy](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml)
 
-**Demo:** https://joaoferreira32.github.io/gemeo-digital-cd/
+**Demo:** https://joaoferreira32.github.io/gemeo-digital-cd/ (a tecla <kbd>V</kbd> roda a demo de um minuto)
+
+![A demo: uma esteira quebra, a fila cresce, a IA explica o gargalo e só então desvia o fluxo, a manutenção preditiva evita uma segunda falha, a simulação volta no tempo e roda a mesma execução sem IA, e o cartão final compara as duas](docs/demo.gif)
 
 Simulação 3D em tempo real, no navegador, de um galpão logístico: esteiras,
 pacotes, docas, caminhões e uma frota de 40 robôs (AGVs) que se coordenam por
@@ -16,12 +18,13 @@ avisa antes de uma esteira quebrar (manutenção preditiva sobre sinais
 simulados), agenda a manutenção para a quebra não acontecer e aponta o gargalo
 do momento, dizendo a causa. Um laboratório compara dois cenários ("e se…?") em
 várias seeds ao mesmo tempo, com intervalo de confiança, usando a demanda real
-de um e-commerce (Olist) hora a hora. O motor de simulação é determinístico,
-roda num Web Worker e é testado sem navegador.
+de um e-commerce (Olist) hora a hora. Uma demo de um minuto conta tudo isso
+sozinha, com legendas, e pode ser gravada em vídeo direto da página. O motor de
+simulação é determinístico, roda num Web Worker e é testado sem navegador.
 
-> **Status:** Fase 5 de 6 concluída (laboratório de cenários com estatística e
-> demanda real). O modo cinema vem depois; o roteiro original está em
-> [`docs/roteiro.md`](docs/roteiro.md).
+> **Status:** as 6 fases do roteiro estão concluídas, com a Fase 4b e o detector
+> com memória de falhas no meio do caminho. O roteiro original e as mudanças
+> aprovadas depois estão em [`docs/roteiro.md`](docs/roteiro.md).
 
 ## Como rodar
 
@@ -38,6 +41,7 @@ npm run bench:motor  # benchmark curto do motor (o mesmo do CI)
 npm run bench:mapf   # estatísticas do planejamento multiagente
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e latência do seek (~3 min)
+npm run bench:demo-memoria  # memória do worker ao repetir a demo (15 vezes, ~4 min)
 npm run bench:rotas  # roteamento estático × heurística (× IA com --rl <modelo>), seeds de validação
 npm run bench:manutencao  # detector de manutenção preditiva, seeds de validação
 npm run bench:agenda      # agenda de manutenção com × sem, seed a seed (seeds de validação)
@@ -103,21 +107,37 @@ npm run bench:rotas -- --rl teste
 | Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, roteamento, manutenção, utilização, robôs, últimos 5 min)   |
 | Histórico              | clique num robô, numa esteira ou numa doca                                                                   |
 | Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução         |
+| Demo                   | <kbd>V</kbd> roda a demo de um minuto · <kbd>Shift</kbd> + <kbd>V</kbd> grava em vídeo · <kbd>Esc</kbd> sai  |
 | Atalhos e legenda      | <kbd>H</kbd>                                                                                                 |
 
 ## Arquitetura
 
-```
- página (thread principal)                         Web Worker
- ┌──────────────────────────────┐   comandos    ┌───────────────────────────┐
- │ ui/      HUD, painéis,       │ ────────────► │ worker/  SimHost: relógio │
- │          linha do tempo      │               │          real × velocidade│
- │ link/    FrameBuffer:        │ ◄──────────── │ sim/     Recorder: grava  │
- │          interpola snapshots │  snapshot em  │          entradas e       │
- │ render/  Three.js (só lê)    │  ArrayBuffer  │          checkpoints      │
- └──────────────────────────────┘  transferido  │          World (passo     │
-                                 + status 2×/s  │          fixo, seed)      │
-                                                └───────────────────────────┘
+```mermaid
+flowchart LR
+  subgraph page["Página (thread principal)"]
+    ui["ui/: HUD, painéis, linha do tempo"]
+    demo["demo/: diretor, legendas, gravação de vídeo"]
+    snap["link/: snapshots com interpolação"]
+    render["render/: Three.js, mapa de calor na GPU, bloom, profundidade de campo"]
+  end
+  subgraph sim["Web Worker da simulação"]
+    host["worker/: SimHost, relógio real × velocidade, roteiro da demo"]
+    rec["sim/: Recorder, entradas, checkpoints, séries por segundo"]
+    world["sim/: World, passo fixo de 1/60 s, seed"]
+    ai["ai/: roteamento, detector de gargalo, manutenção preditiva, agente PPO em ONNX"]
+  end
+  subgraph lab["Web Workers do laboratório"]
+    runs["lab/: rodadas A × B, uma seed por vez"]
+  end
+  py["ai/ em Python: treino PPO sobre o mesmo motor"]
+  ui -- comandos --> host
+  demo -- comandos --> host
+  host -- "snapshots e status" --> snap
+  snap --> render
+  host --> rec --> world
+  world <--> ai
+  ui -- cenários --> runs
+  py -. "rede treinada" .-> ai
 ```
 
 ```
@@ -137,6 +157,8 @@ src/link/    conexão com o worker e buffer de snapshots com interpolação
 src/render/  cena Three.js: pacotes, robôs, rastros, rotas, alertas, mapa de calor, bloom,
              halos dos motores, setas de fluxo
 src/ui/      HUD e painéis (HTML/CSS próprios)
+src/lab/     laboratório de cenários: rodadas, estatística, pool de Web Workers
+src/demo/    a demo: roteiro determinístico, etapas, diretor, legendas, cartão, gravação
 bench/       benchmark do motor (CI), planejamento, roteamento e manutenção preditiva
 tests/       Vitest: motor, frota, planejador, cinemática, falhas, snapshots
 ```
@@ -509,6 +531,105 @@ reescalado para o dia simulado ter a taxa escolhida como média: a segunda-feira
 Olist tem 15,7% mais pedidos que a média da semana, e sem isso a comparação com a
 demanda constante misturaria volume e formato.
 
+## Demo e gravação (Fase 6)
+
+A tecla <kbd>V</kbd> (ou o botão **Rodar demo**) mostra, em cerca de um minuto, a
+história do projeto, com legendas (o vídeo é mudo):
+
+1. plano aberto do galpão, e os robôs se movendo sem colisão;
+2. a Esteira 9 quebra; a câmera se aproxima do ponto da falha, e robôs levam parte
+   dos pacotes por fora (a frota faz isso sozinha, não é a IA);
+3. a fila cresce, vermelha no mapa de calor do tempo de espera, com o roteamento
+   ainda fixo;
+4. a IA aponta o gargalo e explica a causa (o texto do detector, ao vivo);
+5. só então a IA assume (o roteamento e a agenda de manutenção): as setas mostram
+   a rota escolhida, e parte do tráfego da linha B passa para a linha A antes da
+   esteira parada;
+6. o motor da Esteira 16 se desgasta, o alarme dispara, a manutenção é agendada e
+   a falha é evitada;
+7. a simulação volta no tempo até um segundo antes da quebra e roda a mesma
+   execução sem IA (roteamento estático, sem manutenção preditiva): a Esteira 16
+   quebra;
+8. o cartão final compara as duas execuções, da quebra ao fim.
+
+Problema, diagnóstico e solução, nessa ordem: até a IA assumir (aos 146 s), a
+execução com IA é a mesma da execução sem IA, bit a bit, e um teste confere isso,
+com a ordem das etapas.
+
+- **Determinística.** O roteiro roda no worker, com as entradas em ticks fixos
+  (`src/demo/run.ts`); a página só escolhe a velocidade e a câmera. Numa máquina
+  lenta a demo demora mais, mas os números são os mesmos, e um teste confere que
+  o número do cartão é o calculado pelo motor. A seed (2026) foi escolhida pelo
+  roteiro, não pelo ganho: a primeira de uma lista fixa em que a quebra termina
+  antes do alarme do desgaste, a manutenção evita a falha e, sem IA, a esteira
+  desgastada quebra.
+- **O cartão diz "nesta execução"**, contra o roteamento estático (sem IA), e
+  aponta a tabela com intervalo de confiança deste README como resultado oficial:
+  uma execução só não prova nada sozinha.
+- **Diretor de câmera:** travelling, aproximação no ponto da falha e uma
+  profundidade de campo leve; com `prefers-reduced-motion`, cortes secos, sem
+  travelling nem desfoque.
+- **Gravação nativa:** <kbd>Shift</kbd> + <kbd>V</kbd> grava a demo em 1920×1080 e
+  60 FPS (MediaRecorder sobre o canvas). O formato preferido é MP4 (H.264), e a
+  tela mostra o formato usado; quando o navegador só grava WebM, a página avisa
+  que o LinkedIn pode não aceitar. As legendas e o cartão são desenhados num
+  canvas, por isso entram no vídeo.
+- **p95 de espera:** cada pacote conta o tempo em que fica parado (na pilha de
+  entrada, na prateleira ou num buffer esperando um robô, e o tempo perdido numa
+  esteira em relação à velocidade dela). É uma parte do tempo de ciclo, mostrada
+  à parte no painel <kbd>K</kbd> e no laboratório: em operação normal o ciclo é
+  quase todo deslocamento, e a espera isola o congestionamento.
+- **Contagem de quadros:** ao salvar, a página lê as caixas do próprio MP4 (sem
+  decodificar) e mostra quantos quadros o arquivo tem e em quanto tempo. Contar
+  tocando o vídeo dependia da máquina naquele momento (o mesmo arquivo deu 58,7 e
+  42,8 FPS).
+- **O GIF do topo** sai do build servido (`npm run build`, depois `npx vite
+preview`), em dois passos:
+
+  ```bash
+  python scripts/demo_frames.py http://localhost:4173/ quadros     # Playwright e Chromium
+  ai/.venv/Scripts/python scripts/demo_gif.py quadros docs/demo.gif  # Pillow (ai/requirements.txt)
+  ```
+
+  O primeiro roda a demo no Chromium e guarda os quadros de cada etapa (6 por
+  segundo); o segundo monta o GIF em 640 px com uma paleta só, para não piscar.
+
+## Decisões técnicas e trade-offs
+
+- **Motor determinístico** (passo fixo de 1/60 s, PRNG com seed em fluxos
+  independentes, sem `Math.random` nem relógio no motor): qualquer execução se
+  repete bit a bit, o que permite viagem no tempo, comparações pareadas e testes
+  de impressão digital. O preço é não poder usar passo variável nem bibliotecas
+  com aleatoriedade própria.
+- **Simulação num Web Worker:** a página só desenha; com a simulação na thread
+  principal, o mesmo teste de carga teve 8 tarefas longas e quadros de 250 ms.
+- **Viagem no tempo por checkpoints e replay** (a cada 30 s simulados), não por
+  estado completo a cada passo: 15,5 MB por hora simulada, voltar a um instante
+  leva p95 de 484 ms.
+- _*Cooperative A* com reservas no tempo e um vigia_*, não um planejador ótimo:
+  0,7 ms por plano para 40 robôs, sem garantia teórica de completude (a ausência
+  de colisão e de travamento foi testada, não provada).
+- **A heurística é a política oficial de roteamento.** O agente PPO, treinado no
+  mesmo motor, não cumpriu o critério combinado e fica como comparação.
+- **Manutenção preditiva por CUSUM sobre sinais simulados:** simples e
+  explicável, avaliada contra a verdade do próprio motor (quando cada esteira ia
+  quebrar); a agenda depende de uma premissa (30 s de parada planejada contra 60 a
+  90 s de quebra).
+- **O detector de gargalo é uma função pura da gravação** (funciona no passado);
+  as causas foram julgadas por contrafactual exato. A memória de falhas subiu o
+  acerto de 58,5% para 74,6%, com um custo medido e reportado.
+- **Estatística:** cenários comparados nas mesmas seeds (diferença pareada),
+  intervalos de 95% pela variação entre seeds; seeds de teste usadas uma única
+  vez, com o protocolo registrado antes em `docs/resultados.md`.
+- **A demo separa o que decide do que mostra:** o roteiro roda no worker em
+  ticks fixos e o diretor só move a câmera, para o vídeo nunca contar uma
+  história diferente da que o motor calculou. Legendas em canvas (entram no
+  vídeo) e gravação pelo próprio navegador (sem programa externo, mas o formato
+  depende dele).
+- **Qualidade:** CI com lint, testes, build e um benchmark que bloqueia regressão
+  de mais de 10% nos passos/s; trava de pre-push (inclusive autor noreply);
+  conferência por mutação dos testes.
+
 ## Números medidos
 
 Todos os números de cada fase, com método e forma de reproduzir, estão em
@@ -525,35 +646,49 @@ partes (as outras ficam com a última medida, guardada em `bench/tabela.json`).
 
 <!-- bench:inicio (gerado por npm run bench; não editar à mão) -->
 
-motor, rotas, manutencao, agenda, laboratorio: medidas em 2026-10-07 (commit `36bf5b0`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
-gargalo, caos: medidas em 2026-10-07 (commit `7caa7ad`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
+motor: medidas em 2026-10-08 (commit `004ab46`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
+rotas, manutencao, agenda, gargalo, caos, laboratorio: medidas em 2026-10-08 (commit `cb26fce`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
 Seeds de validação (20.001 a 20.010) e do laboratório (50.001 a 50.010); as seeds de teste
 ficam de fora (usadas uma única vez; os resultados delas estão nas tabelas por fase abaixo).
 IC 95%: t de Student entre seeds (no motor, entre repetições); diferenças pareadas seed a
 seed; proporções somadas nas seeds, com o intervalo pela variação entre elas.
 
-| O que                                                                                | Resultado                                                                      | Como reproduzir              |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------- |
-| Motor sem robôs                                                                      | **1.065.190 passos/s** (IC 95% 1.038.976 a 1.091.403), 5 repetições            | `npm run bench:motor`        |
-| Motor com 40 robôs                                                                   | **4.173 passos/s** (IC 95% 4.142 a 4.204), 5 repetições                        | `npm run bench:motor`        |
-| Motor gravando, 40 robôs                                                             | **4.163 passos/s** (IC 95% 4.136 a 4.189), 5 repetições                        | `npm run bench:motor`        |
-| Teste de carga + 40 robôs                                                            | **4.071 passos/s** (IC 95% 4.043 a 4.100), 5 repetições                        | `npm run bench:motor`        |
-| Heurística × roteamento estático, p95 do ciclo: normal                               | ganho **+1,7%** (+1,2% a +2,1%), 10 de 10 seeds                                | `npm run bench:rotas`        |
-| Heurística × roteamento estático, p95 do ciclo: esteira com alternativa quebrada     | ganho **+56,6%** (+53,7% a +59,5%), 10 de 10 seeds                             | `npm run bench:rotas`        |
-| Heurística × roteamento estático, p95 do ciclo: pico de pedidos                      | ganho **+34,0%** (+31,0% a +36,9%), 10 de 10 seeds                             | `npm run bench:rotas`        |
-| Heurística × roteamento estático, p95 do ciclo: falhas automáticas                   | ganho **+21,5%** (+13,7% a +29,2%), 10 de 10 seeds                             | `npm run bench:rotas`        |
-| Manutenção preditiva: precisão dos alarmes                                           | **98%** (IC 95% 94% a 100%)                                                    | `npm run bench:manutencao`   |
-| Manutenção preditiva: quebras com desgaste detectadas (recall)                       | **77%** (IC 95% 68% a 87%)                                                     | `npm run bench:manutencao`   |
-| Agenda de manutenção: quebras com desgaste evitadas                                  | **76%** (IC 95% 68% a 84%)                                                     | `npm run bench:agenda`       |
-| Agenda de manutenção (30 s), p95 do ciclo                                            | ganho **+34,9%** (+25,0% a +44,8%), 10 de 10 seeds                             | `npm run bench:agenda`       |
-| Detector de gargalo, uma falha por vez: falhas com fila apontadas                    | **99%** (IC 95% 98% a 100%)                                                    | `npm run bench:gargalo`      |
-| Detector de gargalo, uma falha por vez: causa certa no primeiro aviso                | **100%** (IC 95% 100% a 100%)                                                  | `npm run bench:gargalo`      |
-| Detector de gargalo, falhas automáticas: causa certa                                 | sem memória **59%** (IC 95% 55% a 64%); com memória **75%** (IC 95% 71% a 79%) | `npm run bench:gargalo-caos` |
-| Detector de gargalo, falhas automáticas: causa certa com duas ou mais falhas ligadas | sem memória **80%** (IC 95% 75% a 85%); com memória **85%** (IC 95% 77% a 92%) | `npm run bench:gargalo-caos` |
-| Laboratório: demanda da Olist × constante (mesmo volume no dia), p95 do ciclo        | 36,8 s → 120,1 s: **+83,3 s** (+74,6 s a +91,9 s), pior em 10 de 10 seeds      | `npm run bench:lab`          |
-| Laboratório: demanda da Olist × constante, vazão                                     | **−9,5** (−11,0 a −7,9) pacotes/min                                            | `npm run bench:lab`          |
+| O que                                                                                      | Resultado                                                                      | Como reproduzir              |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------- |
+| Motor sem robôs                                                                            | **1.029.828 passos/s** (IC 95% 997.937 a 1.061.719), 5 repetições              | `npm run bench:motor`        |
+| Motor com 40 robôs                                                                         | **4.214 passos/s** (IC 95% 4.189 a 4.239), 5 repetições                        | `npm run bench:motor`        |
+| Motor gravando, 40 robôs                                                                   | **4.223 passos/s** (IC 95% 4.199 a 4.248), 5 repetições                        | `npm run bench:motor`        |
+| Teste de carga + 40 robôs                                                                  | **4.123 passos/s** (IC 95% 4.110 a 4.136), 5 repetições                        | `npm run bench:motor`        |
+| Heurística × roteamento estático, p95 do ciclo: normal                                     | ganho **+1,7%** (+1,2% a +2,1%), 10 de 10 seeds                                | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: esteira com alternativa quebrada           | ganho **+56,6%** (+53,7% a +59,5%), 10 de 10 seeds                             | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: pico de pedidos                            | ganho **+34,0%** (+31,0% a +36,9%), 10 de 10 seeds                             | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: falhas automáticas                         | ganho **+21,5%** (+13,7% a +29,2%), 10 de 10 seeds                             | `npm run bench:rotas`        |
+| Manutenção preditiva: precisão dos alarmes                                                 | **98%** (IC 95% 94% a 100%)                                                    | `npm run bench:manutencao`   |
+| Manutenção preditiva: quebras com desgaste detectadas (recall)                             | **77%** (IC 95% 68% a 87%)                                                     | `npm run bench:manutencao`   |
+| Agenda de manutenção: quebras com desgaste evitadas                                        | **76%** (IC 95% 68% a 84%)                                                     | `npm run bench:agenda`       |
+| Agenda de manutenção (30 s), p95 do ciclo                                                  | ganho **+34,9%** (+25,0% a +44,8%), 10 de 10 seeds                             | `npm run bench:agenda`       |
+| Detector de gargalo, uma falha por vez: falhas com fila apontadas                          | **99%** (IC 95% 98% a 100%)                                                    | `npm run bench:gargalo`      |
+| Detector de gargalo, uma falha por vez: causa certa no primeiro aviso                      | **100%** (IC 95% 100% a 100%)                                                  | `npm run bench:gargalo`      |
+| Detector de gargalo, falhas automáticas: causa certa                                       | sem memória **59%** (IC 95% 55% a 64%); com memória **75%** (IC 95% 71% a 79%) | `npm run bench:gargalo-caos` |
+| Detector de gargalo, falhas automáticas: causa certa com duas ou mais falhas ligadas       | sem memória **80%** (IC 95% 75% a 85%); com memória **85%** (IC 95% 77% a 92%) | `npm run bench:gargalo-caos` |
+| Laboratório: demanda da Olist × constante (mesmo volume no dia), p95 do ciclo              | 36,8 s → 120,1 s: **+83,3 s** (+74,6 s a +91,9 s), pior em 10 de 10 seeds      | `npm run bench:lab`          |
+| Laboratório: demanda da Olist × constante, p95 de espera (a parte do ciclo parada em fila) | 3,6 s → 89,7 s: **+86,1 s** (+77,4 s a +94,9 s), pior em 10 de 10 seeds        | `npm run bench:lab`          |
+| Laboratório: demanda da Olist × constante, vazão                                           | **−9,5** (−11,0 a −7,9) pacotes/min                                            | `npm run bench:lab`          |
 
 <!-- bench:fim -->
+
+### Fase 6
+
+| O que                                                                                                                                                                          | Resultado                                                                                                                                                                                                                                                                            | Como reproduzir                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Demo, **nesta execução** (seed 2026, da quebra aos 104 s até 320 s, com IA × roteamento estático sem manutenção preditiva; a IA assume aos 146 s, depois da fila e do gargalo) | entregas 730 × 485 (+51%); p95 do ciclo 135 × 180 s (−25%); p95 de espera 89 × 133 s (−33%); pior fila 403 × 548; quebras de esteira 1 × 2. Uma execução só: o resultado oficial é a tabela de benchmarks acima                                                                      | tecla <kbd>V</kbd>; `tests/demo.test.ts`                             |
+| p95 de espera × p95 do ciclo (seed 11, 300 s)                                                                                                                                  | normal: 4,4 s de 37,3 s; quase vazio: 0,5 s de 35,2 s; Esteira 9 quebrada: 185,9 s de 229,7 s                                                                                                                                                                                        | painel <kbd>K</kbd>; `tests/espera.test.ts`                          |
+| Demo no navegador (Chromium, build de produção)                                                                                                                                | 49,7 s até o cartão em 6 rodadas, mais 8 s de cartão; etapas na ordem do roteiro; sem erros de console; com movimento reduzido, o mesmo tempo e também sem erros                                                                                                                     | tecla <kbd>V</kbd>                                                   |
+| Profundidade de campo                                                                                                                                                          | +1,4 ms por quadro (4,53 → 5,93 ms, GPU sincronizada a cada quadro)                                                                                                                                                                                                                  | `__gemeo.benchDof()` no console                                      |
+| Gravação (Chromium, RTX 5060 Ti)                                                                                                                                               | MP4 (H.264), 1920×1080: 3.123 quadros em 57,9 s (54,0 FPS), 101,8 MB; uma parada de cerca de 0,5 s no primeiro segundo do arquivo. Na primeira versão da demo, 55,5 e 58,9 FPS em duas gravações                                                                                     | <kbd>Shift</kbd> + <kbd>V</kbd> (a nota ao salvar mostra a contagem) |
+| Custo da medida de espera no motor                                                                                                                                             | sem robôs −2,7% contra o código de antes (dentro da variação entre repetições); com 40 robôs +0,6%                                                                                                                                                                                   | `npm run bench:motor`                                                |
+| Memória ao repetir a demo                                                                                                                                                      | GPU constante (104 geometrias, 61 texturas, 28 programas) em 6 demos seguidas; heap do V8 da página 7,8 MB antes e 8,6 a 9,4 MB depois de cada demo (o acréscimo é quase todo código compilado pelo JIT); worker 11,1 a 11,8 MB em 15 demos (0,05 MB por demo, parado nas 5 últimas) | `npm run bench:demo-memoria`; `scripts/demo_memoria.py`              |
+| Conferência por mutação                                                                                                                                                        | 142 de 142 em 14 especificações (mais 1 equivalente); 34 novas (espera 9, demo 18, vídeo 7). A rodada completa achou a cópia temporária sem git, que deixava as 11 da demanda sem rodar desde a Fase 5; corrigido                                                                    | `npm run mutate`                                                     |
 
 ### Detector de gargalo com memória (depois da Fase 5)
 
@@ -685,6 +820,20 @@ Bugs encontrados medindo, não supondo:
   distúrbios, o detector acertava 100%. Entraram quebras súbitas, desgaste
   fraco, pancadas e enroscos, e a calibração passou a ter um compromisso real
   (ótimo no meio da grade, não na borda).
+- **A medida de espera deixou o motor 25% mais lento** (Fase 6). A primeira
+  versão somava o tempo perdido de todo pacote em toda esteira a cada passo, com
+  uma divisão. Agora só soma para o pacote que não andou livre e multiplica pelo
+  inverso da velocidade: −2,7% contra o código de antes, dentro da variação.
+- **Contar os quadros tocando o vídeo dependia da máquina** (Fase 6). O mesmo
+  arquivo deu 58,7 e 42,8 FPS em duas reproduções. A página passou a ler as
+  caixas do MP4 (sem decodificar), e um leitor independente em Python conta o
+  mesmo número.
+- **O "vazamento" de 22 MB era a medida** (Fase 6). Lido com
+  `performance.memory` depois de um `window.gc()` chamado de dentro da página, o
+  heap subia 22 MB depois de duas demos. Um heap snapshot mostrou só 1,5 MB a mais
+  de objetos vivos: o `window.gc()` deixava de 6 a 8 MB de lixo depois de cada
+  demo, que o GC do DevTools (de fora do JavaScript) recolhe. A medida passou a ser o heap do V8
+  depois desse GC (`scripts/demo_memoria.py`).
 - **Conferência por mutação parada para sempre** (Fase 4). Um mutante
   transformou um "espere um desgaste começar" num laço infinito, e o Vitest não
   interrompe código síncrono. O teste ganhou limite e o executor de mutação
@@ -734,7 +883,19 @@ Bugs encontrados medindo, não supondo:
   Defeito de robô nunca é dado como causa (quase nunca forma fila de esteira ou
   doca).
 - **Não feito:** balanceamento entre docas e redistribuição de robôs na
-  heurística, previstos no roteiro original da Fase 4 (`docs/roteiro.md`).
+  heurística, previstos no roteiro original da Fase 4 (`docs/roteiro.md`); ficou
+  como não feito por decisão de 2026-10-07.
+- **A demo é uma execução só**, com a seed escolhida pelo roteiro (ver "Demo e
+  gravação"). O cartão diz "nesta execução"; o resultado oficial, com intervalo
+  de confiança, é a tabela de benchmarks.
+- **A gravação depende do navegador:** o Chromium grava MP4 (H.264); onde só há
+  WebM (o Firefox, por exemplo), a página avisa, e o WebM não tem os quadros
+  contados. O arquivo fica abaixo de 60 FPS (54,0 na gravação da demo atual;
+  55,5 e 58,9 em duas gravações da primeira versão), com uma parada de cerca de
+  0,5 s no primeiro segundo, quando o codificador começa.
+- **A demo leva cerca de um minuto** numa máquina que acompanha 32× de
+  velocidade; numa mais lenta ela só demora mais (o diretor segue o tempo
+  simulado, não o relógio).
 - A cópia estática do painel recebe as mesmas entradas, mas as falhas
   automáticas são sorteadas de novo nela (mesma semente): os alvos podem
   divergir quando os dois mundos ficam diferentes.
@@ -750,6 +911,21 @@ Bugs encontrados medindo, não supondo:
 - O vigia resolve esperas circulares e desvia de robôs quebrados quando há outra
   baia; um robô preso atrás de um robô quebrado, sem outro caminho, espera o
   conserto (40 a 60 s).
+
+## Próximos passos
+
+- Balanceamento entre docas e redistribuição de robôs na heurística (o item que
+  ficou de fora).
+- Reduzir o custo da memória do detector: só atribuir a fila a uma parada
+  encerrada se ela começou a crescer durante a parada ou logo depois.
+- Medir o efeito do perfil horário da Olist na agenda de manutenção, que hoje só
+  enxerga os picos.
+- Treinar o agente de reforço com a demanda da Olist e com a espera, não só o
+  ciclo, na recompensa.
+- Laboratório com mudanças de desenho (número de esteiras e de docas), não só de
+  velocidade e de parâmetros.
+- Gravação em MP4 também onde o navegador só grava WebM (WebCodecs e um
+  empacotador MP4).
 
 ## Dados e licenças
 

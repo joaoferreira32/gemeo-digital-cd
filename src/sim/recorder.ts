@@ -22,7 +22,9 @@ export type SimInput =
   /** Routing shares chosen outside the simulation (the learning agent). */
   | { type: 'shares'; shares: number[] }
   /** A conveyor starts wearing out (drawn when no target is given) and breaks 1 to 3 minutes later. */
-  | { type: 'wear'; target?: number };
+  | { type: 'wear'; target?: number }
+  /** The maintenance schedule on or off from now on (src/sim/schedule.ts). */
+  | { type: 'maintenance'; on: boolean };
 
 export function applyInput(world: World, input: SimInput): void {
   switch (input.type) {
@@ -43,6 +45,9 @@ export function applyInput(world: World, input: SimInput): void {
       return;
     case 'wear':
       world.failures.degrade(world.time, input.target);
+      return;
+    case 'maintenance':
+      world.schedule.setEnabled(input.on);
       return;
   }
 }
@@ -95,6 +100,8 @@ class Series {
   readonly delivered = new Column(new Int32Array(1024));
   /** Cycle time of every delivery, in order; `cycleEnd[s]` = deliveries up to second s. */
   readonly cycles = new Column(new Float32Array(4096));
+  /** The waiting part of each of those cycle times (packet.ts), in the same order. */
+  readonly waits = new Column(new Float32Array(4096));
   readonly cycleEnd = new Column(new Int32Array(1024));
   /** Per second × entity, cumulative. */
   readonly conveyorExits: Column<Int32Array>;
@@ -132,11 +139,12 @@ class Series {
     this.scratchDocks = new Int32Array(docks);
   }
 
-  sample(w: World, newCycles: readonly number[]): void {
+  sample(w: World, newCycles: readonly number[], newWaits: readonly number[]): void {
     const s = this.seconds;
     this.waiting.push(w.stats.waiting);
     this.delivered.push(w.metrics.delivered);
     for (const c of newCycles) this.cycles.push(c);
+    for (const x of newWaits) this.waits.push(x);
     this.cycleEnd.push(this.cycles.length);
     for (let c = 0; c < this.conveyors; c++) this.conveyorExits.push(w.conveyorExits[c] as number);
     for (let d = 0; d < this.docks; d++) this.dockDeliveries.push(w.dockDeliveries[d] as number);
@@ -171,6 +179,7 @@ class Series {
     this.delivered.length = n;
     this.cycleEnd.length = n;
     this.cycles.length = n > 0 ? this.cycleEnd.get(n - 1) : 0;
+    this.waits.length = this.cycles.length;
     this.conveyorExits.length = n * this.conveyors;
     this.dockDeliveries.length = n * this.docks;
     this.robotBusy.length = n * this.robots;
@@ -187,6 +196,7 @@ class Series {
       this.waiting,
       this.delivered,
       this.cycles,
+      this.waits,
       this.cycleEnd,
       this.conveyorExits,
       this.dockDeliveries,
@@ -269,6 +279,9 @@ export interface Kpis {
   /** Cycle time (order to delivery) over the window, seconds. */
   readonly cycleMean: number;
   readonly cycleP95: number;
+  /** The waiting part of those cycle times (packet.ts), seconds. */
+  readonly waitMean: number;
+  readonly waitP95: number;
   readonly deliveries: number;
   /** 0 … 1 over the window: belt flow ÷ belt capacity, dock deliveries ÷ service rate, robot busy time. */
   readonly conveyorUse: Float32Array;
@@ -341,7 +354,7 @@ export class Recorder {
     this.series = new Series(w.conveyors.length, w.docks.length, w.fleet?.robots.length ?? 0);
     this.attach(w);
     this.checkpoints.push(w.saveState());
-    this.series.sample(w, []);
+    this.series.sample(w, [], []);
   }
 
   /** The world at the head of the recording. */
@@ -385,7 +398,8 @@ export class Recorder {
     const ticksPerSecond = Math.round(1 / this.config.dt);
     if (w.tick % ticksPerSecond === 0) {
       const delivered = w.metrics.delivered;
-      this.series.sample(w, w.metrics.lastCycles(delivered - this.lastDelivered));
+      const n = delivered - this.lastDelivered;
+      this.series.sample(w, w.metrics.lastCycles(n), w.metrics.lastWaits(n));
       this.lastDelivered = delivered;
     }
     if (w.tick % this.every === 0) this.checkpoints.push(w.saveState());
@@ -494,6 +508,9 @@ export class Recorder {
     const cycles = s.cycles.data.subarray(c0, c1);
     let sum = 0;
     for (const c of cycles) sum += c;
+    const waits = s.waits.data.subarray(c0, c1);
+    let waited = 0;
+    for (const x of waits) waited += x;
 
     const w = this.shown;
     const conveyorUse = new Float32Array(s.conveyors);
@@ -536,6 +553,8 @@ export class Recorder {
       throughput,
       cycleMean: cycles.length ? sum / cycles.length : NaN,
       cycleP95: quantile(cycles, 0.95),
+      waitMean: waits.length ? waited / waits.length : NaN,
+      waitP95: quantile(waits, 0.95),
       deliveries: cycles.length,
       conveyorUse,
       dockUse,

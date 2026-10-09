@@ -94,6 +94,23 @@ export class QualityGovernor {
     }
   }
 
+  private held: { level: QualityLevel; auto: boolean } | null = null;
+
+  /** Fixes a level for a while (the recording of the demo); null gives back what was there. */
+  hold(level: QualityLevel | null): void {
+    if (level) {
+      this.held ??= { level: this.level, auto: this.auto };
+      this.auto = false;
+      if (this.level !== level) this.set(level);
+      return;
+    }
+    const held = this.held;
+    if (!held) return;
+    this.held = null;
+    this.auto = held.auto;
+    if (this.level !== held.level) this.set(held.level);
+  }
+
   /** Manual choice: cycles alta → média → baixa → alta and disables auto mode. */
   cycle(): void {
     this.auto = false;

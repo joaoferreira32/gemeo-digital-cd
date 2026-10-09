@@ -104,6 +104,7 @@ const rows: Record<string, unknown>[] = [];
 for (const [key, label, scale] of [
   ['cycleMean', 'Tempo de ciclo médio (s)', 1],
   ['cycleP95', 'p95 do ciclo (s)', 1],
+  ['waitP95', 'p95 de espera (s)', 1],
   ['throughput', 'Vazão (pacotes/min)', 1],
   ['beltUse', 'Uso das esteiras (%)', 100],
   ['dockUse', 'Uso das docas (%)', 100],

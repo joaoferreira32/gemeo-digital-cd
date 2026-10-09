@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fingerprint } from '../src/sim/fingerprint';
+import { applyInput } from '../src/sim/recorder';
 import type { ServiceOutcome } from '../src/sim/schedule';
 import { SnapshotWriter } from '../src/sim/snapshot';
 import { World, type Checkpoint, type SimConfig } from '../src/sim/world';
@@ -272,5 +273,50 @@ describe('maintenance schedule', () => {
     for (const o of outcomes.filter((x) => x.kind !== 'lost')) {
       expect(o.time - o.alarmAt).toBeGreaterThanOrEqual(1 - 1e-6);
     }
+  }, 60_000);
+});
+
+describe('maintenance schedule switched during a run (the demo without AI)', () => {
+  /**
+   * The inputs of the demo script (src/demo/run.ts): seed 2026, Esteira 9 breaks
+   * at 104 s, Esteira 16 starts wearing at 118 s; its alarm comes at 215 s and
+   * the maintenance at 216 s.
+   */
+  function worn(): World {
+    const w = new World({ seed: 2026, scheduleMaintenance: true });
+    w.setPolicy('heuristic');
+    w.stepMany(104 * 60);
+    applyInput(w, { type: 'inject', kind: 'conveyor', target: 8 });
+    w.stepMany(14 * 60);
+    applyInput(w, { type: 'wear', target: 15 });
+    return w;
+  }
+
+  it('off drops the plans and ignores new alarms; the checkpoint keeps the switch', () => {
+    const w = worn();
+    while (w.schedule.plans.length === 0 && w.time < 260) w.step();
+    expect(w.schedule.closing[15]).toBe(1);
+    applyInput(w, { type: 'maintenance', on: false });
+    expect(w.schedule.enabled).toBe(false);
+    expect(w.schedule.plans).toHaveLength(0);
+    expect(w.schedule.closing[15]).toBe(0);
+    const cp = w.saveState();
+    const restored = new World({ seed: 2026, scheduleMaintenance: true });
+    restored.loadState(cp);
+    expect(restored.schedule.enabled).toBe(false);
+    // Without the schedule, the worn belt breaks.
+    w.stepMany(60 * 60);
+    expect(w.events.some((e) => e.kind === 'failure-start' && e.target === 15)).toBe(true);
+    expect(w.schedule.services).toHaveLength(0);
+  }, 60_000);
+
+  it('a maintenance under way still finishes when the schedule is switched off', () => {
+    const w = worn();
+    while (w.schedule.services.length === 0 && w.time < 260) w.step();
+    expect(w.conveyors[15]!.status).toBe('maintenance');
+    applyInput(w, { type: 'maintenance', on: false });
+    w.stepMany(35 * 60);
+    expect(w.schedule.services).toHaveLength(0);
+    expect(w.conveyors[15]!.status).toBe('ok');
   }, 60_000);
 });

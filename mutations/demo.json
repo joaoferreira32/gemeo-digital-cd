@@ -1,0 +1,190 @@
+{
+  "tests": ["tests/demo.test.ts", "tests/director.test.ts", "tests/schedule.test.ts"],
+  "mutations": [
+    {
+      "name": "a IA também assume no ramo sem IA",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "if (!(x.ai && this.phase === 'no-ai')) rec.input(x.input);",
+          "replace": "rec.input(x.input);"
+        }
+      ]
+    },
+    {
+      "name": "a IA assume desde o início",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    this.rec.input({ type: 'policy', policy: 'static' });",
+          "replace": "    this.rec.input({ type: 'policy', policy: 'heuristic' });"
+        }
+      ]
+    },
+    {
+      "name": "a agenda ligada desde o início",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "return { seed: script.seed, scheduleMaintenance: false };",
+          "replace": "return { seed: script.seed, scheduleMaintenance: true };"
+        }
+      ]
+    },
+    {
+      "name": "a IA assume sem a heurística",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    { at: script.aiAt, input: { type: 'policy', policy: 'heuristic' }, ai: true },\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a IA assume sem a agenda",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    { at: script.aiAt, input: { type: 'maintenance', on: true }, ai: true },\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a volta no tempo não abre um ramo",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    rec.branch();\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "as falhas do roteiro não voltam no ramo sem IA",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    this.next = this.inputs.findIndex((x) => x.tick > at);",
+          "replace": "    this.next = this.inputs.length;"
+        }
+      ]
+    },
+    {
+      "name": "a medida começa no início da execução",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "  const c0 = s.cycleEnd.get(from);",
+          "replace": "  const c0 = s.cycleEnd.get(0);"
+        }
+      ]
+    },
+    {
+      "name": "cada lado não para no fim do roteiro",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    if (this.rec.headTick >= this.endTick) return false;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o cartão troca o sinal da diferença",
+      "edits": [
+        {
+          "file": "src/demo/card.ts",
+          "find": "  return p === 0 ? '0%' : `${p > 0 ? '+' : '−'}${Math.abs(p)}%`;",
+          "replace": "  return p === 0 ? '0%' : `${p > 0 ? '−' : '+'}${Math.abs(p)}%`;"
+        }
+      ]
+    },
+    {
+      "name": "o diretor pede a comparação várias vezes",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "      this.compared = true;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o diretor não volta no tempo",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "      this.stage.send({ type: 'seek', time: this.script.branchAt });\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o diretor não troca a velocidade",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "    if (beat.speed > 0) this.stage.send({ type: 'speed', speed: beat.speed });\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "movimento reduzido ainda gira a câmera",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "shot.theta + (still ? 0 : shot.turn * progress)",
+          "replace": "shot.theta + shot.turn * progress"
+        }
+      ]
+    },
+    {
+      "name": "WebM sem o aviso",
+      "edits": [
+        {
+          "file": "src/demo/capture.ts",
+          "find": "warning: ext === 'webm' ? WEBM_WARNING : null",
+          "replace": "warning: null"
+        }
+      ]
+    },
+    {
+      "name": "desligar a agenda não descarta os planos",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "      this.plans.length = 0;\n      this.closing.fill(0);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a manutenção em andamento não termina com a agenda desligada",
+      "edits": [
+        {
+          "file": "src/sim/world.ts",
+          "find": "if (this.schedule.enabled || this.schedule.services.length) this.schedule.update(now);",
+          "replace": "if (this.schedule.enabled) this.schedule.update(now);"
+        }
+      ]
+    },
+    {
+      "name": "o checkpoint esquece se a agenda está ligada",
+      "edits": [
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "    w.bool(this.on);\n",
+          "replace": ""
+        },
+        {
+          "file": "src/sim/schedule.ts",
+          "find": "    this.on = r.bool();\n",
+          "replace": ""
+        }
+      ]
+    }
+  ]
+}

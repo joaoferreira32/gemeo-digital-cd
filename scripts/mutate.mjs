@@ -85,6 +85,14 @@ try {
     }
   }
   symlinkSync(join(root, 'node_modules'), join(copy, 'node_modules'), 'junction');
+  // The copy is a repository too, with the same files added: a test that asks
+  // git what is ignored or tracked (tests/demand.test.ts) sees what it sees here.
+  for (const args of [
+    ['init', '-q'],
+    ['add', '-A'],
+  ]) {
+    execFileSync('git', ['-c', 'core.autocrlf=false', ...args], { cwd: copy, stdio: 'pipe' });
+  }
   console.log(`cópia temporária: ${copy} (${files.length} arquivos)\n`);
 
   const vitest = (tests, timeout) =>

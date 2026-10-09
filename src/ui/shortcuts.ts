@@ -44,6 +44,8 @@ export type ShortcutAction =
   | 'continue'
   | 'kpi'
   | 'lab'
+  | 'demo'
+  | 'record'
   | 'help'
   | 'close'
   /** Clicks: help text only. */
@@ -173,8 +175,21 @@ export const SHORTCUTS: readonly Shortcut[] = [
     label: [k('B')],
     help: 'laboratório "e se…?": dois cenários nas mesmas seeds, com intervalo de confiança',
   },
+  {
+    action: 'demo',
+    codes: ['KeyV'],
+    label: [k('V')],
+    help: 'rodar a demo de um minuto: quebra, gargalo, desvio, manutenção, volta no tempo',
+  },
+  {
+    action: 'record',
+    codes: ['KeyV'],
+    shift: true,
+    label: [k('⇧'), k('V')],
+    help: 'gravar a demo em vídeo (1920×1080, 60 FPS; MP4 quando o navegador permite)',
+  },
   { action: 'help', codes: ['KeyH'], label: [k('H')], help: 'atalhos e legenda' },
-  { action: 'close', codes: ['Escape'], label: [k('Esc')], help: 'fechar painéis' },
+  { action: 'close', codes: ['Escape'], label: [k('Esc')], help: 'fechar painéis e sair da demo' },
   {
     action: 'pick',
     codes: [],

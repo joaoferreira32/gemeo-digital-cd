@@ -123,7 +123,7 @@ export class MaintenanceSchedule {
 
   constructor(
     private readonly host: ScheduleHost,
-    readonly enabled: boolean,
+    private on: boolean,
     params: Partial<ScheduleParams> = {},
   ) {
     this.params = { ...DEFAULT_SCHEDULE, ...params };
@@ -134,6 +134,24 @@ export class MaintenanceSchedule {
     const n = host.conveyors.length;
     this.closing = new Uint8Array(n);
     this.avoidedAt = new Float64Array(n).fill(-1);
+  }
+
+  /** Plans maintenance on the alarms (config.scheduleMaintenance, or the 'maintenance' input). */
+  get enabled(): boolean {
+    return this.on;
+  }
+
+  /**
+   * Switched during a run (the demo's run without AI): off drops the plans (the
+   * belts being emptied go back to the routing) and ignores new alarms; a
+   * maintenance under way finishes.
+   */
+  setEnabled(on: boolean): void {
+    if (!on) {
+      this.plans.length = 0;
+      this.closing.fill(0);
+    }
+    this.on = on;
   }
 
   /** For the scene: 0 nothing · 1 maintenance planned (emptying) · 2 in maintenance. */
@@ -271,6 +289,7 @@ export class MaintenanceSchedule {
   }
 
   save(w: StateWriter): void {
+    w.bool(this.on);
     w.int(this.nextId);
     w.int(this.avoided);
     w.int(this.unneeded);
@@ -298,6 +317,7 @@ export class MaintenanceSchedule {
   }
 
   load(r: StateReader): void {
+    this.on = r.bool();
     this.nextId = r.int();
     this.avoided = r.int();
     this.unneeded = r.int();

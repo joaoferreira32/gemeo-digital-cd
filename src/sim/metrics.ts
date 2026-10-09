@@ -15,19 +15,22 @@ export class Metrics {
   misrouted = 0;
   private cycleSum = 0;
 
-  // Ring of (delivery time, cycle time) inside the window.
+  // Ring of (delivery time, cycle time, waiting time) inside the window.
   private times: number[] = [];
   private cycles: number[] = [];
+  private waits: number[] = [];
   private head = 0;
   private windowCycleSum = 0;
 
   constructor(readonly windowSeconds: number) {}
 
-  recordDelivery(now: number, cycleTime: number): void {
+  /** A delivery: its cycle time (order to dock) and the part of it spent waiting (packet.ts). */
+  recordDelivery(now: number, cycleTime: number, waitTime: number): void {
     this.delivered++;
     this.cycleSum += cycleTime;
     this.times.push(now);
     this.cycles.push(cycleTime);
+    this.waits.push(waitTime);
     this.windowCycleSum += cycleTime;
   }
 
@@ -45,6 +48,7 @@ export class Metrics {
     if (this.head > 4096 && this.head * 2 > this.times.length) {
       this.times = this.times.slice(this.head);
       this.cycles = this.cycles.slice(this.head);
+      this.waits = this.waits.slice(this.head);
       this.head = 0;
     }
   }
@@ -59,6 +63,7 @@ export class Metrics {
     w.float(this.windowCycleSum);
     w.floats64(this.times.slice(this.head));
     w.floats64(this.cycles.slice(this.head));
+    w.floats64(this.waits.slice(this.head));
   }
 
   load(r: StateReader): void {
@@ -71,6 +76,7 @@ export class Metrics {
     this.windowCycleSum = r.float();
     this.times = r.floats64();
     this.cycles = r.floats64();
+    this.waits = r.floats64();
     this.head = 0;
   }
 
@@ -79,6 +85,12 @@ export class Metrics {
   lastCycles(n: number): number[] {
     const from = Math.max(this.head, this.cycles.length - n);
     return this.cycles.slice(from);
+  }
+
+  /** Waiting times of the last `n` deliveries (still inside the window), oldest first. */
+  lastWaits(n: number): number[] {
+    const from = Math.max(this.head, this.waits.length - n);
+    return this.waits.slice(from);
   }
 
   get meanCycleTime(): number {

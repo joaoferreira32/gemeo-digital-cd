@@ -28,6 +28,11 @@ describe('shortcut table', () => {
     expect(shiftedElsewhere('Equal')).toBe(false);
   });
 
+  it('V runs the demo and ⇧V records it', () => {
+    expect(shortcutFor('KeyV', false)?.action).toBe('demo');
+    expect(shortcutFor('KeyV', true)?.action).toBe('record');
+  });
+
   it('a key with no Shift shortcut answers with or without Shift', () => {
     expect(shortcutFor('Digit5', false)?.action).toBe('failure');
     expect(shortcutFor('Digit5', true)?.action).toBe('failure');

@@ -50,6 +50,9 @@ describe('lab runs', () => {
     expect(m.delivered).toBeGreaterThan(100);
     expect(m.throughput).toBeCloseTo((m.delivered / 180) * 60, 9);
     expect(m.cycleP95).toBeGreaterThan(m.cycleMean);
+    // The waiting is a part of the cycle.
+    expect(m.waitP95).toBeGreaterThan(0);
+    expect(m.waitP95).toBeLessThan(m.cycleP95);
     for (const use of [m.beltUse, m.dockUse, m.robotUse]) {
       expect(use).toBeGreaterThan(0);
       expect(use).toBeLessThanOrEqual(1);
@@ -168,6 +171,7 @@ const fakeMetrics = (seed: number): LabMetrics => ({
   throughput: seed / 2,
   cycleMean: seed / 3,
   cycleP95: seed / 4,
+  waitP95: seed / 5,
   beltUse: 0.5,
   dockUse: 0.5,
   robotUse: 0.5,

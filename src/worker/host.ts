@@ -1,4 +1,5 @@
 import { BottleneckDetector, topologyOf } from '../ai/bottleneck';
+import { DemoRunner } from '../demo/run';
 import { ACTION_LEVELS, observe } from '../ai/env';
 import { eventLogCsv } from '../sim/export';
 import { fingerprint } from '../sim/fingerprint';
@@ -75,9 +76,13 @@ export class SimHost {
   private readonly shadow = new StaticShadow();
   /** Reads the recording: the bottleneck of any moment shown, live or past. */
   private detector: BottleneckDetector;
+  /** The demo being played (its script decides the inputs), or null. */
+  private demo: DemoRunner | null = null;
 
   constructor(
-    private readonly post: (msg: SimMessage, transfer: Transferable[]) => void,
+    // Only array buffers are transferred (the snapshots); typed without the DOM
+    // lib so that Node code (bench/demo-memoria.ts) can host it too.
+    private readonly post: (msg: SimMessage, transfer: ArrayBuffer[]) => void,
     private readonly clock: () => number,
     /** How the routing network is loaded (tests give their own). */
     agentLoader?: AgentLoader,
@@ -166,6 +171,9 @@ export class SimHost {
       case 'release':
         this.writer.recycle(cmd.buffer);
         return;
+      case 'demo':
+        this.handleDemo(cmd.action);
+        break;
     }
     this.dirty = true;
     this.lastStatus = -Infinity;
@@ -193,8 +201,17 @@ export class SimHost {
       this.accumulator = Math.min(this.accumulator + elapsed * this.speed, MAX_BACKLOG + dt);
       while (this.accumulator >= dt) {
         if (this.awaitingAgent()) break;
-        rec.step();
-        this.shadow.step();
+        if (this.demo) {
+          // The demo's inputs come at their ticks; each side stops at the end of the script.
+          if (!this.demo.step()) {
+            this.endDemoSide();
+            this.accumulator = 0;
+            break;
+          }
+        } else {
+          rec.step();
+          this.shadow.step();
+        }
         this.accumulator -= dt;
         steps++;
         if (this.clock() - now > BUDGET_MS) break;
@@ -212,6 +229,7 @@ export class SimHost {
    * recording still says everything.
    */
   private restart(config: Partial<SimConfig> = this.config, keepStress = true): void {
+    this.demo = null;
     const stress = keepStress && this.recorder.live.baseRate === STRESS_ARRIVAL_RATE;
     this.recorder = new Recorder(config);
     this.detector = new BottleneckDetector(topologyOf(this.recorder.live));
@@ -272,8 +290,58 @@ export class SimHost {
   /** The static copy runs while the live run (not a past moment) uses another routing. */
   private syncShadow(): void {
     const rec = this.recorder;
-    if (!rec.viewing && !this.replay && rec.live.policy !== 'static') this.shadow.start(rec.live);
-    else this.shadow.stop();
+    if (!rec.viewing && !this.replay && !this.demo && rec.live.policy !== 'static') {
+      this.shadow.start(rec.live);
+    } else {
+      this.shadow.stop();
+    }
+  }
+
+  /**
+   * The demo: a new recording of its script, already warmed up; then, when
+   * the run with AI has ended and the page shows the moment before the
+   * breakdown, on from there without AI; or back to the ordinary app.
+   */
+  private handleDemo(action: 'start' | 'compare' | 'stop'): void {
+    if (action === 'stop') {
+      this.demo = null;
+      this.syncShadow();
+      return;
+    }
+    if (action === 'start') {
+      this.restart();
+      const demo = new DemoRunner();
+      this.demo = demo;
+      this.recorder = demo.rec;
+      this.detector = new BottleneckDetector(topologyOf(demo.rec.live));
+      this.writer.show(demo.rec.shown);
+      this.accumulator = 0;
+      this.lastEventId = demo.rec.events.at(-1)?.id ?? 0;
+      this.choice = 'heuristic';
+      this.syncShadow();
+      this.postDemo();
+      return;
+    }
+    const demo = this.demo;
+    if (!demo || demo.phase !== 'ai-done') return;
+    this.jump(() => demo.rewind());
+    this.accumulator = 0;
+    this.postDemo();
+  }
+
+  /** The end of a side of the demo: its measures, and the page is told. */
+  private endDemoSide(): void {
+    const demo = this.demo as DemoRunner;
+    if (demo.phase === 'ai') demo.finishAi();
+    else if (demo.phase === 'no-ai') demo.finishNoAi();
+    else return;
+    this.postDemo();
+  }
+
+  private postDemo(): void {
+    const demo = this.demo;
+    if (!demo) return;
+    this.post({ type: 'demo', phase: demo.phase, result: demo.result }, []);
   }
 
   /**

@@ -68,6 +68,8 @@ export interface LabMetrics {
   /** Cycle time (order to dock) of those deliveries, seconds. */
   readonly cycleMean: number;
   readonly cycleP95: number;
+  /** The waiting part of the cycle (src/sim/packet.ts): entry pile, robots, queues on the belts. */
+  readonly waitP95: number;
   /** Share of capacity used after the warm-up: belts (mean of all), docks (mean), robots (busy time). */
   readonly beltUse: number;
   readonly dockUse: number;
@@ -146,8 +148,12 @@ export async function runLab(
   const end = (options.seconds ?? LAB_SECONDS) * perSecond;
   const warmup = LAB_WARMUP * perSecond;
   const cycles: number[] = [];
+  const waits: number[] = [];
   world.onDelivery = (p) => {
-    if (p.origin >= 0 && world.tick > warmup) cycles.push(world.time - p.createdAt);
+    if (p.origin >= 0 && world.tick > warmup) {
+      cycles.push(world.time - p.createdAt);
+      waits.push(p.waited);
+    }
   };
   let exits = world.conveyorExits.slice();
   let deliveries = world.dockDeliveries.slice();
@@ -188,6 +194,7 @@ export async function runLab(
     throughput: (cycles.length / span) * 60,
     cycleMean: cycles.length ? sum / cycles.length : NaN,
     cycleP95: quantile(cycles, 0.95),
+    waitP95: quantile(waits, 0.95),
     beltUse: belt / world.conveyors.length,
     dockUse: dock / world.docks.length,
     robotUse: robotSeconds ? busy / robotSeconds : NaN,

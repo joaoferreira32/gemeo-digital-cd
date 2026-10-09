@@ -6,6 +6,7 @@ import {
   type Scene,
   type WebGLRenderer,
 } from 'three';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -57,15 +58,25 @@ const REWIND_SHADER = {
 };
 
 /**
+ * A light depth of field for the demo's close shots (phase 6): small aperture
+ * and blur cap, so the floor around the subject softens without hiding it.
+ */
+const DOF = { aperture: 0.0016, maxblur: 0.007 };
+
+/**
  * Bloom pipeline. Only HDR-bright pixels (emissive lights, rails, trails,
  * alerts — everything above the threshold) glow. High quality renders with
  * 4× MSAA and full-resolution bloom; medium uses half-resolution bloom; low
- * skips post-processing and renders straight to the screen.
+ * skips post-processing and renders straight to the screen. The depth of
+ * field (off unless asked for) renders the scene's depth once more.
  */
 export class PostFX {
   private composer: EffectComposer | null = null;
   private bloom: UnrealBloomPass | null = null;
   private rewind: ShaderPass | null = null;
+  private bokeh: BokehPass | null = null;
+  /** Distance in focus (m), or null without depth of field. */
+  private focus: number | null = null;
   private target: WebGLRenderTarget | null = null;
   private level: QualityLevel = 'alta';
   private width = 1;
@@ -90,6 +101,10 @@ export class PostFX {
     });
     this.composer = new EffectComposer(this.renderer, this.target);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bokeh = new BokehPass(this.scene, this.camera, { focus: 30, ...DOF });
+    this.bokeh.enabled = false;
+    this.composer.addPass(this.bokeh);
+    this.setFocus(this.focus);
     const scale = level === 'alta' ? 1 : 0.5;
     this.bloom = new UnrealBloomPass(new Vector2(width * scale, height * scale), 0.42, 0.4, 0.9);
     this.composer.addPass(this.bloom);
@@ -107,6 +122,19 @@ export class PostFX {
 
   get bloomEnabled(): boolean {
     return this.composer !== null;
+  }
+
+  /** Depth of field focused at `distance` (m), or off with null; false without post-processing. */
+  setFocus(distance: number | null): boolean {
+    this.focus = distance;
+    const pass = this.bokeh;
+    if (!pass) return false;
+    pass.enabled = distance !== null;
+    if (distance !== null) {
+      const u = pass.uniforms as Record<string, { value: number }>;
+      u.focus!.value = distance;
+    }
+    return true;
   }
 
   /** Strength of the rewind look (0 off … 1 full); false when this quality has no post-processing. */
@@ -133,10 +161,12 @@ export class PostFX {
 
   private disposeComposer(): void {
     this.bloom?.dispose();
+    this.bokeh?.dispose();
     this.rewind?.dispose();
     this.composer?.dispose();
     this.target?.dispose();
     this.bloom = null;
+    this.bokeh = null;
     this.rewind = null;
     this.composer = null;
     this.target = null;

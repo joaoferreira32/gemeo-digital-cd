@@ -111,7 +111,7 @@ export const DEFAULT_CONFIG: SimConfig = {
 const MAX_EVENTS = 300;
 
 /** Bumped whenever the checkpoint layout changes. */
-const CHECKPOINT_VERSION = 7;
+const CHECKPOINT_VERSION = 8;
 const PACKET_STATES: readonly PacketState[] = [
   'backlog',
   'rack',
@@ -406,6 +406,7 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
       w.bool(p.blocked);
       w.float(p.deliveredAt);
       w.int(p.next);
+      w.float(p.waited);
     }
     const ids = (list: readonly Packet[]) => w.ints32(list.map((p) => p.id));
 
@@ -484,6 +485,7 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
         blocked: r.bool(),
         deliveredAt: r.float(),
         next: r.int(),
+        waited: r.float(),
       };
       byId.set(p.id, p);
     }
@@ -594,7 +596,7 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
       p.blocked = false;
       p.deliveredAt = now;
       dock.staged.push(p);
-      this.metrics.recordDelivery(now, now - p.createdAt);
+      this.metrics.recordDelivery(now, now - p.createdAt, p.waited);
       this.metrics.deliveredByRobots++;
       this.onDelivery?.(p, true);
       this.dockDeliveries[dockIndex]!++;
@@ -831,6 +833,11 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
     }
     this.generateOrders(now);
     this.updateLanes();
+    // Waiting for a robot, on either side of a stopped belt (a measure only).
+    for (const lane of this.lanes) {
+      for (const p of lane.pickup) p.waited += dt;
+      for (const p of lane.drop) p.waited += dt;
+    }
     for (const c of this.conveyors) advanceConveyor(c, dt);
     this.serveDocks(now, dt);
     this.transferAtJunctions();
@@ -839,7 +846,8 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
     this.updateTrucks(dt);
     if (second) {
       this.health.update(now, this.conveyors, this.failures.degrading, this.alarm);
-      if (this.schedule.enabled) this.schedule.update(now);
+      // Switched off during a run, a maintenance under way still has to finish.
+      if (this.schedule.enabled || this.schedule.services.length) this.schedule.update(now);
     }
     this.metrics.evict(now);
   }
@@ -923,7 +931,7 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
         p.deliveredAt = now;
         dock.staged.push(p);
         dock.serviceProgress -= 1;
-        this.metrics.recordDelivery(now, now - p.createdAt);
+        this.metrics.recordDelivery(now, now - p.createdAt, p.waited);
         this.onDelivery?.(p, false);
         this.roundRobin[dock.nodeId] = (idx + 1) % inEdges.length;
         break;
@@ -1018,6 +1026,8 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
       const to = outEdge >= 0 ? this.conveyors[outEdge] : undefined;
       if (!to || !canAccept(to)) continue;
       inbound.backlog.shift();
+      // The whole time in the entry pile was waiting (added here: the pile is saved compact).
+      head.waited += this.time - head.createdAt;
       pushPacket(to, head);
     }
   }
@@ -1103,7 +1113,8 @@ function isAsCreated(p: Packet, origin: number): boolean {
     Object.is(p.prevS, 0) &&
     p.blocked &&
     p.deliveredAt === -1 &&
-    p.next === -1
+    p.next === -1 &&
+    Object.is(p.waited, 0)
   );
 }
 

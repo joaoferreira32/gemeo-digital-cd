@@ -173,6 +173,26 @@ feito em cada fase está no README e em `docs/resultados.md`.
   memória nas mesmas condições, e a mensagem na tela diz a origem ("sobra da
   quebra da Esteira 9, consertada há 90 s"). Depois, o plano da Fase 6 em até 15
   linhas, conferido contra o roteiro.
+- **2026-10-07, merges e Fase 6.** PR #9 aprovado; o ganho e o custo da memória
+  ficam no README. Merges na ordem #7 → #8 → #9, sem apagar branches até os três
+  estarem na `main`. O p95 de espera, separado do p95 do ciclo, entra na Fase 6; o
+  balanceamento entre docas fica como "não feito" nas limitações do README. Plano
+  da Fase 6 aprovado (roteiro da demo como dados, com as 9 etapas e teste de
+  determinismo; diretor de câmera com travelling, aproximação e profundidade de
+  campo leve, respeitando prefers-reduced-motion; legendas e cartão final; volta
+  no tempo comparando com o roteamento estático, com o número da tela conferido
+  por teste; botão e tecla "Rodar demo"; gravação nativa em 1080p e 60 FPS; README
+  final com GIF, diagrama, decisões, tabela com IC, limitações e próximos passos),
+  com dois ajustes: o cartão final diz que o ganho exibido é "nesta execução",
+  contra o roteamento estático (sem IA), e aponta para a tabela com IC do README
+  como resultado oficial; a gravação prefere MP4 (H.264) quando o navegador
+  suporta e mostra na tela o formato usado, avisando quando só houver WebM (o
+  LinkedIn pode não aceitar). O Pillow pode ser instalado no `ai/.venv` (para o
+  GIF).
+- **2026-10-09, ordem da demo.** A demo segue a ordem do roteiro: a IA só age
+  depois que a fila vermelha e o gargalo explicado aparecem na tela (problema,
+  diagnóstico e solução), e o teste da demo confere essa ordem. Sobre o "94 de
+  94" citado: vale o registrado (95 de 95 na Fase 5), nada a corrigir.
 
 ## Apêndice: a primeira versão das fases 2 a 4
 

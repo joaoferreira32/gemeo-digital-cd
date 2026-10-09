@@ -1296,6 +1296,174 @@ causas por contrafactual (9 de 9) continuam pegas. A primeira versão dos testes
 não cobria três vínculos (a esteira antes, as esteiras de uma doca, as escolhas
 de rota); os testes vieram antes de rodar as mutações.
 
+## Fase 6 — demo, gravação e entrega final
+
+Plano aprovado em 2026-10-07 com dois ajustes (o cartão final diz "nesta
+execução", contra o roteamento estático sem IA, e aponta a tabela com IC como
+resultado oficial; a gravação prefere MP4 com H.264 e mostra o formato, avisando
+quando só houver WebM) e com o p95 de espera, que o roteiro da Fase 5 pedia, como
+item desta fase.
+
+### p95 de espera, separado do p95 do ciclo
+
+Cada pacote passou a contar o tempo em que fica parado: na pilha de entrada (somado
+quando entra na primeira esteira, porque a pilha é salva de forma compacta), na
+prateleira até o robô carregar, num buffer do desvio por robôs, e numa esteira o
+tempo perdido em relação a andar na velocidade dela (todo o tempo, se ela está
+parada). O transporte pelo robô conta como movimento. É só uma medida: nada na
+simulação lê o campo, e as impressões digitais de referência (`tests/golden.test.ts`)
+não mudaram; o checkpoint passou à versão 8 para carregá-lo.
+
+Seed 11, 300 s (pacotes de entrada, a partir de 60 s):
+
+| Cenário                | Ciclo médio | Espera média  | p95 do ciclo | p95 de espera |
+| ---------------------- | ----------- | ------------- | ------------ | ------------- |
+| Normal (3,6 pedidos/s) | 31,9 s      | 1,5 s (5%)    | 37,3 s       | 4,4 s         |
+| Quase vazio (0,3/s)    | 30,9 s      | 0,2 s (1%)    | 35,2 s       | 0,5 s         |
+| Esteira 9 quebrada     | 145,3 s     | 100,6 s (69%) | 229,7 s      | 185,9 s       |
+
+Nenhuma entrega com espera fora de [0, ciclo]. Pedidos de prateleira esperam cerca
+de 30% do ciclo (o robô precisa ir até a prateleira). Em operação normal o ciclo é
+quase todo deslocamento, e é por isso que a espera aparece à parte: no painel
+<kbd>K</kbd> (média e p95) e no laboratório (p95, na tabela e no gráfico).
+
+### A demo: roteiro e escolha da seed
+
+O roteiro (`src/demo/run.ts`) roda no worker, com as entradas em ticks fixos: a
+Esteira 9 (B3→B4) quebra aos 104 s e a Esteira 16 (Q2→Q1, o único caminho até a
+Doca 1) começa a se desgastar aos 118 s. A execução começa com o roteamento
+estático e sem agenda de manutenção; **a IA assume aos 146 s** (a heurística de
+roteamento e a agenda, por uma entrada nova, `maintenance`), depois que a fila e o
+gargalo explicado estiveram na tela: problema, diagnóstico e solução, na ordem do
+roteiro. Depois do fim (320 s), a gravação volta a 103 s e segue sem IA (a IA
+nunca assume), com as mesmas falhas do roteiro. As duas execuções são comparadas
+de 104 s a 320 s; até 146 s elas são idênticas, bit a bit.
+
+A primeira versão desta fase punha a IA desde o início, e o desvio aparecia logo
+depois da quebra, antes da fila e do gargalo. Decisão de 2026-10-09: seguir a
+ordem do roteiro. Com isso o resultado do cartão mudou (abaixo): a IA age 42 s
+depois da quebra, e não desde antes dela.
+
+**A seed foi escolhida pelo roteiro, não pelo ganho:** com o desgaste fixado na
+Esteira 16, a primeira da lista [2026, 7, 11, 42, 101, 333] em que (1) a quebra da
+Esteira 9 termina antes do alarme do desgaste, (2) a manutenção evita a falha e
+(3) sem IA a esteira desgastada quebra. Conferido de novo com a ordem nova (IA aos
+146 s): a 2026, primeira da lista, continua cumprindo as três (quebra até 189,8 s,
+alarme aos 215 s, falha evitada aos 216 s; sem IA, quebra aos 222,8 s). O ganho só
+foi calculado depois da escolha.
+
+O que acontece, na execução com IA: aos 104 s a Esteira 9 quebra e os robôs
+assumem o desvio por fora dela (a frota faz isso com ou sem IA); com o roteamento
+estático a fila vai de 35 pacotes (110 s) a 198 (146 s); o detector aponta a
+Esteira 9 com a própria quebra como causa desde 105 s e em mais de 90% dos
+segundos da etapa do gargalo (128 a 146 s); aos 146 s a IA assume, e de 146 a 190 s
+a Esteira 12 (B2→A2) leva 4 pacotes da linha B para a linha A (0 sem IA); aos
+215 s o motor da Esteira 16 dispara o alarme, a manutenção começa 1 s depois e a
+falha é evitada ("a quebra viria em 7 s"). Sem IA, a Esteira 16 quebra aos 222,8 s
+e volta aos 291,3 s. `tests/demo.test.ts` confere cada uma dessas frases e a ordem
+das etapas.
+
+**Resultado nesta execução** (de 104 s a 320 s; o mesmo em qualquer máquina):
+
+| Medida                           | Com IA | Sem IA | Diferença |
+| -------------------------------- | ------ | ------ | --------- |
+| Entregas                         | 730    | 485    | +51%      |
+| p95 do ciclo                     | 135 s  | 180 s  | −25%      |
+| p95 de espera                    | 89 s   | 133 s  | −33%      |
+| Pior fila                        | 403    | 548    | −26%      |
+| Quebras de esteira               | 1      | 2      |           |
+| Quebras evitadas pela manutenção | 1      | 0      |           |
+
+É uma execução só, com uma seed escolhida para a história. O resultado oficial
+continua sendo o das seeds de validação e de teste, com intervalo de confiança. Na
+primeira versão (IA desde o início) eram 783 × 493 entregas e p95 do ciclo de
+134 × 184 s.
+
+**Como o número do cartão é conferido:** o worker e o teste usam a mesma classe
+(`DemoRunner`); um teste roda a demo pelo host do worker, como a página faz
+(velocidade, busca no passado, comparação), e confere que o resultado enviado à
+página é idêntico ao calculado de uma vez; outro confere a medida contra a regra do
+painel <kbd>K</kbd> sobre o mesmo trecho.
+
+### A demo no navegador
+
+Chromium, build de produção, janela de 1600×900: as etapas aconteceram nos tempos
+simulados do roteiro e na ordem dele (falha, fila, gargalo, desvio), 49,7 s até o
+cartão nas 6 rodadas (49,7 a 49,8 s), que fica 8 s (cerca de 58 s no total), sem
+erros de console; <kbd>Esc</kbd> volta ao app. Com `prefers-reduced-motion`, a
+mesma demo com cortes secos: 49,7 s até o cartão, também sem erros. (A primeira
+versão, com a IA desde o início, levava 48 s até o cartão.) A profundidade de campo custa
+1,4 ms por quadro (4,53 → 5,93 ms com a GPU sincronizada a cada quadro), dentro dos
+16,7 ms de 60 FPS.
+
+### A gravação
+
+<kbd>Shift</kbd> + <kbd>V</kbd> no Chromium (RTX 5060 Ti): a tela mostra "Gravando
+em MP4 (H.264), 1920×1080, 60 FPS" durante a gravação, e o arquivo é baixado no fim.
+
+| Gravação                    | Tamanho  | Quadros desenhados | Quadros no arquivo | Duração | FPS do arquivo | Maior intervalo    |
+| --------------------------- | -------- | ------------------ | ------------------ | ------- | -------------- | ------------------ |
+| 1 (primeira versão da demo) | 100,6 MB | 3.319              | 3.090              | 55,7 s  | 55,5           | 468 ms (aos 0,2 s) |
+| 2 (primeira versão da demo) | 107,0 MB | 3.318              | 3.286              | 55,8 s  | 58,9           | 486 ms (aos 0,2 s) |
+| 3 (demo atual, 2026-10-09)  | 101,8 MB | 3.447              | 3.123              | 57,9 s  | 54,0           | 482 ms (aos 0,2 s) |
+
+Os quadros no arquivo são contados nas caixas do MP4 (`src/demo/mp4.ts`: `tkhd`,
+`mdhd`, `hdlr`, `trex`, `tfhd`, `trun` e `stts`), sem decodificar. Nas gravações 2
+e 3, a contagem da página e a de um leitor independente em Python deram o mesmo
+resultado (3.286 quadros em 55,81 s, maior intervalo 486,2 ms; 3.123 em 57,86 s,
+482,2 ms). A mediana do
+intervalo entre quadros é 16,6 ms (60 FPS); a diferença está na parada do
+primeiro segundo, quando o codificador começa, e em alguns quadros que o
+codificador junta. Duas tentativas anteriores, descartadas:
+
+- **16 Mbit/s** deu 209 MB numa gravação; com 8 Mbit/s, 100,6 MB.
+- **Contar tocando o vídeo** (`requestVideoFrameCallback`) dependia de quanto a
+  máquina decodificava naquele momento: o mesmo arquivo deu 58,7 e 42,8 FPS.
+
+### Memória ao repetir a demo
+
+A demo cria uma gravação nova, volta no tempo, abre um ramo e devolve o app ao
+estado normal; repetida, não pode deixar nada para trás.
+
+- **Worker** (`npm run bench:demo-memoria`: o `SimHost`, o mesmo código do
+  worker, no Node com GC forçado; 15 demos completas, cada uma seguida da volta
+  ao app): heap 12,2 MB antes; 11,1 MB depois da 1ª demo e 11,8 MB depois da 15ª
+  (0,05 MB por demo, parado em 11,8 MB nas 5 últimas). Uma gravação da demo retida
+  por engano somaria mais de 1 MB por demo (uma hora simulada ocupa cerca de
+  15 MB).
+- **Página** (`scripts/demo_memoria.py`, Chromium, 6 demos seguidas): geometrias
+  104, texturas 61 e programas 28 antes e depois de todas; heap do V8 7,8 MB antes
+  e 8,6 / 8,9 / 9,0 / 9,3 / 9,1 / 9,4 MB depois de cada demo. Um heap snapshot
+  depois da 2ª e outro depois da 6ª demo diferem em 0,5 MB, quase todo código
+  compilado pelo JIT (`InstructionStream`, `TrustedByteArray`, `FeedbackVector`);
+  os objetos do app variam cerca de 0,01 MB.
+
+**A primeira leitura estava errada.** Com `performance.memory` depois de um
+`window.gc()` chamado de dentro da página, o heap ia de 11,4 MB a 33,5 MB em duas
+demos e depois subia 0,1 MB por demo, e parecia um vazamento de 22 MB. Na mesma
+sessão, o heap do V8 depois do `window.gc()` ficava de 6,3 a 8,3 MB acima do
+medido depois do GC do DevTools (`HeapProfiler.collectGarbage`, rodado de fora de
+qualquer JavaScript), que recolhe esse lixo; um heap snapshot depois de duas
+demos tinha só 1,5 MB de objetos vivos a mais que o app parado. O script mostra as
+duas leituras lado a lado.
+
+### Custo da medida de espera no motor
+
+A primeira versão somava o tempo perdido de todo pacote em cada esteira, a cada
+passo, com uma divisão: o motor sem robôs ficou cerca de 25% mais lento. A versão
+final só soma para o pacote que não andou livre (o que andou na velocidade da
+esteira não perde nada) e multiplica pelo inverso da velocidade. Medida A/B na
+mesma máquina, 5 repetições cada (`npm run bench:motor`):
+
+| Medida              | Antes da espera | Com a espera | Diferença |
+| ------------------- | --------------- | ------------ | --------- |
+| Motor sem robôs     | 1.061.458       | 1.032.482    | −2,7%     |
+| Motor com 40 robôs  | 4.202           | 4.226        | +0,6%     |
+| Teste de carga + 40 | 4.128           | 4.097        | −0,8%     |
+
+As amostras das duas versões se sobrepõem (sem robôs: 1.023.303 a 1.080.328 antes,
+960.496 a 1.050.048 depois), e o gate do CI é de 10%.
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |
@@ -1334,6 +1502,7 @@ npm run bench:motor  # benchmark do motor
 npm run bench:mapf   # planejamento e episódios sem caminho
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e seek (cerca de 3 min)
+npm run bench:demo-memoria  # memória do worker ao repetir a demo (15 vezes)
 npm run bench:rotas  # roteamento: estática × heurística (--rl <modelo> inclui o agente, --teacher o professor)
 npm run bench:manutencao  # detector de manutenção preditiva (--calibrate: grade de k e h)
 npm run bench:agenda      # agenda de manutenção com × sem, seed a seed (--calibrate: prazo no p10 e no p20)
@@ -1347,5 +1516,7 @@ npm run dev          # depois, no console do navegador: __gemeo.benchHeat()
 ```
 
 As medições de interface (tarefas longas, FPS, memória) usaram o Chromium
-via Playwright; `?sim=main` liga a simulação na thread da página para a
+via Playwright (as da Fase 6 estão versionadas: `scripts/demo_memoria.py`, a
+memória da página ao repetir a demo, e `scripts/demo_frames.py`, os quadros do
+GIF); `?sim=main` liga a simulação na thread da página para a
 comparação.

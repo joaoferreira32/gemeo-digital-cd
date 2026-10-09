@@ -67,13 +67,18 @@ export function popHead(c: Conveyor): Packet {
 /** Moves every packet forward by one time step, respecting the end of the lane and spacing. */
 export function advanceConveyor(c: Conveyor, dt: number): void {
   const v = c.status === 'ok' ? c.speed : 0;
+  const perMeter = v > 0 ? 1 / v : 0;
   let limit = c.length;
   for (const p of c.packets) {
     p.prevS = p.s;
     const wanted = p.s + v * dt;
     const next = Math.max(p.s, Math.min(wanted, limit));
     // Blocked = waiting: the belt is stopped or the packet could not travel the full step.
-    p.blocked = v === 0 || next < wanted - 1e-9;
+    const blocked = v === 0 || next < wanted - 1e-9;
+    p.blocked = blocked;
+    // The time lost against moving at the belt's speed (all of it while the belt is
+    // stopped). A packet that moved the full step lost none: only blocked ones add.
+    if (blocked) p.waited += v > 0 ? dt - (next - p.s) * perMeter : dt;
     p.s = next;
     limit = next - c.spacing;
   }

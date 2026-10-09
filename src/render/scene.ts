@@ -157,7 +157,13 @@ export class SceneView {
     this.heat.setLayer(layer);
   }
 
-  applyQuality(level: QualityLevel, viewportWidth: number, viewportHeight: number): void {
+  /** `pixelRatio` fixes it (the video recording draws exactly 1920×1080); otherwise the screen's, capped. */
+  applyQuality(
+    level: QualityLevel,
+    viewportWidth: number,
+    viewportHeight: number,
+    pixelRatio?: number,
+  ): void {
     const q = QUALITY_SETTINGS[level];
     this.warehouse.reflector.visible = q.reflection;
     const floorMat = this.warehouse.floor.material;
@@ -174,7 +180,9 @@ export class SceneView {
     this.trailsOn = q.trails;
     if (!q.trails) this.trails.reset();
     this.trails.mesh.visible = q.trails;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxPixelRatio));
+    this.renderer.setPixelRatio(
+      pixelRatio ?? Math.min(window.devicePixelRatio || 1, q.maxPixelRatio),
+    );
     this.renderer.setSize(viewportWidth, viewportHeight, false);
     this.orbit.resize(viewportWidth, viewportHeight);
     this.post.setQuality(level, viewportWidth, viewportHeight);
@@ -272,6 +280,11 @@ export class SceneView {
     const css = !shader && this.rewindAmount > 0.01 ? `grayscale(${0.8 * this.rewindAmount})` : '';
     if (this.canvas.style.filter !== css) this.canvas.style.filter = css;
     this.post.render();
+  }
+
+  /** Depth of field focused at `distance` from the camera (m), or off (null). */
+  setFocus(distance: number | null): void {
+    this.post.setFocus(distance);
   }
 
   /** How strongly the past look is applied right now (0 … 1), for tests. */
