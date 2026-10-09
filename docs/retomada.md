@@ -1,56 +1,89 @@
 # Retomada da Fase 6 (demo, gravação e entrega final)
 
-Parado em 2026-10-08, a pedido (máquina desligada). Branch `fase-6`, enviado ao
-GitHub como backup, **ainda sem PR**. Empilhado sobre `gargalo-memoria` (PR #9);
-os PRs #7, #8 e #9 continuam abertos.
+Parado em 2026-10-09, a pedido (máquina desligada), pela segunda vez. Branch
+`fase-6`, enviado ao GitHub como backup, **ainda sem PR**. Empilhado sobre
+`gargalo-memoria` (PR #9); os PRs #7, #8 e #9 continuam abertos.
 
 ## Onde parou
 
-- **Pronto e commitado:** p95 de espera (motor, painel K, laboratório, bench,
-  cartão); agenda de manutenção ligável por entrada; demo determinística (tecla
-  V) com diretor de câmera e cartão "Resultado nesta execução"; gravação MP4
-  (H.264) com o formato na tela, aviso de WebM e contagem de quadros lida do
-  próprio MP4 (`src/demo/mp4.ts`); GIF do README e os dois scripts; README final
-  (diagrama, decisões, limitações, próximos passos, tabela da Fase 6);
-  `docs/resultados.md` da Fase 6; correção do `npm run mutate` (a cópia
-  temporária agora é um repositório git).
-- **Mutação completa (2026-10-08):** 138 de 138 em 14 especificações, mais 1
-  equivalente. Antes da correção, a `demanda.json` não rodava (linha de base
-  falhava sem git na cópia) e o comando saía com código 1.
-- **Teste de vazamento: pendente.** Uma medida foi feita (`demo_leak.py` no
-  scratchpad: 3 demos seguidas e 1 gravada, GC forçado antes de cada leitura):
-  geometrias 104, texturas 61 e programas 28 **constantes**; heap da página
-  16,3 → 19,1 → 33,4 → 33,4 → 33,6 MB. O salto entre a 1ª e a 2ª demo e a
-  estabilidade depois não bastam para concluir: repetir com mais rodadas (por
-  exemplo 6) e ver se o heap estabiliza; o worker não foi medido.
+- **Pronto, testado e commitado:**
+  - a parada anterior (2026-10-08): p95 de espera, agenda ligável, demo, diretor
+    de câmera, gravação MP4 com contagem de quadros, README final, correção do
+    `npm run mutate`;
+  - **a ordem da demo segue o roteiro** (decisão de 2026-10-09, commit
+    `ce7192f`): roteamento estático e sem agenda até 146 s; a IA (heurística e
+    agenda juntas) só assume depois da fila (110–128 s) e do gargalo explicado
+    (128–146 s). Até 146 s as execuções com e sem IA são idênticas bit a bit
+    (teste). A volta no tempo abre o ramo com `rec.branch()`; as entradas da IA
+    são marcadas e o lado sem IA não as recebe. A seed 2026 continua cumprindo os
+    três critérios (quebra até 189,8 s, alarme 215 s, evitada 216 s; sem IA, a
+    Esteira 16 quebra aos 222,8 s). Cartão novo: entregas 730 × 485 (+51%), p95 do
+    ciclo 135 × 180 s (−25%), p95 de espera 89 × 133 s (−33%), pior fila 403 × 548
+    (−26%), quebras 1 × 2, evitadas 1 × 0. 302 testes, lint e tipos ok;
+    mutações da demo 18 de 18 (6 novas). Total esperado da rodada completa:
+    142 de 142, mais 1 equivalente (não rodada inteira depois da mudança);
+  - entrada de 2026-10-09 em `docs/roteiro.md`.
+- **No disco, NÃO commitado (de propósito, incompleto):** `README.md` (lista das
+  etapas e texto alternativo do GIF na ordem nova) e `docs/resultados.md` (seção
+  "A demo: roteiro e escolha da seed" com a ordem nova e o resultado novo). O que
+  está escrito ali foi conferido; falta o resto da lista abaixo. Conferir com
+  `git diff` ao retomar.
+- **Medidas feitas nesta sessão (ainda fora dos documentos):**
+  - demo no navegador (Chromium, build de produção): 49,7 s até o cartão nas 6
+    rodadas (49,7–49,8 s), mais 8 s de cartão; sem erros de console;
+  - gravação da demo nova: MP4 (H.264) 1920×1080, 101,8 MB, 3.123 quadros em
+    57,9 s (54,0 FPS), maior intervalo 482 ms aos 0,2 s, 3.447 quadros desenhados;
+    o leitor em Python (`mp4frames.py`) conta o mesmo;
+  - vazamento, worker (o `SimHost` no Node, `--expose-gc`, 15 ciclos de demo
+    completa + volta ao app): heap 12,6 MB antes; 11,3 MB depois da 1ª demo e
+    12,1 MB depois da 15ª (cerca de 0,05 MB por ciclo nos últimos 10). Uma gravação
+    da demo retida seria mais de 1 MB por ciclo (estimativa pelos 15,5 MB por hora
+    simulada da Fase 3);
+  - vazamento, página (6 demos + 1 gravada): geometrias 104, texturas 61 e
+    programas 28 **constantes**; heap 11,4 → 20,2 → 33,5 → 33,5 → 33,6 → 33,7 →
+    33,8 MB (34,4 depois da gravada). **Com o app rodando sem demo**, o heap vai e
+    volta (11,4 → 22,3 → 11,5 → 11,7 → 11,7 MB em 200 s): os cerca de 22 MB que
+    ficam depois da 2ª demo **não** são explicados pelo app parado. Crescem só
+    0,1 MB por demo depois disso. **Pendente:** achar o que segura esses 22 MB
+    (comparar um heap snapshot do app parado com um depois de 2 demos) antes de
+    escrever a conclusão do teste de vazamento.
 
 ## O que falta para abrir o PR da Fase 6
 
-1. Conferir o estado ao retomar: `git status`, `git diff`, `git stash list`,
+1. Ao retomar: `git status`, `git diff` (as duas edições acima), `git stash list`,
    `git worktree list`, nenhum processo antigo (porta 4173).
-2. Terminar o teste de vazamento (acima) e pôr o resultado no README (tabela da
-   Fase 6), em `docs/resultados.md` e no PR.
-3. `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
-4. Push do `fase-6` (a trava de pre-push confere autor e committer noreply).
-5. Abrir o PR com base `gargalo-memoria` (rascunho pronto no scratchpad da sessão,
-   `pr-fase6.md`, com a conferência item a item contra o roteiro); esperar o CI.
+2. Vazamento da página: identificar os ~22 MB (acima) e, se for retenção da
+   demo, corrigir e medir de novo; depois escrever o resultado (worker e página)
+   no README, em `docs/resultados.md` e no PR.
+3. Terminar a documentação: tabela da Fase 6 do README (cartão novo; 49,7 s +
+   8 s; gravação nova; mutação 142 de 142 em 14 especificações, mais 1
+   equivalente, 34 novas: espera 9, demo 18, vídeo 7; vazamento), a limitação de
+   FPS do README, e as seções do navegador e da gravação em `docs/resultados.md`
+   (os números de 2026-10-08 ficam como os da primeira versão da demo).
+4. Refazer o GIF (o atual mostra a ordem antiga e o cartão antigo): `npm run
+build`, `npx vite preview`, `python scripts/demo_frames.py
+http://localhost:4173/ quadros` (Playwright) e `ai/.venv/Scripts/python
+scripts/demo_gif.py quadros docs/demo.gif`.
+5. `npm run mutate` completo (esperado 142 de 142, mais 1 equivalente), `npm run
+lint`, `npx tsc --noEmit`, `npm test`, `npm run build`.
+6. Commit, push do `fase-6` (a trava confere autor e committer noreply) e PR com
+   base `gargalo-memoria`: descrição com a conferência item a item contra o
+   roteiro e a ordem exata dos merges; esperar o CI.
 
 ## Pedidos para o relatório final
 
-- **Ordem dos merges:** #7 → #8 → #9 → Fase 6; ajustar a base para a `main`
+- **Ordem exata dos merges:** #7 → #8 → #9 → Fase 6; ajustar a base para a `main`
   quando necessário ("Update branch" se a proteção pedir); não apagar branches
   até os três estarem na `main`.
-- **Cartão "nesta execução":** confirmar que diz "Resultado nesta execução",
-  "Com IA × sem IA (roteamento estático, sem manutenção preditiva)" e aponta a
-  tabela com IC do README como resultado oficial.
+- **Cartão "nesta execução":** "Resultado nesta execução", "Com IA × sem IA
+  (roteamento estático, sem manutenção preditiva)" e a nota apontando a tabela com
+  IC do README como resultado oficial.
 - **Formato do vídeo:** MP4 (H.264) 1920×1080 no Chromium, formato mostrado na
-  tela; aviso quando só houver WebM. Medido: 55,5 e 58,9 FPS no arquivo, parada de
-  ~0,5 s no primeiro segundo.
-- **Conferência do "94 de 94":** esse número não aparece no repositório. Os
-  registrados são 95 de 95 (Fase 5, README) e 138 de 138 mais 1 equivalente
-  (rodada completa de 2026-10-08). Descobrir de onde veio o 94 antes de citar.
-- Também relatar: a ordem das etapas da demo difere do roteiro num ponto (o
-  reroteamento vem logo depois da quebra, antes da fila e do gargalo).
+  tela; aviso quando só houver WebM.
+- **Ordem da demo:** agora segue o roteiro (problema, diagnóstico, solução),
+  conferida por teste.
+- **"94 de 94":** decidido em 2026-10-09: vale o registrado (95 de 95 na Fase 5),
+  nada a corrigir.
 
 ---
 

@@ -189,6 +189,10 @@ feito em cada fase está no README e em `docs/resultados.md`.
   suporta e mostra na tela o formato usado, avisando quando só houver WebM (o
   LinkedIn pode não aceitar). O Pillow pode ser instalado no `ai/.venv` (para o
   GIF).
+- **2026-10-09, ordem da demo.** A demo segue a ordem do roteiro: a IA só age
+  depois que a fila vermelha e o gargalo explicado aparecem na tela (problema,
+  diagnóstico e solução), e o teste da demo confere essa ordem. Sobre o "94 de
+  94" citado: vale o registrado (95 de 95 na Fase 5), nada a corrigir.
 
 ## Apêndice: a primeira versão das fases 2 a 4
 
