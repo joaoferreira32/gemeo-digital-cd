@@ -121,6 +121,15 @@
         >
           <kbd>K</kbd> Operação
         </button>
+        <button
+          type="button"
+          id="btn-lab"
+          aria-keyshortcuts="B"
+          aria-expanded="false"
+          aria-controls="lab-panel"
+        >
+          <kbd>B</kbd> Laboratório
+        </button>
         <button type="button" id="btn-quality" aria-keyshortcuts="G"><kbd>G</kbd> Qualidade</button>
         <button
           type="button"
@@ -186,6 +195,13 @@
     <aside id="kpi-panel" class="hud hud--kpi" aria-label="Operação: indicadores" hidden></aside>
 
     <aside
+      id="lab-panel"
+      class="hud hud--lab"
+      aria-label="Laboratório de cenários: e se…?"
+      hidden
+    ></aside>
+
+    <aside
       id="history-panel"
       class="hud hud--history"
       aria-label="Histórico do item selecionado"
@@ -227,63 +243,8 @@
 
     <section id="help" class="hud hud--help" aria-label="Atalhos e legenda" hidden>
       <h2>Atalhos</h2>
-      <dl>
-        <dt>Arrastar</dt>
-        <dd>girar a câmera</dd>
-        <dt>Botão direito / ⇧ + arrastar</dt>
-        <dd>mover (pan)</dd>
-        <dt>Roda do mouse</dt>
-        <dd>zoom em direção ao cursor</dd>
-        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / setas</dt>
-        <dd>mover</dd>
-        <dt><kbd>Q</kbd><kbd>E</kbd></dt>
-        <dd>girar</dd>
-        <dt><kbd>R</kbd><kbd>F</kbd></dt>
-        <dd>inclinar</dd>
-        <dt><kbd>+</kbd><kbd>−</kbd></dt>
-        <dd>zoom</dd>
-        <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></dt>
-        <dd>câmeras aérea, chão e seguir robô</dd>
-        <dt><kbd>N</kbd></dt>
-        <dd>seguir o próximo robô</dd>
-        <dt><kbd>Espaço</kbd></dt>
-        <dd>pausar / continuar</dd>
-        <dt><kbd>,</kbd><kbd>.</kbd></dt>
-        <dd>velocidade 1×, 4× ou 16×</dd>
-        <dt><kbd>5</kbd>…<kbd>8</kbd></dt>
-        <dd>falhas: esteira quebrada, pico de pedidos, robô com defeito, doca bloqueada</dd>
-        <dt><kbd>9</kbd></dt>
-        <dd>falhas automáticas</dd>
-        <dt><kbd>0</kbd></dt>
-        <dd>
-          desgaste numa esteira: ela quebraria em 1 a 3 minutos; o halo do motor e o alarme de
-          manutenção avisam antes (sinais simulados), e a IA agenda a manutenção para evitar a
-          quebra
-        </dd>
-        <dt><kbd>P</kbd></dt>
-        <dd>
-          roteamento: heurística (a política oficial, ativa ao abrir), IA treinada (PPO) ou
-          estático; o painel <kbd>K</kbd> compara com o estático ao vivo
-        </dd>
-        <dt><kbd>M</kbd></dt>
-        <dd>mapa de calor: ocupação, tempo de espera, tráfego de robôs</dd>
-        <dt><kbd>T</kbd></dt>
-        <dd>teste de carga (taxa de pedidos alta)</dd>
-        <dt><kbd>G</kbd></dt>
-        <dd>trocar qualidade gráfica (desliga o modo automático)</dd>
-        <dt><kbd>⇧</kbd><kbd>R</kbd></dt>
-        <dd>reiniciar com a mesma seed</dd>
-        <dt><kbd>[</kbd><kbd>]</kbd></dt>
-        <dd>voltar / avançar 10 s na gravação (a simulação ao vivo espera)</dd>
-        <dt><kbd>L</kbd></dt>
-        <dd>voltar ao vivo</dd>
-        <dt><kbd>C</kbd> ou <kbd>Espaço</kbd> no passado</dt>
-        <dd>continuar daqui (o que vinha depois é descartado)</dd>
-        <dt><kbd>K</kbd></dt>
-        <dd>painel de operação: vazão, tempo de ciclo, utilização</dd>
-        <dt>Clique na cena</dt>
-        <dd>histórico do robô, da esteira ou da doca</dd>
-      </dl>
+      <!-- Drawn by the page from the shortcut table (src/ui/shortcuts.ts). -->
+      <dl id="help-keys"></dl>
       <h2>Legenda</h2>
       <ul class="legend">
         <li>

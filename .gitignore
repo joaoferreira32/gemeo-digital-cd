@@ -11,3 +11,11 @@ coverage/
 ai/.venv/
 ai/runs/
 __pycache__/
+
+# Olist dataset (phase 5): never in the repository; only the derived profile
+# (public/demanda-olist.json, CC BY-NC-SA 4.0) is.
+# Any case: a clone on Linux or macOS tells OLIST.CSV from olist.csv.
+*[oO][lL][iI][sS][tT]*.[cC][sS][vV]
+*[oO][lL][iI][sS][tT]*.[zZ][iI][pP]
+[bB]razilian-[eE]commerce*
+dados-olist/

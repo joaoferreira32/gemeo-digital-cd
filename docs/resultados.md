@@ -155,7 +155,7 @@ Textura de 272 × 160 texels (4 por metro).
 
 ### Benchmark do motor
 
-`npm run bench` (Node, aquecimento descartado, mediana de 5).
+`npm run bench:motor` (Node, aquecimento descartado, mediana de 5).
 
 | Caso                      | Máquina local                      | CI, 5 execuções (média e variação)      |
 | ------------------------- | ---------------------------------- | --------------------------------------- |
@@ -278,7 +278,7 @@ rodízio das junções) foram todos pegos pelos testes.
 | Heap da simulação, mais 60 viagens    | —                           | +0,03 MB                    |
 | Bytes da gravação (teste, 50 viagens) | iguais                      | iguais; só 2 mundos em uso  |
 
-**Custo de gravar no motor ao vivo** (`npm run bench`, mediana de 5): 4.231
+**Custo de gravar no motor ao vivo** (`npm run bench:motor`, mediana de 5): 4.231
 passos/s rodando pela gravação contra 4.210 passos/s do motor sozinho, dentro do
 ruído entre repetições (1,1% a 1,8%).
 
@@ -668,7 +668,7 @@ rodada 2 carrega em 0,3 s (servidor local) e decide em 0,8 ms em média no worke
 motor indo de ciano a vermelho; nenhum erro de console e nenhuma requisição com
 erro.
 
-**Benchmark do motor** (`npm run bench`, mesma máquina): 4.187 passos/s com 40
+**Benchmark do motor** (`npm run bench:motor`, mesma máquina): 4.187 passos/s com 40
 robôs (4.231 na Fase 3), dentro do ruído; sem robôs, 1,10 milhão de passos/s.
 
 **O gate do CI pegou uma regressão real.** No PR, o motor sem robôs ficou 12,0%
@@ -944,6 +944,211 @@ agenda desligada, o motor das fases anteriores não mudou um bit.
 
 ---
 
+## Fase 5 — laboratório de cenários e demanda real
+
+### Laboratório: tempo no navegador
+
+Chromium, 16 núcleos lógicos, build de produção, 10 seeds × 2 cenários = 20
+rodadas de um dia simulado (1.440 s cada), demanda constante × Olist, heurística:
+
+| Workers | Tempo  | Aceleração |
+| ------- | ------ | ---------- |
+| 1       | 84,1 s | 1,0×       |
+| 2       | 44,6 s | 1,9×       |
+| 4       | 25,0 s | 3,4×       |
+| 8       | 19,0 s | 4,4×       |
+
+O automático usa 8 (os núcleos menos um, até 8); numa segunda rodada com ele,
+17,9 s. Os números de cada rodada são os mesmos com qualquer quantidade de
+workers e no Node (`npm run bench:lab` dá a mesma tabela, casa por casa): a seed
+fixa tudo, o worker só escolhe onde roda. De 4 para 8 workers o ganho cresce
+menos (3,4× → 4,4×). As rodadas não têm o mesmo tamanho: no Node, uma rodada com
+demanda constante levou 6,7 a 8,8 s e uma da Olist, 2,4 a 3,4 s (seeds 50.001 a
+50.003). Com 20 rodadas em 8 workers, o fim provavelmente espera as mais longas,
+mas isso não foi medido à parte.
+
+**A cena enquanto o laboratório roda** (mesmo navegador, 8 workers, quadros
+contados com `requestAnimationFrame` em 5 s): 60,2 FPS sem o laboratório e 60,1
+FPS com ele rodando, pior quadro de 16,8 ms nos dois casos; o relógio da
+simulação da tela avançou 5 s nesses 5 s.
+
+### Conferência dos atalhos e dos dados (revisão antes do merge)
+
+- **⇧R segurado** (com as repetições de tecla de um teclado de verdade), no
+  Chromium: a simulação reinicia e a câmera fica exatamente na posição inicial
+  (0,000 de diferença); <kbd>R</kbd> sozinho inclina (a câmera anda 34 unidades).
+- **Esc** num gráfico do painel K com o cursor ligado limpava o cursor e, ao
+  subir até a janela, também fechava o laboratório, a ajuda ou o histórico
+  abertos. Agora o primeiro Esc só limpa o cursor; o segundo fecha. Conferido no
+  navegador antes e depois da correção (antes: o laboratório fechava no primeiro
+  Esc).
+- **Teste de duplicidade dos atalhos** conferido por mutação: o laboratório na
+  tecla do painel K é pego ("no key does two things").
+- **`.gitignore` da Olist:** os padrões só pegavam "olist" e "Olist" com `.csv`
+  minúsculo; num clone sensível a maiúsculas (Linux, macOS), `OLIST_ORDERS.CSV`
+  passaria, e o zip do Kaggle também. Agora valem em qualquer caixa, com o zip, e
+  um teste confere com `core.ignorecase=false` (falha com as regras antigas).
+- **Volume mensal** recontado direto do CSV: bate mês a mês com a tabela do
+  README (99.092 pedidos de janeiro de 2017 a agosto de 2018; sem os 3.008 da
+  semana da Black Friday, os 96.084 do perfil).
+
+### Laboratório: demanda da Olist × constante
+
+Seeds 50.001 a 50.010, segunda-feira, a mesma quantidade de pedidos no dia nos
+dois cenários (3,6 pedidos/s em média), 40 robôs, heurística, agenda de
+manutenção ligada, sem falhas automáticas (`npm run bench:lab`):
+
+| Medida               | Constante | Olist     | Olist − constante (IC 95%)     |
+| -------------------- | --------- | --------- | ------------------------------ |
+| Tempo de ciclo médio | 31,8 s    | 55,9 s    | +24,1 s (+22,2 a +26,0), 10/10 |
+| p95 do ciclo         | 36,8 s    | 120,1 s   | +83,3 s (+74,6 a +91,9), 10/10 |
+| Vazão                | 217,8/min | 208,3/min | −9,5 (−11,0 a −7,9), 10/10     |
+| Uso das esteiras     | 34,0%     | 32,8%     | −1,2 (−1,4 a −1,0)             |
+| Uso das docas        | 69,8%     | 64,4%     | −5,4 (−6,0 a −4,8)             |
+| Uso dos robôs        | 63,5%     | 54,5%     | −9,0 (−13,0 a −4,9)            |
+
+Os pedidos são os mesmos no total; muda a distribuição no dia. Na segunda-feira
+da Olist a demanda passa da média das 9h às 23h e chega a 1,66 vez a média às 21h
+(6,0 pedidos/s), acima do que o galpão escoa: a fila, quase zero até as 9h, cresce
+o dia todo (seed 50.001: 67 pacotes esperando às 10h, 238 às 16h, 296 às 22h) e o
+dia termina com mais de 200 pacotes no galpão. Por isso a vazão do dia cai e o
+p95 do ciclo fica 3,3 vezes maior. É o tipo de efeito que a demanda constante das
+fases anteriores escondia.
+
+**Achado ao escrever este resultado.** A primeira versão desta tabela comparava a
+taxa constante com a segunda-feira da Olist sem perceber que a segunda tem 15,7%
+mais pedidos que a média da semana (o perfil tem média 1 na semana, não em cada
+dia): a diferença misturava volume e formato (p95 +213 s). O laboratório passou a
+reescalar o perfil para o dia simulado ter a taxa escolhida como média
+(`dayScaled`, testado), e o campo do painel diz "média do dia".
+
+### Protocolo das causas com falhas automáticas (registrado antes de medir no teste)
+
+Pedido de 2026-10-07: a precisão das causas do gargalo (98% a 100%, Fase 4b) foi
+medida com uma falha de cada vez; medir também no cenário de falhas automáticas,
+com falhas simultâneas, e reportar mesmo que caia.
+
+- **O detector é o da 4b, sem mudança** (`DEFAULT_BOTTLENECK`). Nada nele muda
+  por causa desta medida.
+- **Cenário:** 1 h por seed, roteamento pela heurística, falhas automáticas como
+  no app (até duas ao mesmo tempo, mais os desgastes), agenda de manutenção
+  desligada (as paradas dela são decisões, não falhas do injetor).
+- **A verdade, por contrafactual exato:** para cada falha aplicada, a mesma seed
+  roda de novo a partir de um checkpoint anterior a ela, com só ela suprimida (é
+  sorteada como sempre, mas não acontece, e ocupa o lugar dela no limite de falhas
+  até quando teria acabado, então o resto do modo automático segue igual), e as
+  filas são medidas a cada segundo, como na gravação. O replay sem supressão
+  reproduz a gravação bit a bit (testado).
+- **Explicação:** segundos seguidos com o mesmo gargalo e a mesma causa (o que a
+  tela mostrou), julgada no seu pior segundo (a maior fila). **Candidatas:** as
+  falhas ligadas naquele segundo ou encerradas até **180 s** antes. **Causas:** as
+  candidatas cuja remoção tira pelo menos metade da fila do gargalo (e pelo menos
+  6 pacotes). Sem nenhuma, a fila é do desenho e da demanda.
+- **Certa:** o detector nomeia uma das causas, ou o desenho quando não há
+  nenhuma. Defeito de robô nunca é nomeado pelo detector: quando é a única causa,
+  a explicação está errada.
+- **Medida principal:** percentual de explicações certas, somado nas seeds, com IC
+  95% pela variação entre seeds (`pooledShare`). Recortes: pelo número de falhas
+  ligadas no segundo julgado (0, 1, 2 ou mais), pela causa dita, pela causa
+  verdadeira, e os segundos na tela com fila de pelo menos 12; sensibilidade à
+  janela (60 e 600 s) e o controle da janela, reportados ao lado.
+- **Teste:** seeds novas 30.021 a 30.030 (`teste-5`), nunca usadas, uma única
+  passada depois da conferência por mutação:
+  `npm run bench:gargalo-caos -- --set teste-5 --final`.
+
+**Como a janela de 180 s foi escolhida (seeds de validação).** Uma fila sobrevive
+à falha que a fez: uma esteira quebrada deixa um acúmulo que leva minutos para
+escoar, e metade das causas verdadeiras tinha terminado mais de um minuto antes.
+Uma janela curta favoreceria o detector (que só enxerga falhas ligadas); uma
+longa demais atribuiria a qualquer falha antiga uma fila que é do galpão inteiro.
+O controle: defeito de robô quase nunca forma fila de esteira ou de doca (0%
+enquanto ligado). Até 180 s depois do fim, ele aparece como causa no nível do
+ruído (no máximo 3,5%, perto da fração de remoções que **aumentam** a fila em
+metade, 1% a 3%); a partir daí sobe para 10% a 12%: remover qualquer falha antiga
+alivia o galpão, e "a causa" deixa de ser uma falha. A janela é o último ponto
+antes disso.
+
+### Causas com falhas automáticas: seeds de validação
+
+`npm run bench:gargalo-caos` (10 seeds, 431 falhas aplicadas: 171 de esteira, 67
+de doca, 84 picos, 109 de robô; 1.948 explicações):
+
+| Explicações                               | Causa certa                | IC 95%        |
+| ----------------------------------------- | -------------------------- | ------------- |
+| Todas                                     | **59,4%** (1.157 de 1.948) | 54,5% a 64,3% |
+| Nenhuma falha ligada no segundo julgado   | 43,2% (357 de 826)         | 36,4% a 50,0% |
+| Uma falha ligada                          | 68,2% (567 de 831)         | 62,0% a 74,5% |
+| Duas ou mais falhas ligadas (simultâneas) | 80,1% (233 de 291)         | 74,9% a 85,2% |
+| Segundos na tela (fila ≥ 12)              | 77,0% (16.390 de 21.295 s) | 75,7% a 78,2% |
+
+Pela causa que o detector deu: "quebra desta esteira" 98% (342 de 349); "doca
+bloqueada" 100% (109 de 109); "esteira quebrada desvia o fluxo para cá" 83% (95
+de 115); "pico de pedidos" 56% (285 de 506); "desenho e demanda" 38% (326 de
+869). Com a janela de 60 s, 78,1%; com 600 s, 52,8%.
+
+**Leitura.** A queda em relação aos 98% a 100% da 4b não vem da simultaneidade:
+com duas ou mais falhas ligadas o detector acerta 80%, porque a causa está à
+vista (a própria falha do recurso). Vem da **memória**: quando nenhuma falha está
+ligada, a fila costuma ser a sobra de uma quebra que já terminou, e o detector,
+que só olha o estado atual, diz "desenho e demanda" (certo em 38% das vezes) ou
+"pico de pedidos" quando houve um pico recente mas a fila é de outra falha.
+
+### Causas com falhas automáticas: resultado nas seeds de teste (passada única)
+
+Uma única passada nas seeds 30.021 a 30.030, depois da conferência por mutação
+(`npm run bench:gargalo-caos -- --set teste-5 --final`). Nada mudou depois dela.
+427 falhas aplicadas (168 de esteira, 59 de doca, 93 picos, 107 de robô); 1.870
+explicações.
+
+| Explicações                               | Validação | **Teste**                                    |
+| ----------------------------------------- | --------- | -------------------------------------------- |
+| Todas                                     | 59,4%     | **55,7%** (1.042 de 1.870; IC 52,4% a 59,0%) |
+| Nenhuma falha ligada no segundo julgado   | 43,2%     | 43,3% (339 de 783; IC 37,3% a 49,3%)         |
+| Uma falha ligada                          | 68,2%     | 61,9% (522 de 843; IC 57,5% a 66,3%)         |
+| Duas ou mais falhas ligadas (simultâneas) | 80,1%     | **74,2%** (181 de 244; IC 65,8% a 82,5%)     |
+| Segundos na tela (fila ≥ 12)              | 77,0%     | 75,4% (15.329 de 20.337 s; IC 72,7% a 78,1%) |
+| Segundos com duas ou mais falhas ligadas  | 92,9%     | 90,9% (3.669 de 4.037 s)                     |
+| Com a janela de 60 s                      | 78,1%     | 72,9%                                        |
+| Com a janela de 600 s                     | 52,8%     | 52,2%                                        |
+
+Pela causa que o detector deu (teste): "quebra desta esteira" 96% (304 de 316);
+"doca bloqueada" 100% (86 de 86); "esteira quebrada desvia o fluxo para cá" 86%
+(100 de 116); "pico de pedidos" 49% (290 de 592); "desenho e demanda" 34% (262
+de 760). Pela causa verdadeira: só esteira quebrada 47% (335 de 719); só doca
+bloqueada 57% (68 de 119); só pico 68% (186 de 272); falhas de tipos diferentes
+57% (191 de 334); nenhuma falha 62% (262 de 425).
+
+O controle da janela se repetiu: o defeito de robô aparece como causa em 0% das
+vezes enquanto ligado e em no máximo 2,9% até 180 s depois do fim (remoções que
+aumentam a fila em metade: 0,8% a 2%).
+
+**Resumo honesto.** Com uma falha de cada vez, 98% a 100%; com as falhas
+automáticas, **55,7%**. Quando o detector nomeia uma falha que está ligada, ele
+quase sempre acerta (96% a 100%, e 86% no desvio). O que derruba o número são
+as filas que sobram depois que a falha termina: o detector olha só o estado
+atual e as chama de "desenho e demanda" ou de "pico de pedidos". Ele não foi
+mudado nesta fase; lembrar as falhas recentes é o próximo passo natural.
+
+### Conferência por mutação
+
+`npm run mutate`: 95 de 95 mutações pegas, mais uma equivalente com o motivo
+registrado. São 32 novas: 11 da demanda (incluindo o script da Olist), 9 do
+laboratório (estatística, pool e a reescala do dia), 9 das causas por
+contrafactual (supressão, replay, critério) e 3 dos atalhos (uma delas, a tecla
+repetida, acrescentada na revisão antes do merge). A primeira rodada
+achou três lacunas nos testes, fechadas antes da passada no teste:
+
+- os pedidos das prateleiras podiam ignorar o peso da hora (o teste só olhava as
+  chegadas);
+- o script da Olist podia deixar de descontar a semana da Black Friday na
+  contagem de dias: o teste usava segunda e terça, e o período tem tantas terças
+  quanto segundas, então a razão entre os pesos não mudava (passou a usar sábado);
+- dizer "desenho" quando a fila é de um defeito de robô contava como certo.
+
+A equivalente: a checagem do id da resposta no pool de workers, que não tem como
+receber a resposta de outro pedido no uso real (um worker só recebe um pedido
+depois de responder o anterior, e cancelar troca todos os workers).
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |
@@ -977,7 +1182,8 @@ agenda desligada, o motor das fases anteriores não mudou um bit.
 
 ```bash
 npm test             # segurança da frota, desvio, falhas, determinismo
-npm run bench        # benchmark do motor
+npm run bench        # a tabela de benchmarks do README (todas as partes, com IC 95%)
+npm run bench:motor  # benchmark do motor
 npm run bench:mapf   # planejamento e episódios sem caminho
 npm run bench:vigia  # impasses e defeitos em corredor estreito, com e sem vigia
 npm run bench:tempo  # uma hora simulada: memória, checkpoints e seek (cerca de 3 min)
@@ -985,6 +1191,8 @@ npm run bench:rotas  # roteamento: estática × heurística (--rl <modelo> inclu
 npm run bench:manutencao  # detector de manutenção preditiva (--calibrate: grade de k e h)
 npm run bench:agenda      # agenda de manutenção com × sem, seed a seed (--calibrate: prazo no p10 e no p20)
 npm run bench:gargalo     # detector de gargalo em ensaios controlados (--calibrate: grade de limiares)
+npm run bench:gargalo-caos  # causas do gargalo com falhas automáticas simultâneas (contrafactual)
+npm run bench:lab    # laboratório de cenários: A × B nas seeds do laboratório
 npm run mutate       # conferência por mutação numa cópia temporária (~10 min)
 ai/.venv/Scripts/python ai/test_fidelity.py   # o Python e o TypeScript simulam igual
 ai/.venv/Scripts/python ai/train.py --name x  # treino PPO (ver o README)

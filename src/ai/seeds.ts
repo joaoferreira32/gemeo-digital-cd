@@ -9,6 +9,9 @@
  *  - Test of phase 4b: 30 011 … 30 020, never used before it; used once,
  *    for the final evaluation of the maintenance schedule and the
  *    bottleneck detector (registered in docs/resultados.md before measuring).
+ *  - Test of phase 5: 30 021 … 30 030, never used before it; used once, for
+ *    the causes of the bottleneck detector under the automatic failures
+ *    (registered in docs/resultados.md before measuring).
  */
 export const TRAINING_SEEDS = { from: 10_001, to: 19_999 } as const;
 
@@ -17,13 +20,15 @@ const range = (from: number, n: number) => Array.from({ length: n }, (_, i) => f
 export const VALIDATION_SEEDS: readonly number[] = range(20_001, 10);
 export const TEST_SEEDS: readonly number[] = range(30_001, 10);
 export const TEST_SEEDS_4B: readonly number[] = range(30_011, 10);
+export const TEST_SEEDS_5: readonly number[] = range(30_021, 10);
 
-export type SeedSet = 'validation' | 'test' | 'teste-4b';
+export type SeedSet = 'validation' | 'test' | 'teste-4b' | 'teste-5';
 
 export function seedsOf(set: SeedSet): readonly number[] {
   if (set === 'validation') return VALIDATION_SEEDS;
   if (set === 'test') return TEST_SEEDS;
   if (set === 'teste-4b') return TEST_SEEDS_4B;
+  if (set === 'teste-5') return TEST_SEEDS_5;
   throw new Error(`unknown seed set ${String(set)}`);
 }
 

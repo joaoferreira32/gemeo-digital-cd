@@ -23,6 +23,7 @@ import { createPacket, type Packet, type PacketState } from './packet';
 import { deriveSeed, Rng } from './rng';
 import type { Router } from './router';
 import { SplitRouter } from './routing';
+import { demandWeight, hourOfWeek, validateDemand, type DemandProfile } from './demand';
 import { MotorHealth, type DetectorParams } from './health';
 import { MaintenanceSchedule, type ScheduleHost, type ScheduleParams } from './schedule';
 import {
@@ -75,6 +76,17 @@ export interface SimConfig {
   readonly scheduleMaintenance: boolean;
   /** Parameters of the maintenance schedule (the window is calibrated on the validation seeds). */
   readonly schedule?: Partial<ScheduleParams>;
+  /**
+   * Demand that follows the hours of a week (phase 5, demand.ts): the order
+   * rates times the weight of the current hour. Absent: constant demand, as in
+   * the earlier phases.
+   */
+  readonly demand?: DemandProfile;
+  /**
+   * Failures (by id) drawn but not applied: the counterfactual runs of the
+   * evaluation of the bottleneck causes (failures.ts). Empty in every real run.
+   */
+  readonly suppressFailures?: readonly number[];
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -233,6 +245,8 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
   private readonly roundRobin: Int32Array;
   private nextPacketId = 1;
   private arrivalRate: number;
+  /** Hour of the week whose weight the rates carry now (demand profile only; derived, not state). */
+  private demandHour = -1;
 
   constructor(config: Partial<SimConfig> = {}, layout: WarehouseLayout = createDefaultLayout()) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -243,7 +257,11 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
       createConveyor(e.id, e.length, this.config.conveyorSpeed, this.config.packetSpacing),
     );
     this.orderRng = new Rng(deriveSeed(this.config.seed, 'orders'));
-    this.arrivalRate = this.config.arrivalRate;
+    const demand = this.config.demand;
+    if (demand) validateDemand(demand);
+    // With a demand profile the very first arrivals already follow the first hour.
+    const startWeight = demand ? demandWeight(demand, 0) : 1;
+    this.arrivalRate = demand ? this.config.arrivalRate * startWeight : this.config.arrivalRate;
     this.baseArrivalRate = this.config.arrivalRate;
     this.destinationWeights = this.config.destinationWeights ?? layout.dockNodes.map(() => 1);
     if (this.destinationWeights.length !== layout.dockNodes.length) {
@@ -277,14 +295,20 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
         ...DEFAULT_FLEET,
         ...this.config.fleet,
         robots: this.config.robots,
-        rackOrderRate: this.config.rackOrderRate,
+        rackOrderRate: demand ? this.config.rackOrderRate * startWeight : this.config.rackOrderRate,
       };
       this.fleet = new Fleet(layout, this, fleetConfig, this.config.seed, this.config.dt);
       this.createLanes(this.fleet);
     } else {
       this.fleet = null;
     }
-    this.failures = new FailureInjector(this, this.config.seed);
+    this.failures = new FailureInjector(
+      this,
+      this.config.seed,
+      undefined,
+      undefined,
+      new Set(this.config.suppressFailures ?? []),
+    );
     this.health = new MotorHealth(this.conveyors.length, this.config.seed, this.config.detector);
     this.schedule = new MaintenanceSchedule(
       this,
@@ -292,6 +316,7 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
       this.config.schedule,
     );
     this.ticksPerSecond = Math.round(1 / this.config.dt);
+    if (demand) this.demandHour = hourOfWeek(demand, 0);
     this.drainTime = new Float64Array(this.conveyors.length);
     const onAWay = new Set(this.heuristic.ways.flatMap((w) => [...w.primary, ...w.alternative]));
     for (const e of graph.edges) {
@@ -513,6 +538,8 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
     r.end();
     this.events.length = 0;
     this.statsTick = -1;
+    // The rates of this hour are in the checkpoint; the next hour change recomputes them.
+    this.demandHour = this.config.demand ? hourOfWeek(this.config.demand, this.time) : -1;
   }
 
   /**
@@ -650,7 +677,25 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
   setArrivalRate(rate: number): void {
     if (!(rate > 0)) throw new Error('arrival rate must be positive');
     this.baseArrivalRate = rate;
-    this.arrivalRate = rate * this.surgeFactor;
+    if (this.config.demand) this.refreshRates();
+    else this.arrivalRate = rate * this.surgeFactor;
+  }
+
+  /** An order surge is on. */
+  get surging(): boolean {
+    return this.surgeFactor > 1;
+  }
+
+  /**
+   * Inbound and rack order rates from the base rate, the surge and the weight
+   * of the hour of the week (demand profile only).
+   */
+  private refreshRates(): void {
+    const weight = demandWeight(this.config.demand as DemandProfile, this.time);
+    this.arrivalRate = this.baseArrivalRate * this.surgeFactor * weight;
+    this.fleet?.setRackOrderRate(
+      this.config.rackOrderRate * (this.surgeFactor > 1 ? 2 : 1) * weight,
+    );
   }
 
   // ---------------------------------------------------------------- FailureHost
@@ -690,9 +735,10 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
    */
   forecastRate(t: number): number {
     const surge = this.failures.active.find((f) => f.kind === 'surge');
-    return surge && t < surge.endsAt
-      ? this.baseArrivalRate * this.surgeFactor
-      : this.baseArrivalRate;
+    const rate =
+      surge && t < surge.endsAt ? this.baseArrivalRate * this.surgeFactor : this.baseArrivalRate;
+    // The hours ahead are known too: the demand profile is the forecast of the time of day.
+    return this.config.demand ? rate * demandWeight(this.config.demand, t) : rate;
   }
 
   /** Only the congestion heuristic routes around a belt being emptied. */
@@ -707,6 +753,10 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
   /** Multiplies the order rates (inbound and racks) while a surge lasts. */
   setSurge(factor: number): void {
     this.surgeFactor = factor;
+    if (this.config.demand) {
+      this.refreshRates();
+      return;
+    }
     this.arrivalRate = this.baseArrivalRate * factor;
     this.fleet?.setRackOrderRate(this.config.rackOrderRate * (factor > 1 ? 2 : 1));
   }
@@ -767,6 +817,14 @@ export class World implements FleetHost, FailureHost, ScheduleHost {
     const now = this.time;
     const dt = this.config.dt;
     const second = this.tick % this.ticksPerSecond === 0;
+    const demand = this.config.demand;
+    if (demand && second) {
+      const hour = hourOfWeek(demand, now);
+      if (hour !== this.demandHour) {
+        this.demandHour = hour;
+        this.refreshRates();
+      }
+    }
     this.failures.update(now);
     if (this.policy === 'heuristic' && second) {
       this.heuristic.update(this.conveyors, this.lanes, this.schedule.closing);

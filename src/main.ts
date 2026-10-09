@@ -27,7 +27,10 @@ import { DEFAULT_CONFIG } from './sim/world';
 import { Hud } from './ui/hud';
 import { HistoryPanel } from './ui/history';
 import { KpiPanel } from './ui/kpi';
+import { adaptWorker } from './lab/pool';
+import { LabPanel } from './ui/lab';
 import { pickEntity } from './ui/pick';
+import { SHORTCUTS, shortcutFor } from './ui/shortcuts';
 import { TimelineBar } from './ui/timeline';
 import type { RunReport } from './sim/recorder';
 import { CpuHeatmap } from './render/heatmap-cpu';
@@ -89,6 +92,16 @@ const link = createLink();
 const frames = new FrameBuffer((buffer) => link.send({ type: 'release', buffer }, [buffer]));
 const kpiPanel = new KpiPanel(document.getElementById('kpi-panel') as HTMLElement, layout);
 const historyPanel = new HistoryPanel(document.getElementById('history-panel') as HTMLElement);
+const labPanel = new LabPanel(document.getElementById('lab-panel') as HTMLElement, {
+  conveyorLabels: layout.graph.edges.map(
+    (e) => `${e.name} (${layout.graph.node(e.from).name}→${layout.graph.node(e.to).name})`,
+  ),
+  modelUrl: new URL('models/roteamento', document.baseURI).href,
+  demandUrl: new URL('demanda-olist.json', document.baseURI).href,
+  spawn: () =>
+    adaptWorker(new Worker(new URL('./lab/lab.worker.ts', import.meta.url), { type: 'module' })),
+  cores: navigator.hardwareConcurrency || 4,
+});
 const timeline = new TimelineBar(document.getElementById('timeline') as HTMLElement, {
   seek: (time) => send({ type: 'seek', time }),
   live: () => send({ type: 'live' }),
@@ -344,6 +357,27 @@ function cycleHeat() {
   document.getElementById('heat-title')!.textContent = HEAT_LABEL[layer];
 }
 
+/** The help panel's list of shortcuts, drawn from the same table the keys are dispatched from. */
+function renderHelp() {
+  const list = document.getElementById('help-keys') as HTMLElement;
+  list.replaceChildren();
+  for (const s of SHORTCUTS) {
+    const dt = document.createElement('dt');
+    for (const part of s.label) {
+      if (typeof part === 'string') {
+        dt.append(part);
+      } else {
+        const kbd = document.createElement('kbd');
+        kbd.textContent = part.kbd;
+        dt.append(kbd);
+      }
+    }
+    const dd = document.createElement('dd');
+    dd.textContent = s.help;
+    list.append(dt, dd);
+  }
+}
+
 function toggleHelp(force?: boolean) {
   const help = document.getElementById('help') as HTMLElement;
   const open = force ?? help.hidden;
@@ -374,6 +408,7 @@ function bindControls() {
   document.getElementById('btn-quality')!.addEventListener('click', () => governor.cycle());
   document.getElementById('btn-help')!.addEventListener('click', () => toggleHelp());
   document.getElementById('btn-kpi')!.addEventListener('click', () => toggleKpi());
+  document.getElementById('btn-lab')!.addEventListener('click', () => labPanel.toggle());
   // Panels above the control bar follow its real height (it wraps on narrow screens).
   const controls = document.querySelector('.hud--controls') as HTMLElement;
   new ResizeObserver(() => {
@@ -388,83 +423,84 @@ function bindControls() {
     Digit7: 'robot',
     Digit8: 'dock',
   };
+  const cameraKeys: Record<string, CameraPreset> = {
+    Digit1: 'aerial',
+    Digit2: 'ground',
+    Digit3: 'follow',
+  };
+  renderHelp();
   window.addEventListener('keydown', (e) => {
     if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const shortcut = shortcutFor(e.code, e.shiftKey);
+    if (!shortcut) return;
     // Space/Enter on a focused button must keep activating that button.
     const onButton = e.target instanceof HTMLButtonElement;
-    const failure = failureKeys[e.code];
-    if (failure) {
-      inject(failure);
-      return;
-    }
-    switch (e.code) {
-      case 'Digit1':
-        setCamera('aerial');
+    switch (shortcut.action) {
+      case 'camera-preset':
+        setCamera(cameraKeys[e.code] as CameraPreset);
         break;
-      case 'Digit2':
-        setCamera('ground');
-        break;
-      case 'Digit3':
-        setCamera('follow');
-        break;
-      case 'KeyN':
+      case 'next-robot':
         nextRobot();
         break;
-      case 'Digit9':
+      case 'failure':
+        inject(failureKeys[e.code] as FailureKind);
+        break;
+      case 'auto-failures':
         toggleAuto();
         break;
-      case 'Digit0':
+      case 'wear':
         send({ type: 'wear' });
         break;
-      case 'Space':
+      case 'pause':
         if (onButton) return;
         e.preventDefault();
         // In the past, playing means continuing from there.
         if (timeline.viewing) continueHere();
         else setPaused(!paused);
         break;
-      case 'BracketLeft':
-        seekBy(-10);
+      case 'seek':
+        seekBy(e.code === 'BracketLeft' ? -10 : 10);
         break;
-      case 'BracketRight':
-        seekBy(10);
-        break;
-      case 'KeyL':
+      case 'live':
         send({ type: 'live' });
         break;
-      case 'KeyC':
+      case 'continue':
         continueHere();
         break;
-      case 'KeyK':
+      case 'kpi':
         toggleKpi();
         break;
-      case 'KeyP':
+      case 'policy':
         cyclePolicy();
         break;
-      case 'Comma':
-        changeSpeed(-1);
+      case 'speed':
+        changeSpeed(e.code === 'Comma' ? -1 : 1);
         break;
-      case 'Period':
-        changeSpeed(1);
-        break;
-      case 'KeyM':
+      case 'heat':
         cycleHeat();
         break;
-      case 'KeyT':
+      case 'stress':
         setStress(!stress);
         break;
-      case 'KeyG':
+      case 'quality':
         governor.cycle();
         break;
-      case 'KeyH':
+      case 'help':
         toggleHelp();
         break;
-      case 'Escape':
+      case 'close':
         toggleHelp(false);
+        labPanel.toggle(false);
         if (historyPanel.entity) historyPanel.close();
         break;
-      case 'KeyR':
-        if (e.shiftKey) restart();
+      case 'restart':
+        restart();
+        break;
+      case 'lab':
+        labPanel.toggle();
+        break;
+      case 'camera':
+      case 'pick':
         break;
     }
   });

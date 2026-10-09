@@ -42,12 +42,12 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Benchmark deste commit
-        run: npm run bench -- head.json
+        run: npx tsx bench/run.ts head.json
       # Same code twice on the same runner: the difference is pure noise, the
       # false alarms the threshold has to tolerate. Report only.
       - name: Benchmark A/A (mesmo código de novo)
         run: |
-          npm run bench -- head2.json
+          npx tsx bench/run.ts head2.json
           node bench/compare.mjs head2.json head.json "Teste A/A (mesmo código, mesmo runner)" --report-only
       # If the base cannot be prepared, the comparison is skipped (never blocks).
       - name: Benchmark do commit base
@@ -62,13 +62,13 @@ jobs:
           cd ../base
           if [ ! -f bench/run.ts ]; then echo "O commit base ainda não tem benchmark."; exit 0; fi
           npm ci
-          npm run bench -- "$GITHUB_WORKSPACE/base.json"
+          npx tsx bench/run.ts "$GITHUB_WORKSPACE/base.json"
       - name: Comparar (bloqueia acima de 10 % nos passos/s)
         run: |
           if node bench/compare.mjs head.json base.json; then exit 0; fi
           echo "Regressão bloqueante: confirmando com uma segunda rodada de este commit e base."
-          npm run bench -- head3.json
-          (cd ../base && npm run bench -- "$GITHUB_WORKSPACE/base3.json")
+          npx tsx bench/run.ts head3.json
+          (cd ../base && npx tsx bench/run.ts "$GITHUB_WORKSPACE/base3.json")
           node bench/compare.mjs head3.json base3.json "Confirmação (segunda rodada)"
       - uses: actions/upload-artifact@v7
         if: always()

@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "bench": "tsx bench/run.ts",
+    "bench": "tsx bench/tabela.ts",
+    "bench:motor": "tsx bench/run.ts",
     "bench:mapf": "tsx bench/mapf.ts",
     "bench:vigia": "tsx bench/vigia.ts",
     "bench:tempo": "tsx --expose-gc bench/tempo.ts",
@@ -21,6 +22,8 @@
     "bench:manutencao": "tsx bench/manutencao.ts",
     "bench:agenda": "tsx bench/agenda.ts",
     "bench:gargalo": "tsx bench/gargalo.ts",
+    "bench:gargalo-caos": "tsx bench/gargalo-caos.ts",
+    "bench:lab": "tsx bench/lab.ts",
     "bench:oscilacao": "tsx bench/oscilacao.ts",
     "mutate": "node scripts/mutate.mjs",
     "hooks": "git config core.hooksPath .githooks"

@@ -1,0 +1,106 @@
+{
+  "tests": ["tests/lab.test.ts"],
+  "mutations": [
+    {
+      "name": "variância dividida por n",
+      "edits": [
+        {
+          "file": "src/lab/stats.ts",
+          "find": "xs.reduce((a, x) => a + (x - mean) ** 2, 0) / (n - 1)",
+          "replace": "xs.reduce((a, x) => a + (x - mean) ** 2, 0) / n"
+        }
+      ]
+    },
+    {
+      "name": "intervalo com 1,96 em vez do t de Student",
+      "edits": [
+        {
+          "file": "src/lab/stats.ts",
+          "find": "const half = n > 1 ? tQuantile975(n - 1) * Math.sqrt(variance / n) : Infinity;",
+          "replace": "const half = n > 1 ? 1.96 * Math.sqrt(variance / n) : Infinity;"
+        }
+      ]
+    },
+    {
+      "name": "diferença pareada com o sinal trocado",
+      "edits": [
+        {
+          "file": "src/lab/stats.ts",
+          "find": "if (Number.isFinite(x) && Number.isFinite(y)) d.push(y - x);",
+          "replace": "if (Number.isFinite(x) && Number.isFinite(y)) d.push(x - y);"
+        }
+      ]
+    },
+    {
+      "name": "proporção pela média das seeds, não somada",
+      "edits": [
+        {
+          "file": "src/lab/stats.ts",
+          "find": "const share = hits.reduce((a, b) => a + b, 0) / total;",
+          "replace": "const share = hits.reduce((a, h, i) => a + h / (trials[i] as number), 0) / n;"
+        }
+      ]
+    },
+    {
+      "name": "variância da proporção sem a correção n/(n−1)",
+      "edits": [
+        {
+          "file": "src/lab/stats.ts",
+          "find": "const se = Math.sqrt((n / (n - 1)) * residuals) / total;",
+          "replace": "const se = Math.sqrt(residuals) / total;"
+        }
+      ]
+    },
+    {
+      "name": "proporção sem o teto de 100%",
+      "edits": [
+        {
+          "file": "src/lab/stats.ts",
+          "find": "high: Math.min(1, share + half)",
+          "replace": "high: share + half"
+        }
+      ]
+    },
+    {
+      "name": "o resultado vai para a posição do worker, não do pedido",
+      "edits": [
+        {
+          "file": "src/lab/pool.ts",
+          "find": "        results[index] = outcome;",
+          "replace": "        results[slot] = outcome;"
+        }
+      ]
+    },
+    {
+      "name": "resposta de outro pedido aceita",
+      "edits": [
+        {
+          "file": "src/lab/pool.ts",
+          "find": "          if (reply.id !== index) return;\n",
+          "replace": ""
+        }
+      ],
+      "equivalent": "Um worker só recebe um pedido depois de responder o anterior, e cancelar troca todos os workers: a resposta de outro pedido não chega no uso real (a checagem é defensiva)."
+    },
+    {
+      "name": "cancelar não para os workers",
+      "edits": [
+        {
+          "file": "src/lab/pool.ts",
+          "find": "    for (const w of this.workers) w?.terminate();",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o dia simulado não é reescalado",
+      "edits": [
+        {
+          "file": "src/lab/run.ts",
+          "find": "  return weights.map((w) => (w * 24) / sum);",
+          "replace": "  return [...weights];"
+        }
+      ]
+    }
+  ]
+}

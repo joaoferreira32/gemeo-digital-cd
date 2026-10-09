@@ -1,4 +1,5 @@
 import { PerspectiveCamera, Plane, Raycaster, Vector2, Vector3 } from 'three';
+import { CAMERA_KEYS, shiftedElsewhere } from '../ui/shortcuts';
 
 export type CameraPreset = 'aerial' | 'ground' | 'follow';
 
@@ -160,16 +161,16 @@ export class OrbitCamera {
     if (this.keys.size === 0) return;
     const has = (...codes: string[]) => codes.some((c) => this.keys.has(c));
     const panSpeed = 520 * dt;
-    if (has('KeyW', 'ArrowUp')) this.pan(0, panSpeed);
-    if (has('KeyS', 'ArrowDown')) this.pan(0, -panSpeed);
-    if (has('KeyA', 'ArrowLeft')) this.pan(panSpeed, 0);
-    if (has('KeyD', 'ArrowRight')) this.pan(-panSpeed, 0);
-    if (has('KeyQ')) this.goal.theta += 1.4 * dt;
-    if (has('KeyE')) this.goal.theta -= 1.4 * dt;
-    if (has('KeyR')) this.goal.phi -= 0.9 * dt;
-    if (has('KeyF')) this.goal.phi += 0.9 * dt;
-    if (has('Equal', 'NumpadAdd')) this.zoom(Math.exp(-1.6 * dt));
-    if (has('Minus', 'NumpadSubtract')) this.zoom(Math.exp(1.6 * dt));
+    if (has(...CAMERA_KEYS.up)) this.pan(0, panSpeed);
+    if (has(...CAMERA_KEYS.down)) this.pan(0, -panSpeed);
+    if (has(...CAMERA_KEYS.left)) this.pan(panSpeed, 0);
+    if (has(...CAMERA_KEYS.right)) this.pan(-panSpeed, 0);
+    if (has(...CAMERA_KEYS.turnLeft)) this.goal.theta += 1.4 * dt;
+    if (has(...CAMERA_KEYS.turnRight)) this.goal.theta -= 1.4 * dt;
+    if (has(...CAMERA_KEYS.tiltUp)) this.goal.phi -= 0.9 * dt;
+    if (has(...CAMERA_KEYS.tiltDown)) this.goal.phi += 0.9 * dt;
+    if (has(...CAMERA_KEYS.zoomIn)) this.zoom(Math.exp(-1.6 * dt));
+    if (has(...CAMERA_KEYS.zoomOut)) this.zoom(Math.exp(1.6 * dt));
   }
 
   private listen(): void {
@@ -228,6 +229,8 @@ export class OrbitCamera {
       'keydown',
       (e) => {
         if (isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+        // ⇧R restarts the run: with Shift held, R is not a camera move.
+        if (e.shiftKey && shiftedElsewhere(e.code)) return;
         this.keys.add(e.code);
       },
       opts,

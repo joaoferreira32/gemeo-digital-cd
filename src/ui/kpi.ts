@@ -502,7 +502,9 @@ export class KpiPanel {
         const step = e.shiftKey ? 30 : 5;
         this.cursor = Math.min(n - 1, Math.max(0, from + (e.key === 'ArrowLeft' ? -step : step)));
         this.drawCursor();
-      } else if (e.key === 'Escape') {
+      } else if (e.key === 'Escape' && this.cursor >= 0) {
+        // The first Esc only drops the cursor; with none, Esc closes the panels (shortcuts.ts).
+        e.stopPropagation();
         this.cursor = -1;
         this.drawCursor();
       }
