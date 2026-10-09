@@ -163,6 +163,16 @@ feito em cada fase está no README e em `docs/resultados.md`.
   link para o dataset, num arquivo de licença ao lado dele e numa seção "Dados e
   licenças" do README. Usar só o período de volume estável (por exemplo, janeiro
   de 2017 a agosto de 2018), conferido pelo volume mensal e justificado no README.
+- **2026-10-07, depois da Fase 5.** Antes do merge do PR #8, conferir item a item
+  contra este roteiro (trava de pre-push, licença e "Dados e licenças",
+  `.gitignore` da Olist, período e volume mensal, tabela única de atalhos com o
+  teste de duplicidade, correção do ⇧R). Detector de gargalo com memória de
+  falhas recentes aprovado num PR separado: calibrar só nas seeds de validação,
+  registrar o protocolo em `docs/resultados.md` antes de medir, medir uma única
+  vez num conjunto de teste novo (30.031 a 30.040), reportar lado a lado sem e com
+  memória nas mesmas condições, e a mensagem na tela diz a origem ("sobra da
+  quebra da Esteira 9, consertada há 90 s"). Depois, o plano da Fase 6 em até 15
+  linhas, conferido contra o roteiro.
 
 ## Apêndice: a primeira versão das fases 2 a 4
 

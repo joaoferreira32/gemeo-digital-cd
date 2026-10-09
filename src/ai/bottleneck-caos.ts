@@ -2,7 +2,13 @@ import type { FailureKind } from '../sim/failures';
 import { waitingFor } from '../sim/queues';
 import { applyInput, Recorder, type SimInput } from '../sim/recorder';
 import { World, type Checkpoint } from '../sim/world';
-import { BottleneckDetector, DEFAULT_BOTTLENECK, topologyOf, type CauseKind } from './bottleneck';
+import {
+  BottleneckDetector,
+  DEFAULT_BOTTLENECK,
+  topologyOf,
+  type BottleneckParams,
+  type CauseKind,
+} from './bottleneck';
 
 /**
  * The causes of the bottleneck detector under the automatic failures (phase
@@ -32,6 +38,11 @@ import { BottleneckDetector, DEFAULT_BOTTLENECK, topologyOf, type CauseKind } fr
  *
  * The routing is the heuristic and the maintenance schedule is off (its
  * stops are decisions, not failures the injector applies).
+ *
+ * Several detectors (parameter sets) are judged on the same recording and
+ * the same truth: they find the same bottlenecks at the same seconds (only
+ * the memory of failures differs, and it changes the cause alone), so the
+ * counterfactual queues are measured once.
  */
 
 export const MIN_SHRINK = 6;
@@ -49,6 +60,31 @@ export const AFTERMATH = 180;
 export const HORIZON = 600;
 /** Findings are watched from this second on (the building has filled up). */
 export const WATCH_FROM = 60;
+
+/** The detector without the memory of failures. */
+export const NO_MEMORY: Partial<BottleneckParams> = { memory: 0 };
+
+/**
+ * The calibration grid of the memory of failures, registered in
+ * docs/resultados.md before calibrating: the window, the links, which stop
+ * among several, and the memory before the surge rule or after it. In the
+ * order of the tie-break: shorter window, narrower links, the stop that ended
+ * last, the memory after the surge rule.
+ */
+export const MEMORY_GRID: readonly Partial<BottleneckParams>[] = [60, 120, 180].flatMap((memory) =>
+  (['own', 'flow', 'routes'] as const).flatMap((memoryLinks) =>
+    (['last', 'longest'] as const).flatMap((memoryPick) =>
+      [false, true].map((memoryFirst) => ({ memory, memoryLinks, memoryPick, memoryFirst })),
+    ),
+  ),
+);
+
+/** A short name for a set of memory parameters ("120 s, fluxo, última, depois do pico"). */
+export function memoryName(p: Partial<BottleneckParams>): string {
+  if (!p.memory) return 'sem memória';
+  const links = { own: 'só a própria', flow: 'pelo fluxo', routes: 'fluxo e rotas' };
+  return `${p.memory} s, ${links[p.memoryLinks ?? 'flow']}, ${p.memoryPick === 'longest' ? 'a mais longa' : 'a última'}, ${p.memoryFirst ? 'antes do pico' : 'depois do pico'}`;
+}
 
 export interface CaosFailure {
   readonly id: number;
@@ -78,22 +114,33 @@ export interface CaosExplanation {
   readonly from: number;
   readonly to: number;
   readonly resource: { readonly kind: 'conveyor' | 'dock'; readonly index: number };
-  readonly cause: { readonly kind: CauseKind; readonly target: number };
+  /** What the detector said; `memory`: a stop that had already ended (the memory of failures). */
+  readonly cause: { readonly kind: CauseKind; readonly target: number; readonly memory: boolean };
   /** Judged at its worst second. */
   readonly judged: CaosJudgement;
 }
 
-export interface CaosRun {
-  readonly seed: number;
-  readonly seconds: number;
-  readonly failures: CaosFailure[];
-  readonly explanations: CaosExplanation[];
+/** One detector judged on a run. */
+export interface CaosVariant {
+  readonly params: Partial<BottleneckParams>;
+  /** Every explanation (left out when only the counts were asked for). */
+  readonly explanations?: CaosExplanation[];
+  /** Explanations, and those right, by the failures on at the judged second (0, 1, 2 or more). */
+  readonly judged: readonly [number, number, number];
+  readonly right: readonly [number, number, number];
   /**
    * Seconds with a finding and a queue of at least the minimum, and those
    * judged right, by the failures on in that second (0, 1, 2 or more).
    */
   readonly judgedSeconds: readonly [number, number, number];
   readonly rightSeconds: readonly [number, number, number];
+}
+
+export interface CaosRun {
+  readonly seed: number;
+  readonly seconds: number;
+  readonly failures: CaosFailure[];
+  readonly variants: CaosVariant[];
 }
 
 /** Queues every second of a counterfactual run, from `from` to `to`. */
@@ -104,7 +151,17 @@ interface Counterfactual {
   readonly docks: Int32Array;
 }
 
-export function runCaos(seed: number, seconds: number): CaosRun {
+/**
+ * One seed under the automatic failures; each detector in `variants` (changes
+ * to DEFAULT_BOTTLENECK) judged on it. `countsOnly` leaves the explanations out
+ * (the calibration grid only needs the counts).
+ */
+export function runCaos(
+  seed: number,
+  seconds: number,
+  variants: readonly Partial<BottleneckParams>[] = [{}],
+  countsOnly = false,
+): CaosRun {
   const rec = new Recorder({ seed });
   rec.input({ type: 'policy', policy: 'heuristic' });
   rec.input({ type: 'auto', on: true });
@@ -134,11 +191,29 @@ export function runCaos(seed: number, seconds: number): CaosRun {
     resource.kind === 'conveyor'
       ? s.conveyorQueue.get(sec * s.conveyors + resource.index)
       : s.dockQueue.get(sec * s.docks + resource.index);
+  // The truth at a bottleneck and a second, the same for every detector.
+  const truths = new Map<string, Omit<CaosJudgement, 'correct'>>();
+  const truth = (resource: CaosExplanation['resource'], sec: number) => {
+    const key = `${resource.kind}:${resource.index}:${sec}`;
+    let found = truths.get(key);
+    if (!found) {
+      found = measure(resource, sec);
+      truths.set(key, found);
+    }
+    return found;
+  };
   const judge = (
     resource: CaosExplanation['resource'],
     cause: CaosExplanation['cause'],
     sec: number,
   ): CaosJudgement => {
+    const t = truth(resource, sec);
+    return { ...t, correct: rightAbout(cause.kind, cause.target, t.causes) };
+  };
+  const measure = (
+    resource: CaosExplanation['resource'],
+    sec: number,
+  ): Omit<CaosJudgement, 'correct'> => {
     const queue = queueOf(resource, sec);
     const candidates = all
       .filter((f) => f.startedAt <= sec && f.endsAt >= sec - HORIZON)
@@ -152,57 +227,76 @@ export function runCaos(seed: number, seconds: number): CaosRun {
         return { ...f, shrink: queue - Math.min(0xffff, other) };
       });
     const j = { second: sec, queue, candidates };
-    const causes = causesWithin(j, AFTERMATH);
     return {
       ...j,
       simultaneous: all.filter((f) => f.startedAt <= sec && f.endsAt > sec).length,
-      causes,
-      correct: rightAbout(cause.kind, cause.target, causes),
+      causes: causesWithin(j, AFTERMATH),
     };
   };
 
-  const detector = new BottleneckDetector(topologyOf(rec.live));
-  const explanations: CaosExplanation[] = [];
-  const judgedSeconds: [number, number, number] = [0, 0, 0];
-  const rightSeconds: [number, number, number] = [0, 0, 0];
-  let open: {
-    from: number;
-    to: number;
-    key: string;
-    resource: CaosExplanation['resource'];
-    cause: CaosExplanation['cause'];
-  } | null = null;
-  const close = () => {
-    if (!open) return;
-    let worst = open.from;
-    for (let sec = open.from + 1; sec <= open.to; sec++) {
-      if (queueOf(open.resource, sec) > queueOf(open.resource, worst)) worst = sec;
+  const topology = topologyOf(rec.live);
+  const judged = variants.map((params) => judgeDetector(params));
+  return { seed, seconds, failures: all, variants: judged };
+
+  function judgeDetector(params: Partial<BottleneckParams>): CaosVariant {
+    const detector = new BottleneckDetector(topology, params);
+    const explanations: CaosExplanation[] = [];
+    const judgedSeconds: [number, number, number] = [0, 0, 0];
+    const rightSeconds: [number, number, number] = [0, 0, 0];
+    let open: {
+      from: number;
+      to: number;
+      key: string;
+      resource: CaosExplanation['resource'];
+      cause: CaosExplanation['cause'];
+    } | null = null;
+    const close = () => {
+      if (!open) return;
+      let worst = open.from;
+      for (let sec = open.from + 1; sec <= open.to; sec++) {
+        if (queueOf(open.resource, sec) > queueOf(open.resource, worst)) worst = sec;
+      }
+      const { from, to, resource, cause } = open;
+      explanations.push({ from, to, resource, cause, judged: judge(resource, cause, worst) });
+      open = null;
+    };
+    for (let sec = WATCH_FROM; sec <= last; sec++) {
+      const b = detector.detect(s, sec);
+      if (!b) {
+        close();
+        continue;
+      }
+      const resource = { kind: b.kind, index: b.index };
+      const memory = b.cause.endedAgo !== undefined;
+      const cause = { kind: b.cause.kind, target: b.cause.target, memory };
+      const key = `${b.kind}:${b.index}:${b.cause.kind}:${b.cause.target}:${memory}`;
+      if (open && (open.key !== key || open.to !== sec - 1)) close();
+      if (open) open.to = sec;
+      else open = { from: sec, to: sec, key, resource, cause };
+      if (queueOf(resource, sec) >= DEFAULT_BOTTLENECK.minQueue) {
+        const j = judge(resource, cause, sec);
+        const on = Math.min(2, j.simultaneous) as 0 | 1 | 2;
+        judgedSeconds[on] += 1;
+        if (j.correct) rightSeconds[on] += 1;
+      }
     }
-    const { from, to, resource, cause } = open;
-    explanations.push({ from, to, resource, cause, judged: judge(resource, cause, worst) });
-    open = null;
-  };
-  for (let sec = WATCH_FROM; sec <= last; sec++) {
-    const b = detector.detect(s, sec);
-    if (!b) {
-      close();
-      continue;
+    close();
+    const counts: [number, number, number] = [0, 0, 0];
+    const right: [number, number, number] = [0, 0, 0];
+    for (const e of explanations) {
+      const on = Math.min(2, e.judged.simultaneous) as 0 | 1 | 2;
+      counts[on] += 1;
+      if (e.judged.correct) right[on] += 1;
     }
-    const resource = { kind: b.kind, index: b.index };
-    const cause = { kind: b.cause.kind, target: b.cause.target };
-    const key = `${b.kind}:${b.index}:${b.cause.kind}:${b.cause.target}`;
-    if (open && (open.key !== key || open.to !== sec - 1)) close();
-    if (open) open.to = sec;
-    else open = { from: sec, to: sec, key, resource, cause };
-    if (queueOf(resource, sec) >= DEFAULT_BOTTLENECK.minQueue) {
-      const j = judge(resource, cause, sec);
-      const on = Math.min(2, j.simultaneous) as 0 | 1 | 2;
-      judgedSeconds[on] += 1;
-      if (j.correct) rightSeconds[on] += 1;
-    }
+    return {
+      params,
+      ...(countsOnly ? {} : { explanations }),
+      judged: counts,
+      right,
+      judgedSeconds,
+      rightSeconds,
+    };
   }
-  close();
-  return { seed, seconds, failures: all, explanations, judgedSeconds, rightSeconds };
 }
 
 /**

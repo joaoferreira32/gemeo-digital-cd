@@ -12,6 +12,9 @@
  *  - Test of phase 5: 30 021 … 30 030, never used before it; used once, for
  *    the causes of the bottleneck detector under the automatic failures
  *    (registered in docs/resultados.md before measuring).
+ *  - Test of the detector with memory: 30 031 … 30 040, never used before it;
+ *    used once, the detectors without and with the memory of failures side by
+ *    side (registered in docs/resultados.md before calibrating).
  */
 export const TRAINING_SEEDS = { from: 10_001, to: 19_999 } as const;
 
@@ -21,14 +24,16 @@ export const VALIDATION_SEEDS: readonly number[] = range(20_001, 10);
 export const TEST_SEEDS: readonly number[] = range(30_001, 10);
 export const TEST_SEEDS_4B: readonly number[] = range(30_011, 10);
 export const TEST_SEEDS_5: readonly number[] = range(30_021, 10);
+export const TEST_SEEDS_MEMORY: readonly number[] = range(30_031, 10);
 
-export type SeedSet = 'validation' | 'test' | 'teste-4b' | 'teste-5';
+export type SeedSet = 'validation' | 'test' | 'teste-4b' | 'teste-5' | 'teste-memoria';
 
 export function seedsOf(set: SeedSet): readonly number[] {
   if (set === 'validation') return VALIDATION_SEEDS;
   if (set === 'test') return TEST_SEEDS;
   if (set === 'teste-4b') return TEST_SEEDS_4B;
   if (set === 'teste-5') return TEST_SEEDS_5;
+  if (set === 'teste-memoria') return TEST_SEEDS_MEMORY;
   throw new Error(`unknown seed set ${String(set)}`);
 }
 

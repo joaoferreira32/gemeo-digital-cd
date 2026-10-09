@@ -433,6 +433,15 @@ crescia ou no minuto anterior (a onda leva um tempo para atravessar o galpão);
 senão, o próprio desenho do galpão. Os limiares foram calibrados nas seeds de
 validação, com a regra de escolha registrada antes de medir.
 
+**Memória de falhas (depois da Fase 5).** Uma fila sobrevive à falha que a fez:
+uma esteira quebrada deixa um acúmulo que leva minutos para escoar depois do
+conserto. Antes da regra do pico, o detector procura paradas que terminaram nos
+últimos 180 s e se ligam ao recurso (a própria esteira ou doca, as esteiras
+adiante e antes dela no fluxo, as docas a que ela leva, o outro caminho das suas
+escolhas de rota, um pico de pedidos) e nomeia a mais longa, com a idade: "sobra
+da quebra da Esteira 16 (Q2→Q1), consertada há 79 s". A combinação saiu de uma
+grade de 36 nas seeds de validação, por uma regra registrada antes de calibrar.
+
 Na tela, o cartão **Gargalo agora** diz o que, por quê e os números, e um anel
 âmbar tracejado gira em volta do recurso.
 
@@ -516,34 +525,44 @@ partes (as outras ficam com a última medida, guardada em `bench/tabela.json`).
 
 <!-- bench:inicio (gerado por npm run bench; não editar à mão) -->
 
-Medida em 2026-10-07 (commit `36bf5b0`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
+motor, rotas, manutencao, agenda, laboratorio: medidas em 2026-10-07 (commit `36bf5b0`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
+gargalo, caos: medidas em 2026-10-07 (commit `7caa7ad`), Node v24.21.0, AMD Ryzen 7 5700X 8-Core Processor (16 núcleos lógicos).
 Seeds de validação (20.001 a 20.010) e do laboratório (50.001 a 50.010); as seeds de teste
 ficam de fora (usadas uma única vez; os resultados delas estão nas tabelas por fase abaixo).
 IC 95%: t de Student entre seeds (no motor, entre repetições); diferenças pareadas seed a
 seed; proporções somadas nas seeds, com o intervalo pela variação entre elas.
 
-| O que                                                                                | Resultado                                                                 | Como reproduzir              |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------- |
-| Motor sem robôs                                                                      | **1.065.190 passos/s** (IC 95% 1.038.976 a 1.091.403), 5 repetições       | `npm run bench:motor`        |
-| Motor com 40 robôs                                                                   | **4.173 passos/s** (IC 95% 4.142 a 4.204), 5 repetições                   | `npm run bench:motor`        |
-| Motor gravando, 40 robôs                                                             | **4.163 passos/s** (IC 95% 4.136 a 4.189), 5 repetições                   | `npm run bench:motor`        |
-| Teste de carga + 40 robôs                                                            | **4.071 passos/s** (IC 95% 4.043 a 4.100), 5 repetições                   | `npm run bench:motor`        |
-| Heurística × roteamento estático, p95 do ciclo: normal                               | ganho **+1,7%** (+1,2% a +2,1%), 10 de 10 seeds                           | `npm run bench:rotas`        |
-| Heurística × roteamento estático, p95 do ciclo: esteira com alternativa quebrada     | ganho **+56,6%** (+53,7% a +59,5%), 10 de 10 seeds                        | `npm run bench:rotas`        |
-| Heurística × roteamento estático, p95 do ciclo: pico de pedidos                      | ganho **+34,0%** (+31,0% a +36,9%), 10 de 10 seeds                        | `npm run bench:rotas`        |
-| Heurística × roteamento estático, p95 do ciclo: falhas automáticas                   | ganho **+21,5%** (+13,7% a +29,2%), 10 de 10 seeds                        | `npm run bench:rotas`        |
-| Manutenção preditiva: precisão dos alarmes                                           | **98%** (IC 95% 94% a 100%)                                               | `npm run bench:manutencao`   |
-| Manutenção preditiva: quebras com desgaste detectadas (recall)                       | **77%** (IC 95% 68% a 87%)                                                | `npm run bench:manutencao`   |
-| Agenda de manutenção: quebras com desgaste evitadas                                  | **76%** (IC 95% 68% a 84%)                                                | `npm run bench:agenda`       |
-| Agenda de manutenção (30 s), p95 do ciclo                                            | ganho **+34,9%** (+25,0% a +44,8%), 10 de 10 seeds                        | `npm run bench:agenda`       |
-| Detector de gargalo, uma falha por vez: falhas com fila apontadas                    | **99%** (IC 95% 98% a 100%)                                               | `npm run bench:gargalo`      |
-| Detector de gargalo, uma falha por vez: causa certa no primeiro aviso                | **100%** (IC 95% 100% a 100%)                                             | `npm run bench:gargalo`      |
-| Detector de gargalo, falhas automáticas: causa certa                                 | **59%** (IC 95% 55% a 64%)                                                | `npm run bench:gargalo-caos` |
-| Detector de gargalo, falhas automáticas: causa certa com duas ou mais falhas ligadas | **80%** (IC 95% 75% a 85%)                                                | `npm run bench:gargalo-caos` |
-| Laboratório: demanda da Olist × constante (mesmo volume no dia), p95 do ciclo        | 36,8 s → 120,1 s: **+83,3 s** (+74,6 s a +91,9 s), pior em 10 de 10 seeds | `npm run bench:lab`          |
-| Laboratório: demanda da Olist × constante, vazão                                     | **−9,5** (−11,0 a −7,9) pacotes/min                                       | `npm run bench:lab`          |
+| O que                                                                                | Resultado                                                                      | Como reproduzir              |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------- |
+| Motor sem robôs                                                                      | **1.065.190 passos/s** (IC 95% 1.038.976 a 1.091.403), 5 repetições            | `npm run bench:motor`        |
+| Motor com 40 robôs                                                                   | **4.173 passos/s** (IC 95% 4.142 a 4.204), 5 repetições                        | `npm run bench:motor`        |
+| Motor gravando, 40 robôs                                                             | **4.163 passos/s** (IC 95% 4.136 a 4.189), 5 repetições                        | `npm run bench:motor`        |
+| Teste de carga + 40 robôs                                                            | **4.071 passos/s** (IC 95% 4.043 a 4.100), 5 repetições                        | `npm run bench:motor`        |
+| Heurística × roteamento estático, p95 do ciclo: normal                               | ganho **+1,7%** (+1,2% a +2,1%), 10 de 10 seeds                                | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: esteira com alternativa quebrada     | ganho **+56,6%** (+53,7% a +59,5%), 10 de 10 seeds                             | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: pico de pedidos                      | ganho **+34,0%** (+31,0% a +36,9%), 10 de 10 seeds                             | `npm run bench:rotas`        |
+| Heurística × roteamento estático, p95 do ciclo: falhas automáticas                   | ganho **+21,5%** (+13,7% a +29,2%), 10 de 10 seeds                             | `npm run bench:rotas`        |
+| Manutenção preditiva: precisão dos alarmes                                           | **98%** (IC 95% 94% a 100%)                                                    | `npm run bench:manutencao`   |
+| Manutenção preditiva: quebras com desgaste detectadas (recall)                       | **77%** (IC 95% 68% a 87%)                                                     | `npm run bench:manutencao`   |
+| Agenda de manutenção: quebras com desgaste evitadas                                  | **76%** (IC 95% 68% a 84%)                                                     | `npm run bench:agenda`       |
+| Agenda de manutenção (30 s), p95 do ciclo                                            | ganho **+34,9%** (+25,0% a +44,8%), 10 de 10 seeds                             | `npm run bench:agenda`       |
+| Detector de gargalo, uma falha por vez: falhas com fila apontadas                    | **99%** (IC 95% 98% a 100%)                                                    | `npm run bench:gargalo`      |
+| Detector de gargalo, uma falha por vez: causa certa no primeiro aviso                | **100%** (IC 95% 100% a 100%)                                                  | `npm run bench:gargalo`      |
+| Detector de gargalo, falhas automáticas: causa certa                                 | sem memória **59%** (IC 95% 55% a 64%); com memória **75%** (IC 95% 71% a 79%) | `npm run bench:gargalo-caos` |
+| Detector de gargalo, falhas automáticas: causa certa com duas ou mais falhas ligadas | sem memória **80%** (IC 95% 75% a 85%); com memória **85%** (IC 95% 77% a 92%) | `npm run bench:gargalo-caos` |
+| Laboratório: demanda da Olist × constante (mesmo volume no dia), p95 do ciclo        | 36,8 s → 120,1 s: **+83,3 s** (+74,6 s a +91,9 s), pior em 10 de 10 seeds      | `npm run bench:lab`          |
+| Laboratório: demanda da Olist × constante, vazão                                     | **−9,5** (−11,0 a −7,9) pacotes/min                                            | `npm run bench:lab`          |
 
 <!-- bench:fim -->
+
+### Detector de gargalo com memória (depois da Fase 5)
+
+| O que                                                                                                                   | Resultado                                                                                                              | Como reproduzir                                                              |
+| ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Causas com falhas automáticas, sem × com memória (seeds de teste novas 30.031–30.040, mesmas gravações e mesma verdade) | 58,5% → **74,6%** das explicações certas; +17,1 pontos seed a seed (IC 95% +10,6 a +23,6), melhor em 10 de 10 seeds    | `npm run bench:gargalo-caos` (teste: `--set teste-memoria --final`, uma vez) |
+| Onde ajuda e onde custa                                                                                                 | sobra de esteira quebrada 47,8% → 90,7%; filas só do desenho e da demanda 62,1% → 25,5%; pico de pedidos 73,6% → 62,1% | idem                                                                         |
+| Ensaios controlados da 4b                                                                                               | causa certa no primeiro aviso continua 100%; nos segundos de aviso, 98,4% → 100% (validação)                           | `npm run bench:gargalo -- --memoria`                                         |
+| Conferência por mutação                                                                                                 | 13 de 13 da memória                                                                                                    | `npm run mutate`                                                             |
 
 ### Fase 5
 
@@ -701,21 +720,19 @@ Bugs encontrados medindo, não supondo:
   à parte.
 - **O desvio antes da parada nem sempre esvazia a esteira:** 43% das paradas em
   esteiras que a rota consegue esvaziar começam vazias.
-- **A precisão das causas do gargalo cai com as falhas automáticas: de 98% a
-  100% para 55,7%.** O primeiro número veio de ensaios com uma falha de cada vez.
-  O segundo vem do modo automático (seeds de teste novas, IC 95% 52,4% a 59,0%),
-  julgado por contrafactual exato: cada falha é removida sozinha e a mesma seed
-  roda de novo; é causa a que tira pelo menos metade da fila (método e controle
-  em [`docs/resultados.md`](docs/resultados.md)). A queda não vem das falhas
-  simultâneas (com duas ou mais ligadas: 74,2%), vem da **memória**: uma esteira
-  quebrada deixa um acúmulo que leva minutos para escoar depois do conserto, e o
-  detector, que só olha o estado atual, chama essa fila de "desenho e demanda"
-  (certo em 34% das vezes) ou de "pico de pedidos" (49%). Quando nomeia uma falha
-  que está ligada, acerta: quebra da própria esteira 96%, doca bloqueada 100%,
-  desvio de esteira quebrada 86%. Lembrar as falhas recentes ("sobra da quebra da
-  esteira 9, encerrada há 90 s") é o próximo passo; o detector não mudou nesta
-  fase. Defeito de robô nunca é dado como causa (quase nunca forma fila de esteira
-  ou doca).
+- **A precisão das causas do gargalo cai com as falhas automáticas.** Com uma
+  falha de cada vez (ensaios controlados), 98% a 100%. No modo automático,
+  julgado por contrafactual exato (cada falha é removida sozinha e a mesma seed
+  roda de novo; é causa a que tira pelo menos metade da fila; método e controle
+  em [`docs/resultados.md`](docs/resultados.md)), o detector da Fase 5 acertava
+  55,7% (seeds 30.021–30.030). A queda vinha da memória, não da simultaneidade: a
+  fila que uma quebra deixa depois do conserto virava "desenho e demanda". Com a
+  memória de falhas, **74,6%** contra 58,5% sem ela nas mesmas seeds de teste
+  novas (30.031–30.040). O custo: quando a fila não é de falha nenhuma, quase
+  sempre há uma parada recente por perto, e o detector a nomeia (nessas filas, o
+  acerto cai de 62,1% para 25,5%); no pico de pedidos, de 73,6% para 62,1%.
+  Defeito de robô nunca é dado como causa (quase nunca forma fila de esteira ou
+  doca).
 - **Não feito:** balanceamento entre docas e redistribuição de robôs na
   heurística, previstos no roteiro original da Fase 4 (`docs/roteiro.md`).
 - A cópia estática do painel recebe as mesmas entradas, mas as falhas

@@ -107,22 +107,44 @@ describe('the causes under the automatic failures', () => {
   });
 
   it('judges every explanation against counterfactual runs', { timeout: 60_000 }, () => {
-    const r = runCaos(20004, 300);
+    const r = runCaos(20004, 300, [{ memory: 0 }, { memory: 120 }]);
     expect(r.failures.length).toBeGreaterThan(0);
-    expect(r.explanations.length).toBeGreaterThan(0);
-    for (const e of r.explanations) {
-      const j = e.judged;
-      expect(j.second).toBeGreaterThanOrEqual(e.from);
-      expect(j.second).toBeLessThanOrEqual(e.to);
-      // The causes are candidates that took at least half of the queue away.
-      for (const c of j.causes) {
-        const cand = j.candidates.find((x) => x.id === c.id)!;
-        expect(cand.shrink).toBeGreaterThanOrEqual(Math.max(6, j.queue / 2));
+    for (const v of r.variants) {
+      const explanations = v.explanations!;
+      expect(explanations.length).toBeGreaterThan(0);
+      for (const e of explanations) {
+        const j = e.judged;
+        expect(j.second).toBeGreaterThanOrEqual(e.from);
+        expect(j.second).toBeLessThanOrEqual(e.to);
+        // The causes are candidates that took at least half of the queue away.
+        for (const c of j.causes) {
+          const cand = j.candidates.find((x) => x.id === c.id)!;
+          expect(cand.shrink).toBeGreaterThanOrEqual(Math.max(6, j.queue / 2));
+        }
+        expect(j.correct).toBe(rightAbout(e.cause.kind, e.cause.target, j.causes));
       }
-      expect(j.correct).toBe(rightAbout(e.cause.kind, e.cause.target, j.causes));
+      const total = v.judged.reduce((a, b) => a + b, 0);
+      expect(total).toBe(explanations.length);
+      expect(v.right.reduce((a, b) => a + b, 0)).toBe(
+        explanations.filter((e) => e.judged.correct).length,
+      );
+      for (let k = 0; k < 3; k++) {
+        expect(v.rightSeconds[k]).toBeLessThanOrEqual(v.judgedSeconds[k]!);
+      }
     }
-    for (let k = 0; k < 3; k++) {
-      expect(r.rightSeconds[k]).toBeLessThanOrEqual(r.judgedSeconds[k]!);
-    }
+    // The memory changes the cause only: the same bottlenecks, at the same seconds.
+    const seconds = (v: (typeof r.variants)[number]) =>
+      v.explanations!.flatMap((e) =>
+        Array.from(
+          { length: e.to - e.from + 1 },
+          (_, i) => `${e.resource.kind}${e.resource.index}@${e.from + i}`,
+        ),
+      );
+    const [without, withMemory] = r.variants as [(typeof r.variants)[0], (typeof r.variants)[0]];
+    expect(seconds(withMemory)).toEqual(seconds(without));
+    expect(withMemory.judgedSeconds).toEqual(without.judgedSeconds);
+    // The counts alone, without the explanations.
+    const counts = runCaos(20004, 120, [{}], true).variants[0]!;
+    expect(counts.explanations).toBeUndefined();
   });
 });

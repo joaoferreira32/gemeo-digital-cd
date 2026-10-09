@@ -1,0 +1,135 @@
+{
+  "tests": ["tests/bottleneck.test.ts", "tests/bottleneck-caos.test.ts"],
+  "mutations": [
+    {
+      "name": "a memória ignora a janela",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "    const from = Math.max(1, t - memory);",
+          "replace": "    const from = 1;"
+        }
+      ]
+    },
+    {
+      "name": "esteira ainda parada conta como encerrada",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "        if (get(sec) !== 0 || before === 0) continue;",
+          "replace": "        if (before === 0) continue;"
+        }
+      ]
+    },
+    {
+      "name": "a escolha entre paradas invertida",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "      memoryPick === 'last'",
+          "replace": "      memoryPick !== 'last'"
+        }
+      ]
+    },
+    {
+      "name": "a memória nunca vem antes do pico",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "    if (this.params.memoryFirst) {",
+          "replace": "    if (false) {"
+        }
+      ]
+    },
+    {
+      "name": "esteiras abaixo no fluxo ignoradas",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "        for (const b of top.downstream[c.index] ?? []) belts.add(b);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "esteiras acima no fluxo ignoradas",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "          if (after.includes(c.index)) belts.add(b);",
+          "replace": "          if (after.includes(-1)) belts.add(b);"
+        }
+      ]
+    },
+    {
+      "name": "a doca de uma esteira ignorada",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "        for (const d of top.beltDocks[c.index] ?? []) dock(d);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "as esteiras de uma doca ignoradas",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "      if (memoryLinks !== 'own') for (const b of top.dockFeeders[c.index] ?? []) belt(b);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "as escolhas de rota ignoradas",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "      if (memoryLinks === 'routes') {",
+          "replace": "      if (false) {"
+        }
+      ]
+    },
+    {
+      "name": "o pico não é lembrado",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "      const x = lastStop((sec) => s.surge.get(sec));",
+          "replace": "      const x = null as ReturnType<typeof lastStop>;"
+        }
+      ]
+    },
+    {
+      "name": "a idade da sobra contada errado",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "    const ago = t - best.end;",
+          "replace": "    const ago = t - best.end + best.length;"
+        }
+      ]
+    },
+    {
+      "name": "o fluxo só vê a esteira seguinte",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "        stack.push(f.to);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a memória desligada mesmo ligada",
+      "edits": [
+        {
+          "file": "src/ai/bottleneck.ts",
+          "find": "    if (memory <= 0) return null;",
+          "replace": "    if (memory <= 1000) return null;"
+        }
+      ]
+    }
+  ]
+}

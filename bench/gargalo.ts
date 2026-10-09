@@ -6,6 +6,8 @@
  *   npm run bench:gargalo -- --calibrate             validation seeds, a grid of thresholds
  *   npm run bench:gargalo                            validation seeds, the detector as configured
  *   npm run bench:gargalo -- --set teste-4b --final  the test seeds of phase 4b (used once)
+ *   npm run bench:gargalo -- --memoria --out e.json  validation seeds, the grid of the memory of
+ *                                                    failures (for bench:gargalo-caos --calibrate)
  *
  * The truth: a failure "formed a queue" when, against the reference run of
  * its seed (the same run, bit for bit, until the failure), it put at least
@@ -25,6 +27,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { DEFAULT_BOTTLENECK, type BottleneckParams } from '../src/ai/bottleneck';
+import { MEMORY_GRID, memoryName, NO_MEMORY } from '../src/ai/bottleneck-caos';
 import {
   causeMatches,
   extraWaiting,
@@ -51,7 +54,7 @@ if (set === 'test') {
   );
   process.exit(2);
 }
-if (flag('--calibrate') && set !== 'validation') {
+if ((flag('--calibrate') || flag('--memoria')) && set !== 'validation') {
   console.error('A calibração usa só as seeds de validação.');
   process.exit(2);
 }
@@ -70,13 +73,15 @@ if (spawnSync(process.execPath, ['scripts/build-headless.mjs'], { stdio: 'inheri
   process.exit(1);
 }
 
-const grid: Partial<BottleneckParams>[] = flag('--calibrate')
-  ? [6, 8, 12].flatMap((minQueue) =>
-      [4, 6, 10].flatMap((minRate) =>
-        [0.7, 0.8, 0.9].map((minUse) => ({ minQueue, minRate, minUse })),
-      ),
-    )
-  : [{}];
+const grid: Partial<BottleneckParams>[] = flag('--memoria')
+  ? [NO_MEMORY, ...MEMORY_GRID]
+  : flag('--calibrate')
+    ? [6, 8, 12].flatMap((minQueue) =>
+        [4, 6, 10].flatMap((minRate) =>
+          [0.7, 0.8, 0.9].map((minUse) => ({ minQueue, minRate, minUse })),
+        ),
+      )
+    : [{}];
 
 const failures: { kind: FailureKind; target?: number }[] = [
   ...Array.from({ length: 24 }, (_, target) => ({ kind: 'conveyor' as const, target })),
@@ -315,7 +320,23 @@ const skipped = runs.filter((r) => r.spec.failure && !r.applied).length;
 if (skipped)
   console.log(`(${skipped} ensaios de robô ficaram de fora: o robô estava recarregando.)\n`);
 const output: Record<string, unknown> = { set, seeds, t0: T0, seconds: SECONDS };
-if (flag('--calibrate')) {
+if (flag('--memoria')) {
+  // The memory changes the causes only: the same failures pointed out, at the same seconds.
+  const rows = grid.map((params, p) => ({
+    params: { ...DEFAULT_BOTTLENECK, ...params },
+    ...score(runs, p),
+  }));
+  console.log(
+    '| Memória | Apontadas | Causa certa no primeiro aviso | Causa certa nos segundos de aviso |',
+  );
+  console.log('|---|---|---|---|');
+  for (const r of rows) {
+    console.log(
+      `| ${memoryName(r.params)} | ${r.pointed} de ${r.formed} | ${pct(r.rightFirst, r.pointed)} (${r.rightFirst}) | ${pct(r.rightSeconds, r.findingSeconds)} (${r.rightSeconds} de ${r.findingSeconds} s) |`,
+    );
+  }
+  Object.assign(output, { rows });
+} else if (flag('--calibrate')) {
   const rows = grid.map((params, p) => ({
     params: { ...DEFAULT_BOTTLENECK, ...params },
     s: score(runs, p),
