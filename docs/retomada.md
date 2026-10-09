@@ -1,5 +1,11 @@
 # Retomada da Fase 6 (demo, gravação e entrega final)
 
+> **Concluída em 2026-10-09.** Todos os passos abaixo foram feitos: a investigação
+> dos 22 MB (não era vazamento: era a medida, ver "Memória ao repetir a demo" em
+> `docs/resultados.md`), o README, o `docs/resultados.md` e o GIF na ordem nova, a
+> conferência por mutação completa (142 de 142, mais 1 equivalente) e o PR da
+> Fase 6, empilhado sobre o #9. Este arquivo fica como registro das interrupções.
+
 Parado em 2026-10-09, a pedido (máquina desligada), pela segunda vez. Branch
 `fase-6`, enviado ao GitHub como backup, **ainda sem PR**. Empilhado sobre
 `gargalo-memoria` (PR #9); os PRs #7, #8 e #9 continuam abertos.
