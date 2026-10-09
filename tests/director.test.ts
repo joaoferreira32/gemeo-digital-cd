@@ -112,12 +112,12 @@ describe('the demo director', () => {
     const { director } = setup();
     director.start();
     director.onDemo({ type: 'demo', phase: 'ai', result: null });
-    director.frame(0.1, 150);
+    director.frame(0.1, 140);
     expect(director.current?.id).toBe('gargalo');
     director.onBottleneck({
       text: 'Gargalo: Esteira 9 parada. Causa: quebra desta esteira.',
     } as never);
-    expect(director.frame(0.1, 151)?.text).toBe(
+    expect(director.frame(0.1, 141)?.text).toBe(
       'Gargalo: Esteira 9 parada. Causa: quebra desta esteira.',
     );
     director.frame(0.1, 195);

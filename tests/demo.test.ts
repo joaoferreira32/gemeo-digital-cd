@@ -31,25 +31,59 @@ describe('the demo script', () => {
     expect(again.aiPrint).not.toBe(again.noAiPrint);
   }, 60_000);
 
-  it('the breakdown, the detour of the robots and of the routing', () => {
+  it('the breakdown, and robots carrying packets around it (the fleet, not the AI)', () => {
     const f = beat('falha');
     const start = ai.events.find(
       (e) => e.kind === 'failure-start' && e.target === DEMO.failure.target,
     );
     expect(start && inBeat(f, start.time)).toBe(true);
     expect(ai.events.some((e) => e.kind === 'bypass-start' && inBeat(f, e.time))).toBe(true);
-    // During "desvio": nothing leaves the broken belt, the A line carries the traffic.
-    const d = beat('desvio');
+  });
+
+  it('problem, diagnosis, solution: the beats in the order of the roadmap', () => {
+    const order = beats.filter((b) => b.side === 'ai').map((b) => b.id);
+    const at = (id: Beat['id']) => order.indexOf(id);
+    expect(at('falha')).toBeLessThan(at('fila'));
+    expect(at('fila')).toBeLessThan(at('gargalo'));
+    expect(at('gargalo')).toBeLessThan(at('desvio'));
+    expect(at('desvio')).toBeLessThan(at('manutencao'));
+    // The AI takes over when the bottleneck has been on screen, not before.
+    expect(beat('gargalo').to).toBe(DEMO.aiAt);
+    expect(beat('desvio').from).toBe(DEMO.aiAt);
+  });
+
+  it('until the AI takes over, the run with AI is the run without it', () => {
     const s = ai.series;
-    const exits = (belt: number) =>
-      s.conveyorExits.get(d.to * s.conveyors + belt) -
-      s.conveyorExits.get(d.from * s.conveyors + belt);
-    expect(exits(DEMO.failure.target)).toBe(0);
-    for (const belt of [11, 2, 3]) expect(exits(belt)).toBeGreaterThan(0);
+    const n = full.runner.rec.series;
+    const upTo = (x: typeof s, to: number) =>
+      Array.from({ length: to + 1 }, (_, t) => [
+        x.waiting.get(t),
+        x.cycleEnd.get(t),
+        ...Array.from({ length: x.conveyors }, (_, c) => x.conveyorExits.get(t * x.conveyors + c)),
+      ]);
+    expect(upTo(s, DEMO.aiAt)).toEqual(upTo(n, DEMO.aiAt));
+    // And then they part (the comparison would not see a change otherwise).
+    expect(upTo(s, DEMO.end)).not.toEqual(upTo(n, DEMO.end));
+    const acts = ['service-planned', 'service-start', 'failure-avoided'];
+    expect(ai.events.filter((e) => acts.includes(e.kind) && e.time < DEMO.aiAt)).toEqual([]);
+    expect(ai.live.policy).toBe('heuristic');
+    expect(ai.live.schedule.enabled).toBe(true);
+  });
+
+  it('the solution: the AI moves part of line B to line A before the stopped belt', () => {
+    const d = beat('desvio');
+    const crossing = 11;
+    expect(ai.live.conveyorLabel(crossing)).toMatch(/B2→A2/);
+    const exits = (r: Recorder) =>
+      r.series.conveyorExits.get(d.to * r.series.conveyors + crossing) -
+      r.series.conveyorExits.get(d.from * r.series.conveyors + crossing);
+    expect(exits(ai)).toBeGreaterThan(0);
+    expect(exits(full.runner.rec)).toBe(0);
   });
 
   it('the queue grows, and the detector names the broken belt with its own failure', () => {
     const q = beat('fila');
+    expect(q.heat).toBe('espera');
     expect(ai.series.waiting.get(q.to)).toBeGreaterThan(ai.series.waiting.get(q.from) + 50);
     const g = beat('gargalo');
     const detector = new BottleneckDetector(topologyOf(ai.live));

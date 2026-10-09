@@ -2,21 +2,61 @@
   "tests": ["tests/demo.test.ts", "tests/director.test.ts", "tests/schedule.test.ts"],
   "mutations": [
     {
-      "name": "o ramo sem IA mantém a heurística",
+      "name": "a IA também assume no ramo sem IA",
       "edits": [
         {
           "file": "src/demo/run.ts",
-          "find": "    rec.input({ type: 'policy', policy: 'static' });\n",
+          "find": "if (!(x.ai && this.phase === 'no-ai')) rec.input(x.input);",
+          "replace": "rec.input(x.input);"
+        }
+      ]
+    },
+    {
+      "name": "a IA assume desde o início",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    this.rec.input({ type: 'policy', policy: 'static' });",
+          "replace": "    this.rec.input({ type: 'policy', policy: 'heuristic' });"
+        }
+      ]
+    },
+    {
+      "name": "a agenda ligada desde o início",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "return { seed: script.seed, scheduleMaintenance: false };",
+          "replace": "return { seed: script.seed, scheduleMaintenance: true };"
+        }
+      ]
+    },
+    {
+      "name": "a IA assume sem a heurística",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    { at: script.aiAt, input: { type: 'policy', policy: 'heuristic' }, ai: true },\n",
           "replace": ""
         }
       ]
     },
     {
-      "name": "o ramo sem IA mantém a manutenção",
+      "name": "a IA assume sem a agenda",
       "edits": [
         {
           "file": "src/demo/run.ts",
-          "find": "    rec.input({ type: 'maintenance', on: false });\n",
+          "find": "    { at: script.aiAt, input: { type: 'maintenance', on: true }, ai: true },\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "a volta no tempo não abre um ramo",
+      "edits": [
+        {
+          "file": "src/demo/run.ts",
+          "find": "    rec.branch();\n",
           "replace": ""
         }
       ]

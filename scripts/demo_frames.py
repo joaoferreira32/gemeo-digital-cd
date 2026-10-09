@@ -21,9 +21,9 @@ FPS = 6
 TAKE = [
     ("aberto", 0.6, 6),
     ("falha", 0.8, 10),
-    ("desvio", 0.6, 7),
     ("fila", 1.0, 9),
     ("gargalo", 1.2, 9),
+    ("desvio", 0.6, 7),
     ("manutencao", 3.0, 8),
     ("volta", 0.6, 5),
     ("sem-ia", 2.0, 10),
