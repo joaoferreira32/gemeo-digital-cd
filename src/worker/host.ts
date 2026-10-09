@@ -80,7 +80,9 @@ export class SimHost {
   private demo: DemoRunner | null = null;
 
   constructor(
-    private readonly post: (msg: SimMessage, transfer: Transferable[]) => void,
+    // Only array buffers are transferred (the snapshots); typed without the DOM
+    // lib so that Node code (bench/demo-memoria.ts) can host it too.
+    private readonly post: (msg: SimMessage, transfer: ArrayBuffer[]) => void,
     private readonly clock: () => number,
     /** How the routing network is loaded (tests give their own). */
     agentLoader?: AgentLoader,
