@@ -1,5 +1,5 @@
 import type { Bottleneck } from '../ai/bottleneck';
-import type { DemoPhase, DemoResult } from '../demo/run';
+import type { DemoKindId, DemoPhase, DemoResult } from '../demo/run';
 import type { FailureKind, SimEvent } from '../sim/failures';
 import type { Kpis, RunReport } from '../sim/recorder';
 import type { SimConfig } from '../sim/world';
@@ -40,11 +40,13 @@ export type SimCommand =
   /** Hands a snapshot buffer back for reuse. */
   | { type: 'release'; buffer: ArrayBuffer }
   /**
-   * The demo (src/demo/run.ts): a new run of the script; the jump back to
-   * just before the breakdown and on without AI (the page shows the past
-   * first, with a seek); or back to the ordinary app.
+   * The demo (src/demo/run.ts): a new run of the script (the explained demo
+   * or the short one); the jump back to just before the breakdown and on
+   * without AI (the page shows the past first, with a seek); or back to the
+   * ordinary app.
    */
-  | { type: 'demo'; action: 'start' | 'compare' | 'stop' };
+  | { type: 'demo'; action: 'start'; script: DemoKindId }
+  | { type: 'demo'; action: 'compare' | 'stop' };
 
 /** Messages from the simulation to the page. */
 export type SimMessage =

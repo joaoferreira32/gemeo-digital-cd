@@ -1,15 +1,15 @@
 /**
- * Memory of the worker side of the demo, run again and again as the page
- * does: the demo with AI, the jump back, the run without AI, the card, and
- * back to the app (init). The heap after a forced GC, before the first demo
- * and after each one: a recording kept by mistake would add more than 1 MB per
- * demo (a simulated hour takes about 15 MB).
+ * Memory of the worker side of the demo (the explained one, the default), run
+ * again and again as the page does: the demo with AI, the jump back, the run
+ * without AI, the card, and back to the app (init). The heap after a forced
+ * GC, before the first demo and after each one: a recording kept by mistake
+ * would add more than 1 MB per demo (a simulated hour takes about 15 MB).
  *
  *   npm run bench:demo-memoria [-- <demos>]       (default 15)
  *
  * The page side (GPU resources and the page's heap) is scripts/demo_memoria.py.
  */
-import { DEMO } from '../src/demo/run';
+import { DEMO_EXPLICADA } from '../src/demo/run';
 import { SimHost } from '../src/worker/host';
 import type { SimMessage } from '../src/worker/protocol';
 
@@ -49,10 +49,10 @@ app();
 console.log(`antes da 1ª demo: ${mb(heap())}`);
 const after: number[] = [];
 for (let d = 1; d <= demos; d++) {
-  host.handle({ type: 'demo', action: 'start' });
+  host.handle({ type: 'demo', action: 'start', script: 'explicada' });
   host.handle({ type: 'speed', speed: 64 });
   for (let i = 0; i < 40_000 && phase() === 'ai'; i++) pump(1);
-  host.handle({ type: 'seek', time: DEMO.branchAt });
+  host.handle({ type: 'seek', time: DEMO_EXPLICADA.branchAt });
   pump(1);
   host.handle({ type: 'demo', action: 'compare' });
   for (let i = 0; i < 40_000 && phase() === 'no-ai'; i++) pump(1);

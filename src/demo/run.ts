@@ -54,6 +54,37 @@ export const DEMO: DemoScript = {
   end: 320,
 };
 
+/**
+ * The explained demo (src/demo/explicada.ts), the default one. Esteira 9 has
+ * no other belt around it, so no routing can drain its queue (measured: with
+ * the AI taking over anywhere from 112 to 146 s, the queues with and without
+ * AI are the same until the repair). Here the breakdown is on a belt with an
+ * alternative way, chosen by rules fixed before looking at any gain
+ * (docs/resultados.md): failure at 104 s, wear on Esteira 16 at 118 s, the AI
+ * at 128 s; the first of Esteira 3 and Esteira 8, and of the seeds [2026, 7,
+ * 11, 42, 101, 333], where (1) the detector names the broken belt, (2) its
+ * breakdown ends before the alarm of the wear, (3) the maintenance avoids the
+ * failure, (4) without AI the worn belt breaks and (5) 20 s after the AI
+ * takes over the queue is shorter than when it did, with AI, and not without.
+ * Esteira 8 (B2→B3) with the seed 2026 is the first.
+ */
+export const DEMO_EXPLICADA: DemoScript = {
+  seed: 2026,
+  warmup: 81,
+  failure: { at: 104, target: 7 },
+  wear: { at: 118, target: 15 },
+  aiAt: 128,
+  branchAt: 103,
+  end: 320,
+};
+
+/** The two demos: the explained one (V, the default) and the short one (?demo=curta). */
+export type DemoKindId = 'explicada' | 'curta';
+export const DEMO_SCRIPTS: Record<DemoKindId, DemoScript> = {
+  explicada: DEMO_EXPLICADA,
+  curta: DEMO,
+};
+
 /** The configuration of the demo run: the script's seed; no schedule until the AI takes over. */
 export function demoConfig(script: DemoScript = DEMO): Partial<SimConfig> {
   return { seed: script.seed, scheduleMaintenance: false };

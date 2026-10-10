@@ -36,6 +36,7 @@ import type { RunReport } from './sim/recorder';
 import { chooseFormat, VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH, VideoCapture } from './demo/capture';
 import { mp4Frames, type Mp4Frames } from './demo/mp4';
 import { Director, type DirectorStage } from './demo/director';
+import { demoKindFrom } from './demo/kinds';
 import { drawOverlay, type OverlayState } from './demo/overlay';
 import { CpuHeatmap } from './render/heatmap-cpu';
 import { SPEEDS, type RoutingStatus, type SimCommand } from './worker/protocol';
@@ -133,9 +134,12 @@ let capture: VideoCapture | null = null;
 let lastVideo: { label: string; bytes: number; drawn: number; file: Mp4Frames | null } | null =
   null;
 
-/** What the demo's director moves: the scene's camera, depth of field, heat map, robots. */
+/** The demo of V and ⇧V: the explained one, or the short one at ?demo=curta. */
+const DEMO_KIND = demoKindFrom(location.search);
+
+/** What the demo's director moves: the scene's camera, depth of field, heat map, robots, arrows. */
 const stage: DirectorStage = {
-  aim: (target, radius, phi, theta) => view.orbit.aim(target, radius, phi, theta),
+  aim: (target, radius, phi, theta, rate) => view.orbit.aim(target, radius, phi, theta, rate),
   focus: (on) => view.setFocus(on ? view.orbit.distance : null),
   heat: (layer) => view.setHeatLayer(layer),
   robot: (pick) => {
@@ -145,6 +149,11 @@ const stage: DirectorStage = {
     const r = Math.min(view.followRobot, n - 1);
     return { x: view.poses.x[r] as number, z: view.poses.z[r] as number };
   },
+  motor: (belt) => view.motors.spots[belt] ?? null,
+  arrows: (on) => {
+    view.flows.emphasis = on ? 2 : 1;
+  },
+  queue: () => (frames.latest?.s.header[HEADER.waiting] as number | undefined) ?? 0,
   send: (cmd) => send(cmd),
 };
 const director = new Director(stage, layout, () => motionQuery.matches);
@@ -327,7 +336,7 @@ function startDemo(record: boolean) {
   overlayCanvas.hidden = false;
   demoBar.hidden = false;
   buildView();
-  director.start();
+  director.start(DEMO_KIND);
 }
 
 /** Back to the ordinary app: a fresh run, the panels and the settings of before. */
@@ -723,8 +732,8 @@ function frame(now: number) {
         drawOverlay(c.context, VIDEO_WIDTH, VIDEO_HEIGHT, demo);
         c.drawn++;
       }
-      const card = director.beats.find((b) => b.id === 'resultado');
-      if (c.recording && director.cardSeconds >= (card?.hold ?? 8)) void finishRecording();
+      // The card and what follows it have had their time: the file is saved.
+      if (c.recording && director.finished) void finishRecording();
     }
   }
 

@@ -179,7 +179,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     action: 'demo',
     codes: ['KeyV'],
     label: [k('V')],
-    help: 'rodar a demo de um minuto: quebra, gargalo, desvio, manutenção, volta no tempo',
+    help: 'rodar a demo explicada (9 etapas, cerca de 100 s): quebra, fila, diagnóstico, IA, manutenção, volta no tempo',
   },
   {
     action: 'record',
@@ -187,6 +187,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
     shift: true,
     label: [k('⇧'), k('V')],
     help: 'gravar a demo em vídeo (1920×1080, 60 FPS; MP4 quando o navegador permite)',
+  },
+  {
+    action: 'demo',
+    codes: [],
+    label: ['?demo=curta'],
+    help: 'demo curta (cerca de 1 min): acrescente ao endereço da página; V e ⇧V passam a rodá-la',
   },
   { action: 'help', codes: ['KeyH'], label: [k('H')], help: 'atalhos e legenda' },
   { action: 'close', codes: ['Escape'], label: [k('Esc')], help: 'fechar painéis e sair da demo' },

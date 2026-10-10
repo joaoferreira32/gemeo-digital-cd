@@ -19,14 +19,27 @@ export type BeatId =
   | 'segue'
   | 'volta'
   | 'sem-ia'
-  | 'resultado';
+  | 'resultado'
+  // The explained demo (src/demo/explicada.ts) adds these.
+  | 'abertura'
+  | 'esteiras'
+  | 'normal'
+  | 'quebra'
+  | 'diagnostico'
+  | 'ia'
+  | 'desgaste'
+  | 'alarme'
+  | 'evitada'
+  | 'sem-ia-quebra'
+  | 'fim';
 
-/** What the camera looks at: the whole floor, a belt (its middle), a node, a working robot. */
+/** What the camera looks at: the whole floor, a belt (its middle), a node, a working robot, a belt's motor. */
 export type ShotTarget =
   | { readonly kind: 'center' }
   | { readonly kind: 'belt'; readonly id: number }
   | { readonly kind: 'node'; readonly name: string }
-  | { readonly kind: 'robot' };
+  | { readonly kind: 'robot' }
+  | { readonly kind: 'motor'; readonly id: number };
 
 export interface Shot {
   readonly target: ShotTarget;
@@ -42,8 +55,8 @@ export interface Shot {
 
 export interface Beat {
   readonly id: BeatId;
-  /** The run with AI, the jump back, the run without AI, or the final card. */
-  readonly side: 'ai' | 'rewind' | 'no-ai' | 'card';
+  /** The run with AI, the jump back, the run without AI, the final card, or what comes after it. */
+  readonly side: 'ai' | 'rewind' | 'no-ai' | 'card' | 'end';
   /** Simulated seconds it covers (the jump back and the card have none) and its speed. */
   readonly from: number;
   readonly to: number;
@@ -62,6 +75,18 @@ export interface Beat {
   readonly shot: Shot;
   /** Heat map layer during the beat. */
   readonly heat: 'off' | 'espera';
+  /** Real seconds the simulation holds still at `from` before the beat plays (on screen: "pausado"). */
+  readonly pause?: number;
+  /** The chapter (1 … 9) of the explained demo, shown as "Etapa X de 9". */
+  readonly chapter?: number;
+  /** A warning over the scene (a breakdown), shown with the caption. */
+  readonly alert?: string;
+  /** The queue counter, big, with a small chart of the queue since the beat it first shows. */
+  readonly counter?: boolean;
+  /** The detector's card, big and highlighted (its live text). */
+  readonly bottleneck?: boolean;
+  /** The flow arrows of the routing choices, highlighted. */
+  readonly arrows?: boolean;
 }
 
 const center = (radius: number, phi: number, theta: number, turn: number): Shot => ({
@@ -251,9 +276,14 @@ export function demoBeats(script: DemoScript = DEMO): Beat[] {
   ];
 }
 
-/** Real seconds the demo lasts (the jump back and the card, plus each beat's simulated time at its speed). */
+/** Real seconds a beat lasts: its pause and its simulated time at its speed, or its hold. */
+export function beatSeconds(b: Beat): number {
+  return b.speed > 0 ? (b.to - b.from) / b.speed + (b.pause ?? 0) : b.hold;
+}
+
+/** Real seconds the demo lasts (every beat, the jump back and the card included). */
 export function wallSeconds(beats: readonly Beat[]): number {
-  return beats.reduce((t, b) => t + (b.speed > 0 ? (b.to - b.from) / b.speed : b.hold), 0);
+  return beats.reduce((t, b) => t + beatSeconds(b), 0);
 }
 
 /** The beat of a side at a simulated time (the last one once past its end). */
