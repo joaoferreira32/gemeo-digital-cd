@@ -56,9 +56,10 @@ export const DEMO: DemoScript = {
 
 /**
  * The explained demo (src/demo/explicada.ts), the default one. Esteira 9 has
- * no other belt around it, so no routing can drain its queue (measured: with
- * the AI taking over anywhere from 112 to 146 s, the queues with and without
- * AI are the same until the repair). Here the breakdown is on a belt with an
+ * no other belt around it, so the routing hardly touches its queue (measured:
+ * with the AI taking over anywhere from 112 to 146 s, the queues with and
+ * without AI go together until the repair and reach the same peak, 354
+ * packets at 187 s). Here the breakdown is on a belt with an
  * alternative way, chosen by rules fixed before looking at any gain
  * (docs/resultados.md): failure at 104 s, wear on Esteira 16 at 118 s, the AI
  * at 128 s; the first of Esteira 3 and Esteira 8, and of the seeds [2026, 7,
