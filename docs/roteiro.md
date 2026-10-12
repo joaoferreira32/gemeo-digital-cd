@@ -202,6 +202,21 @@ feito em cada fase está no README e em `docs/resultados.md`.
   cenário foi escolhido (os cinco critérios fixados antes e a ordem de busca); os
   textos das etapas 2(b) e 4; 3 s com o endereço do código depois do cartão; e a
   regra de leitura (1 s a cada 3 palavras) conferida de novo.
+- **2026-10-11, demo cinema (decisões; implementação depois dos ajustes visuais
+  das 5 capturas).** Uma demo "cinema": gancho na quebra nos 3 primeiros
+  segundos, tela dividida SEM IA | COM IA (mesma seed, mesmas falhas, contadores do
+  motor), anotações presas ao 3D, raio-X da decisão, previsão do motor (vibração,
+  temperatura e CUSUM até o limite), câmera cinematográfica e números contando no
+  final. Corte do feed de 60 s em 4:5 (tela dividida em cima/embaixo) e versão
+  completa de cerca de 100 s em 16:9 (lado a lado), mantendo "como funciona" e a
+  volta no tempo; as demos explicada e curta continuam. Aprovado: o texto "Eu
+  programei uma IA para decidir o que fazer." (não "treinei": a demo usa a
+  heurística e os detectores calibrados, não o agente de reforço); a gravação
+  quadro a quadro com WebCodecs (60 FPS exatos), com a biblioteca de MP4 mantida
+  e de licença compatível (o `mp4-muxer` foi descontinuado em favor da
+  Mediabunny, MPL-2.0); os contadores escondidos na previsão do corte do feed
+  (regra de leitura); e o gargalo novo na Esteira 3, causado pelo desvio, no
+  raio-X.
 
 ## Apêndice: a primeira versão das fases 2 a 4
 
