@@ -1464,6 +1464,167 @@ mesma máquina, 5 repetições cada (`npm run bench:motor`):
 As amostras das duas versões se sobrepõem (sem robôs: 1.023.303 a 1.080.328 antes,
 960.496 a 1.050.048 depois), e o gate do CI é de 10%.
 
+## Demo explicada (depois da Fase 6)
+
+Pedido em 2026-10-10: uma versão explicativa da demo, em 9 capítulos, para quem
+nunca viu o projeto, como padrão de <kbd>V</kbd> e <kbd>Shift</kbd> + <kbd>V</kbd>;
+a demo curta fica em `?demo=curta`. O roteiro (tempos e texto exato de cada
+legenda) foi aprovado antes da implementação.
+
+### Por que a Esteira 8, e não a 9
+
+O roteiro pedia, na etapa 6, a IA assumindo e a fila diminuindo. Na demo curta a
+quebra é na Esteira 9 (B3→B4), que não tem caminho alternativo por esteira. Medido
+na seed 2026, com a IA assumindo em vários instantes (fila com IA / sem IA):
+
+| IA assume aos | Fila quando assume | 20 s depois | 40 s depois | Pico antes do conserto (189,8 s) |
+| ------------- | ------------------ | ----------- | ----------- | -------------------------------- |
+| 112 s         | 44                 | 173 / 173   | 225 / 225   | 354 aos 187 s / 354              |
+| 115 s         | 82                 | 177 / 177   | 237 / 237   | 354 aos 187 s / 354              |
+| 118 s         | 97                 | 176 / 176   | 248 / 248   | 354 aos 187 s / 354              |
+| 121 s         | 122                | 181 / 183   | 257 / 257   | 354 aos 187 s / 354              |
+| 124 s         | 143                | 192 / 192   | 273 / 273   | 354 aos 187 s / 354              |
+| 146 s         | 198                | 279 / 279   | 353 / 353   | 354 aos 187 s / 354              |
+
+Em todos os instantes, as filas com e sem IA andam juntas até o conserto, com
+diferenças pontuais (com a IA aos 112 s, 161 contra 185 pacotes aos 142 s, e 220
+contra 215 aos 172 s), e chegam ao mesmo pico: o desvio da IA quase não tem por
+onde escoar a fila da Esteira 9. O ganho da demo curta
+vem da manutenção preditiva (sem IA, a Esteira 16 quebra aos 222,8 s e a fila
+chega a 548).
+
+### Como o cenário foi escolhido
+
+Regras fixadas antes de olhar o ganho: a quebra aos 104 s, o desgaste da Esteira
+16 aos 118 s, a IA assumindo aos 128 s (24 s simulados de fila crescendo antes do
+diagnóstico); entre as esteiras com caminho alternativo do benchmark de rotas, na
+ordem Esteira 3 (A2→A3), Esteira 8 (B2→B3), e para cada uma as seeds [2026, 7,
+11, 42, 101, 333], vale a primeira combinação que cumpre os cinco critérios:
+
+1. o detector aponta a esteira quebrada, com a própria quebra como causa, em pelo
+   menos 8 dos 10 s antes de a IA assumir;
+2. a quebra termina antes do alarme do desgaste;
+3. a manutenção evita a falha (com IA);
+4. sem IA, a Esteira 16 quebra;
+5. 20 s depois de a IA assumir, a fila com IA está menor do que quando ela
+   assumiu, e a fila sem IA não.
+
+| Seed | Esteira 3         | Esteira 8                         |
+| ---- | ----------------- | --------------------------------- |
+| 2026 | falha no 5        | **cumpre os cinco** (a escolhida) |
+| 7    | falha no 5        | falha no 5                        |
+| 11   | falha no 5        | falha no 5                        |
+| 42   | falha no 5        | falha no 5                        |
+| 101  | falha no 5        | cumpre os cinco                   |
+| 333  | falha no 2 e no 5 | falha no 2                        |
+
+Na Esteira 3, as filas com e sem IA ficaram iguais nas seis seeds, nos três
+instantes medidos (10, 20 e 40 s depois de a IA assumir). As combinações
+depois da escolhida também foram calculadas (para saber se a escolha dependia de
+sorte), mas a regra era a primeira na ordem. O cartão só foi calculado depois.
+
+### O que acontece na execução com IA
+
+Medido no motor, e cada frase conferida por `tests/demo-explicada.test.ts`:
+
+- aos 104 s a Esteira 8 (B2→B3) quebra; ela não tem desvio por robôs, e o
+  roteamento ainda é o fixo: a fila vai de 57 pacotes (110 s) a 80 (126 s);
+- na pausa do diagnóstico (126 s), o cartão do detector diz: "Gargalo: Esteira 8
+  (B2→B3) parada; fila de 80 pacotes crescendo há 22 s (+136 por minuto). Causa:
+  quebra desta esteira.";
+- até 128 s as execuções com e sem IA são iguais, bit a bit;
+- de 128 a 168 s, com IA, a Esteira 12 (B2→A2) leva 57 pacotes da linha B para a
+  linha A (0 sem IA); a fila oscila entre 45 e 101 e vai de 82 a 59, enquanto sem
+  IA vai de 82 a 143;
+- o risco do motor da Esteira 16 (a cor do halo) sobe de 0,03 (180 s) para 0,38
+  (200 s), 0,58 (205 s) e 0,94 (215 s): de ciano a âmbar e vermelho; o alarme vem
+  aos 218 s, a manutenção é agendada no mesmo segundo e a falha é evitada aos
+  219 s ("a quebra viria em 4 s");
+- sem IA, a Esteira 16 quebra aos 222,75 s e volta aos 291,3 s.
+
+**Resultado nesta execução** (de 104 s a 320 s; o mesmo em qualquer máquina):
+
+| Medida             | Com IA      | Sem IA      | Diferença |
+| ------------------ | ----------- | ----------- | --------- |
+| Entregas           | 928         | 622         | +49%      |
+| p95 do ciclo       | 91 s        | 158 s       | −43%      |
+| p95 de espera      | 44 s        | 128 s       | −66%      |
+| Pior fila          | 201 pacotes | 430 pacotes | −53%      |
+| Quebras de esteira | 1           | 2           |           |
+| Quebras evitadas   | 1           | 0           |           |
+
+Não é o resultado oficial. A queda de 43% no p95 do ciclo é maior que os ganhos
+oficiais com falhas automáticas (+21,5%) e com a agenda de manutenção (+34,9%), e
+menor que a do cenário oficial mais parecido, uma esteira com alternativa
+quebrada (+56,6%, só o roteamento, em duas quebras); todos na tabela de
+benchmarks, com intervalo de confiança.
+
+### O roteiro e a regra de leitura
+
+Cada texto fica na tela pelo menos 1 s a cada 3 palavras (o título conta; no
+diagnóstico, o cartão do detector conta; no resultado, o cartão inteiro).
+Trechos seguidos com o mesmo texto somam o tempo. Calculado dos dados
+(`src/demo/explicada.ts`) e conferido por teste:
+
+| Etapa                   | Trechos                | Simulação | Velocidade                 | Na tela | Palavras | Mínimo |
+| ----------------------- | ---------------------- | --------- | -------------------------- | ------- | -------- | ------ |
+| 1. Abertura             | abertura               | 81–86 s   | 1×                         | 5,0 s   | 13       | 4,3 s  |
+| 2. Como funciona        | esteiras               | 86–92 s   | 1×                         | 6,0 s   | 16       | 5,3 s  |
+| 2. Como funciona        | robos                  | 92–98 s   | 1×                         | 6,0 s   | 17       | 5,7 s  |
+| 3. O problema           | normal                 | 98–104 s  | 2×                         | 3,0 s   | 6        | 2,0 s  |
+| 3. O problema           | quebra                 | 104–110 s | pausa de 2 s, depois 2×    | 5,0 s   | 13       | 4,3 s  |
+| 4. A fila cresce        | fila                   | 110–126 s | 2,5×                       | 6,4 s   | 18       | 6,0 s  |
+| 5. Diagnóstico          | diagnostico            | 126–128 s | pausa de 9 s, depois 1×    | 11,0 s  | 30       | 10,0 s |
+| 6. A IA assume          | ia                     | 128–168 s | 5×                         | 8,0 s   | 22       | 7,3 s  |
+| 7. Manutenção preditiva | desgaste               | 168–218 s | 7×                         | 7,1 s   | 20       | 6,7 s  |
+| 7. Manutenção preditiva | alarme                 | 218–219 s | pausa de 4,5 s, depois 1×  | 5,5 s   | 13       | 4,3 s  |
+| 7. Manutenção preditiva | evitada + segue        | 219–320 s | 1× até 223,5 s, depois 48× | 6,5 s   | 13       | 4,3 s  |
+| 8. Volta no tempo       | volta                  | —         | 3 s (a linha do tempo)     | 3,0 s   | 8        | 2,7 s  |
+| 8. Volta no tempo       | sem-ia + sem-ia-quebra | 103–320 s | 30×                        | 7,2 s   | 20       | 6,7 s  |
+| 9. Resultado            | resultado              | —         | 19 s                       | 19,0 s  | 56       | 18,7 s |
+| 9. Resultado            | fim                    | —         | 3 s                        | 3,0 s   | 4        | 1,3 s  |
+
+Total pelos dados: 101,8 s. O roteiro aprovado tinha 96 s; os ajustes pedidos
+(a linha a mais no cartão, os 3 s do endereço do código e o texto novo da etapa
+4, que pediu 2,5× em vez de 3×) somaram o resto. Uma mutação que põe a etapa 4 a
+3× faz o teste da regra falhar.
+
+### No navegador
+
+Chromium, build de produção:
+
+- janela de 1600×900: 102,7 s até o fim (o cartão aos 82,0 s), as etapas nos
+  tempos dos dados; o trecho pedido a 48× levou 2,9 s em vez de 2,0 s (o worker
+  não chega a 48× nesta máquina: só a demo demora mais, os números não mudam); sem
+  erros de console;
+- com `prefers-reduced-motion`: os mesmos tempos, sem erros;
+- numa tela de celular em pé (390×844, densidade 3): legendas de cerca de 20 px,
+  a linha da etapa no lugar da marca, o cartão inteiro na tela, sem erros.
+
+Os enquadramentos foram conferidos a olho nas capturas; dois foram corrigidos: a
+quebra e o diagnóstico (a câmera baixa deixava as prateleiras na frente da
+Esteira 8) e o motor da Esteira 16 (a própria esteira escondia o halo; com a
+câmera do lado oposto, o âmbar e o vermelho aparecem).
+
+### Gravação
+
+<kbd>Shift</kbd> + <kbd>V</kbd>: MP4 (H.264), 1920×1080, 171,3 MB, 5.583 quadros
+em 103,0 s (54,2 FPS), maior intervalo 450 ms (aos 0,2 s, o codificador
+começando), 6.138 quadros desenhados; a contagem da página e a do leitor em
+Python dão o mesmo resultado. O arquivo é salvo depois da tela final.
+
+### Memória ao repetir a demo explicada
+
+- **Worker** (`npm run bench:demo-memoria`, 15 demos): 12,1 MB antes e depois da
+  1ª; de 11,1 a 11,6 MB da 2ª à 15ª, parado em 11,6 MB nas 5 últimas.
+- **Página** (`scripts/demo_memoria.py`, 6 demos): geometrias 104, texturas 61 e
+  programas 28 em todas; heap do V8 8,1 MB antes e 8,8 / 9,1 / 9,1 / 9,5 / 9,6 /
+  9,7 MB depois de cada demo. Um heap snapshot depois da 2ª e outro depois da 6ª demo (outra sessão) diferem em 0,5 MB, quase todo código compilado pelo JIT (`InstructionStream` +0,36 MB, `TrustedByteArray` +0,11 MB); os objetos do app variam cerca de 0,01 MB. É o mesmo padrão da demo curta: não há vazamento.
+
+### Conferência por mutação
+
+Rodada completa depois da demo explicada (2026-10-11): **153 de 153** em 15 especificações, mais 1 equivalente. A da demo explicada (`mutations/explicada.json`), 11 de 11: a pausa que não para a simulação, a pausa que nunca termina, o selo sem "pausado", o selo também em tempo real, a tela final sem esperar, o contador com uma amostra por quadro, as setas que não acendem, a demo curta como padrão, o cartão sem a linha de transparência, a etapa 4 a 3× (pega pelo teste da regra de leitura) e o worker rodando sempre o roteiro curto.
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |

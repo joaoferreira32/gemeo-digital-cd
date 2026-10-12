@@ -126,8 +126,8 @@
       "edits": [
         {
           "file": "src/demo/director.ts",
-          "find": "    if (beat.speed > 0) this.stage.send({ type: 'speed', speed: beat.speed });\n",
-          "replace": ""
+          "find": "    } else if (beat.speed > 0) {\n      this.stage.send({ type: 'speed', speed: beat.speed });\n    }",
+          "replace": "    }"
         }
       ]
     },

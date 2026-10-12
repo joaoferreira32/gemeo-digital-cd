@@ -193,7 +193,7 @@ describe('the demo through the worker host (what the page shows)', () => {
       () => now,
     );
     host.handle({ type: 'init', config: {} });
-    host.handle({ type: 'demo', action: 'start' });
+    host.handle({ type: 'demo', action: 'start', script: 'curta' });
     host.handle({ type: 'speed', speed: 64 });
     const demo = () =>
       posted.filter((m) => m.type === 'demo').at(-1) as Extract<SimMessage, { type: 'demo' }>;

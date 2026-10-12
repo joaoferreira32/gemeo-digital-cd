@@ -193,6 +193,15 @@ feito em cada fase está no README e em `docs/resultados.md`.
   depois que a fila vermelha e o gargalo explicado aparecem na tela (problema,
   diagnóstico e solução), e o teste da demo confere essa ordem. Sobre o "94 de
   94" citado: vale o registrado (95 de 95 na Fase 5), nada a corrigir.
+- **2026-10-10, demo explicada.** Uma versão explicativa, em 9 capítulos, vira o
+  padrão de V e ⇧V; a demo de cerca de 50 s fica em `?demo=curta` (listada no H).
+  Roteiro aprovado com a Esteira 8 (a 9 não tem caminho alternativo e a IA não
+  consegue segurar a fila dela), cerca de 96 s, pausas com "pausado" na tela e
+  "roteamento fixo" no cartão; com quatro ajustes: a linha "Cenário escolhido para
+  mostrar cada etapa; não representa a média." no cartão e, no README, como o
+  cenário foi escolhido (os cinco critérios fixados antes e a ordem de busca); os
+  textos das etapas 2(b) e 4; 3 s com o endereço do código depois do cartão; e a
+  regra de leitura (1 s a cada 3 palavras) conferida de novo.
 
 ## Apêndice: a primeira versão das fases 2 a 4
 

@@ -18,6 +18,8 @@ const PRESETS: Record<Exclude<CameraPreset, 'follow'>, Pose> = {
 };
 
 const LIMITS = { minRadius: 4, maxRadius: 150, minPhi: 0.05, maxPhi: 1.48 };
+/** How fast the camera settles on its goal (1/s): a quarter second or so. */
+const RATE = 7;
 
 /**
  * Hand-written orbit camera (no OrbitControls): spherical coordinates around a
@@ -31,6 +33,8 @@ export class OrbitCamera {
   followPoint: Vector3 | null = null;
 
   private readonly goal: Pose;
+  /** How fast the pose settles on the goal (1/s); the demo's director may slow it. */
+  private rate = RATE;
   private readonly pose: Pose;
   private readonly keys = new Set<string>();
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -62,11 +66,13 @@ export class OrbitCamera {
   }
 
   /**
-   * A shot of the demo's director: the camera glides (with the usual damping)
-   * to look at `target` from `radius` meters, at these angles.
+   * A shot of the demo's director: the camera glides (with the usual damping,
+   * or a slower `rate` for the explained demo's transitions) to look at
+   * `target` from `radius` meters, at these angles.
    */
-  aim(target: Vector3, radius: number, phi: number, theta: number): void {
+  aim(target: Vector3, radius: number, phi: number, theta: number, rate = RATE): void {
     this.preset = null;
+    this.rate = rate;
     this.goal.target.copy(target);
     // Shots are framed for 16:9; narrower screens pull back, as the presets do.
     this.goal.radius = radius * Math.max(1, Math.sqrt(1.6 / this.camera.aspect));
@@ -76,6 +82,7 @@ export class OrbitCamera {
 
   setPreset(preset: CameraPreset): void {
     this.preset = preset;
+    this.rate = RATE;
     if (preset === 'follow') {
       this.goal.radius = 10;
       this.goal.phi = 1.05;
@@ -100,7 +107,7 @@ export class OrbitCamera {
     if (this.preset === 'follow' && this.followPoint) this.goal.target.copy(this.followPoint);
     this.clampGoal();
     // Frame-rate independent damping; reduced motion snaps almost immediately.
-    const k = 1 - Math.exp(-dt * (this.reducedMotion ? 40 : 7));
+    const k = 1 - Math.exp(-dt * (this.reducedMotion ? 40 : this.rate));
     this.pose.target.lerp(this.goal.target, k);
     this.pose.radius += (this.goal.radius - this.pose.radius) * k;
     this.pose.theta += (this.goal.theta - this.pose.theta) * k;

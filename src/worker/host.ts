@@ -1,5 +1,5 @@
 import { BottleneckDetector, topologyOf } from '../ai/bottleneck';
-import { DemoRunner } from '../demo/run';
+import { DEMO_SCRIPTS, DemoRunner, type DemoKindId } from '../demo/run';
 import { ACTION_LEVELS, observe } from '../ai/env';
 import { eventLogCsv } from '../sim/export';
 import { fingerprint } from '../sim/fingerprint';
@@ -172,7 +172,7 @@ export class SimHost {
         this.writer.recycle(cmd.buffer);
         return;
       case 'demo':
-        this.handleDemo(cmd.action);
+        this.handleDemo(cmd.action, cmd.action === 'start' ? cmd.script : 'explicada');
         break;
     }
     this.dirty = true;
@@ -302,7 +302,7 @@ export class SimHost {
    * the run with AI has ended and the page shows the moment before the
    * breakdown, on from there without AI; or back to the ordinary app.
    */
-  private handleDemo(action: 'start' | 'compare' | 'stop'): void {
+  private handleDemo(action: 'start' | 'compare' | 'stop', script: DemoKindId): void {
     if (action === 'stop') {
       this.demo = null;
       this.syncShadow();
@@ -310,7 +310,7 @@ export class SimHost {
     }
     if (action === 'start') {
       this.restart();
-      const demo = new DemoRunner();
+      const demo = new DemoRunner(DEMO_SCRIPTS[script]);
       this.demo = demo;
       this.recorder = demo.rec;
       this.detector = new BottleneckDetector(topologyOf(demo.rec.live));

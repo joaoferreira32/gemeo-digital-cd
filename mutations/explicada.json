@@ -1,0 +1,115 @@
+{
+  "tests": ["tests/demo-explicada.test.ts", "tests/director.test.ts"],
+  "mutations": [
+    {
+      "name": "a pausa não para a simulação",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "      this.holdLeft = beat.pause;\n      this.stage.send({ type: 'speed', speed: 0 });",
+          "replace": "      this.holdLeft = beat.pause;"
+        }
+      ]
+    },
+    {
+      "name": "a pausa nunca termina",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "        this.holdLeft = 0;\n        this.stage.send({ type: 'speed', speed: beat.speed });",
+          "replace": "        this.holdLeft = 0;"
+        }
+      ]
+    },
+    {
+      "name": "o selo não diz que está pausado",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "(this.holdLeft > 0 ? 'pausado' : speedBadge(beat.speed))",
+          "replace": "speedBadge(beat.speed)"
+        }
+      ]
+    },
+    {
+      "name": "o selo aparece em tempo real",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "  if (!(speed > 0) || speed === 1) return '';",
+          "replace": "  if (!(speed > 0)) return '';"
+        }
+      ]
+    },
+    {
+      "name": "a tela final não espera depois do cartão",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "    return this.cardWall >= after.reduce((t, b) => t + b.hold, 0);",
+          "replace": "    return this.cardWall >= (after[0]?.hold ?? 0);"
+        }
+      ]
+    },
+    {
+      "name": "o contador guarda uma amostra por quadro",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "    if (second === this.queueSecond) return;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "as setas não acendem com a IA",
+      "edits": [
+        {
+          "file": "src/demo/director.ts",
+          "find": "    this.stage.arrows?.(beat.arrows === true);",
+          "replace": "    this.stage.arrows?.(false);"
+        }
+      ]
+    },
+    {
+      "name": "a demo curta vira o padrão",
+      "edits": [
+        {
+          "file": "src/demo/kinds.ts",
+          "find": "get('demo') === 'curta' ? 'curta' : 'explicada';",
+          "replace": "get('demo') === 'explicada' ? 'explicada' : 'curta';"
+        }
+      ]
+    },
+    {
+      "name": "o cartão explicado sem a linha de transparência",
+      "edits": [
+        {
+          "file": "src/demo/card.ts",
+          "find": "    CARD_SCENARIO,\n    'Uma execução só.",
+          "replace": "    'Uma execução só."
+        }
+      ]
+    },
+    {
+      "name": "a fila mais rápida do que dá para ler",
+      "edits": [
+        {
+          "file": "src/demo/explicada.ts",
+          "find": "      speed: 2.5,",
+          "replace": "      speed: 3,"
+        }
+      ]
+    },
+    {
+      "name": "o worker roda sempre o roteiro curto",
+      "edits": [
+        {
+          "file": "src/worker/host.ts",
+          "find": "new DemoRunner(DEMO_SCRIPTS[script])",
+          "replace": "new DemoRunner()"
+        }
+      ]
+    }
+  ]
+}

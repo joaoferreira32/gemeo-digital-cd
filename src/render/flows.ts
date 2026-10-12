@@ -42,6 +42,8 @@ export class FlowView {
   readonly mesh: InstancedMesh;
   /** Per decision: the static way, then the alternative (positions, for tests). */
   readonly ways: { primary: Way; alternative: Way }[];
+  /** Brighter and wider arrows when above 1 (the demo's chapter on the AI's detour). */
+  emphasis = 1;
   private readonly m = new Matrix4();
   private readonly q = new Quaternion();
   private readonly up = new Vector3(0, 1, 0);
@@ -102,8 +104,8 @@ export class FlowView {
       ] as const) {
         if (part < 0.02) continue;
         const run = Math.min(RUN, way.length - 0.2);
-        const width = 0.35 + 0.75 * part;
-        const glow = 0.25 + 1.1 * part;
+        const width = (0.35 + 0.75 * part) * (1 + (this.emphasis - 1) * 0.4);
+        const glow = (0.25 + 1.1 * part) * this.emphasis;
         for (let c = 0; c < CHEVRONS; c++) {
           const phase = reducedMotion ? (c + 0.5) / CHEVRONS : (time / PERIOD + c / CHEVRONS) % 1;
           const along = 0.3 + phase * run;

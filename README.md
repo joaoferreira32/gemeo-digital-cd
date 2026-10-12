@@ -3,9 +3,9 @@
 [![CI](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml)
 [![Deploy](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml)
 
-**Demo:** https://joaoferreira32.github.io/gemeo-digital-cd/ (a tecla <kbd>V</kbd> roda a demo de um minuto)
+**Demo:** https://joaoferreira32.github.io/gemeo-digital-cd/ (a tecla <kbd>V</kbd> roda a demo explicada, de cerca de 100 s)
 
-![A demo: uma esteira quebra, a fila cresce, a IA explica o gargalo e só então desvia o fluxo, a manutenção preditiva evita uma segunda falha, a simulação volta no tempo e roda a mesma execução sem IA, e o cartão final compara as duas](docs/demo.gif)
+![A demo explicada, em 9 etapas: a Esteira 8 quebra e a fila cresce, o detector explica o gargalo, só então a IA assume e a fila para de crescer, a manutenção preditiva evita uma segunda falha, a simulação volta no tempo e roda a mesma situação sem IA, e o cartão compara as duas](docs/demo.gif)
 
 Simulação 3D em tempo real, no navegador, de um galpão logístico: esteiras,
 pacotes, docas, caminhões e uma frota de 40 robôs (AGVs) que se coordenam por
@@ -533,42 +533,80 @@ demanda constante misturaria volume e formato.
 
 ## Demo e gravação (Fase 6)
 
-A tecla <kbd>V</kbd> (ou o botão **Rodar demo**) mostra, em cerca de um minuto, a
-história do projeto, com legendas (o vídeo é mudo):
+A tecla <kbd>V</kbd> (ou o botão **Rodar demo**) roda a **demo explicada**, para
+quem nunca viu o projeto: cerca de 100 s em 9 etapas, com "Etapa X de 9" no topo e
+legendas grandes, legíveis no celular (o vídeo é mudo). Cada legenda fica na tela
+pelo menos 1 s a cada 3 palavras, e um teste confere essa regra nos dados.
 
-1. plano aberto do galpão, e os robôs se movendo sem colisão;
-2. a Esteira 9 quebra; a câmera se aproxima do ponto da falha, e robôs levam parte
-   dos pacotes por fora (a frota faz isso sozinha, não é a IA);
-3. a fila cresce, vermelha no mapa de calor do tempo de espera, com o roteamento
-   ainda fixo;
-4. a IA aponta o gargalo e explica a causa (o texto do detector, ao vivo);
-5. só então a IA assume (o roteamento e a agenda de manutenção): as setas mostram
-   a rota escolhida, e parte do tráfego da linha B passa para a linha A antes da
-   esteira parada;
-6. o motor da Esteira 16 se desgasta, o alarme dispara, a manutenção é agendada e
-   a falha é evitada;
-7. a simulação volta no tempo até um segundo antes da quebra e roda a mesma
-   execução sem IA (roteamento estático, sem manutenção preditiva): a Esteira 16
-   quebra;
-8. o cartão final compara as duas execuções, da quebra ao fim.
+1. **Abertura:** o título e um plano aéreo lento.
+2. **Como funciona:** pacotes, esteiras, docas e robôs, com a câmera passando por
+   uma esteira e por um robô.
+3. **O problema:** a Esteira 8 (B2→B3) quebra; a câmera se aproxima e a
+   simulação pausa 2 s com o alerta.
+4. **A fila cresce:** mapa de calor do tempo de espera, contador da fila em
+   destaque e o selo de velocidade ("2,5×") sempre que o tempo está acelerado.
+5. **Diagnóstico:** o cartão do detector, em destaque, lido com a simulação
+   pausada.
+6. **A IA assume** (roteamento e agenda de manutenção): as setas de fluxo em
+   destaque mostram parte da linha B contornando a esteira parada pela linha A, e
+   a fila para de crescer.
+7. **Manutenção preditiva:** o halo do motor da Esteira 16 vai de âmbar a
+   vermelho, o alarme agenda a manutenção e a falha é evitada.
+8. **Volta no tempo:** a linha do tempo volta ao instante da quebra e a mesma
+   situação roda sem IA (a Esteira 16 quebra).
+9. **Resultado:** o cartão com IA × sem IA, "nesta execução", e 3 s com o
+   endereço do código.
 
-Problema, diagnóstico e solução, nessa ordem: até a IA assumir (aos 146 s), a
-execução com IA é a mesma da execução sem IA, bit a bit, e um teste confere isso,
-com a ordem das etapas.
+A duração, a velocidade e as pausas de cada etapa ficam em dados
+(`src/demo/explicada.ts`). A **demo curta** (cerca de um minuto, a primeira
+versão da Fase 6, com a Esteira 9) continua em `?demo=curta`: nesse endereço,
+<kbd>V</kbd> e <kbd>Shift</kbd> + <kbd>V</kbd> rodam a curta (está no painel de
+atalhos, <kbd>H</kbd>).
+
+**Como o cenário foi escolhido.** A demo curta quebra a Esteira 9, que não tem
+caminho alternativo por esteira, e o roteamento quase não mexe na fila dela: com
+a IA assumindo em qualquer instante de 112 a 146 s, as filas com e sem IA andam
+juntas até o conserto e chegam ao mesmo pico, 354 pacotes (medido). Para a etapa
+6 mostrar a IA segurando a fila, a demo explicada quebra uma esteira que tem
+desvio, escolhida por regras fixadas antes de olhar o ganho: quebra aos 104 s,
+desgaste da Esteira 16 aos 118 s, IA assumindo aos 128 s; na ordem Esteira 3,
+Esteira 8 e, para cada uma, as seeds [2026, 7, 11, 42, 101, 333], vale a
+primeira combinação que cumpre os cinco critérios:
+
+1. o detector aponta a esteira quebrada;
+2. a quebra termina antes do alarme do desgaste;
+3. a manutenção evita a falha;
+4. sem IA, a Esteira 16 quebra;
+5. 20 s depois de a IA assumir, a fila com IA está menor do que quando ela
+   assumiu, e a fila sem IA não.
+
+A Esteira 3 não cumpriu o critério 5 em nenhuma seed (as filas com e sem IA
+ficaram iguais); a primeira combinação que cumpre os cinco é a Esteira 8 com a
+seed 2026. O ganho só foi calculado depois.
+
+**Os números da demo não são o resultado oficial.** O cartão mostra uma execução
+só, num cenário escolhido para mostrar cada etapa, e diz isso: entregas 928 × 622
+(+49%), p95 do ciclo 91 × 158 s (−43%), p95 de espera 44 × 128 s (−66%). A queda de
+43% no p95 do ciclo é maior que os ganhos oficiais com falhas automáticas (+21,5%,
+IC 95% +13,7% a +29,2%) e com a agenda de manutenção (+34,9%, IC 95% +25,0% a
++44,8%), e menor que a do cenário oficial mais parecido, uma esteira com
+alternativa quebrada (+56,6%, IC 95% +53,7% a +59,5%, só o roteamento, em duas
+quebras). O resultado oficial é o da tabela de benchmarks, com intervalo de
+confiança, nas seeds de validação e de teste.
 
 - **Determinística.** O roteiro roda no worker, com as entradas em ticks fixos
-  (`src/demo/run.ts`); a página só escolhe a velocidade e a câmera. Numa máquina
-  lenta a demo demora mais, mas os números são os mesmos, e um teste confere que
-  o número do cartão é o calculado pelo motor. A seed (2026) foi escolhida pelo
-  roteiro, não pelo ganho: a primeira de uma lista fixa em que a quebra termina
-  antes do alarme do desgaste, a manutenção evita a falha e, sem IA, a esteira
-  desgastada quebra.
-- **O cartão diz "nesta execução"**, contra o roteamento estático (sem IA), e
-  aponta a tabela com intervalo de confiança deste README como resultado oficial:
-  uma execução só não prova nada sozinha.
-- **Diretor de câmera:** travelling, aproximação no ponto da falha e uma
-  profundidade de campo leve; com `prefers-reduced-motion`, cortes secos, sem
-  travelling nem desfoque.
+  (`src/demo/run.ts`); a página só escolhe a velocidade, as pausas e a câmera.
+  Numa máquina lenta a demo demora mais, mas os números são os mesmos, e um teste
+  confere que o número do cartão é o calculado pelo motor. Até a IA assumir, a
+  execução com IA é a mesma da execução sem IA, bit a bit (teste).
+- **O cartão diz "nesta execução"**, contra o roteamento fixo (sem IA), avisa
+  que o cenário foi escolhido para mostrar cada etapa ("não representa a média")
+  e aponta a tabela com intervalo de confiança deste README como resultado
+  oficial.
+- **Diretor de câmera:** travelling, aproximação no ponto da falha, uma
+  profundidade de campo leve e deslizes suaves entre as etapas; com
+  `prefers-reduced-motion`, sem travelling nem desfoque, e na demo explicada um
+  escurecimento curto no lugar de cada corte.
 - **Gravação nativa:** <kbd>Shift</kbd> + <kbd>V</kbd> grava a demo em 1920×1080 e
   60 FPS (MediaRecorder sobre o canvas). O formato preferido é MP4 (H.264), e a
   tela mostra o formato usado; quando o navegador só grava WebM, a página avisa
@@ -679,16 +717,17 @@ seed; proporções somadas nas seeds, com o intervalo pela variação entre elas
 
 ### Fase 6
 
-| O que                                                                                                                                                                          | Resultado                                                                                                                                                                                                                                                                            | Como reproduzir                                                      |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| Demo, **nesta execução** (seed 2026, da quebra aos 104 s até 320 s, com IA × roteamento estático sem manutenção preditiva; a IA assume aos 146 s, depois da fila e do gargalo) | entregas 730 × 485 (+51%); p95 do ciclo 135 × 180 s (−25%); p95 de espera 89 × 133 s (−33%); pior fila 403 × 548; quebras de esteira 1 × 2. Uma execução só: o resultado oficial é a tabela de benchmarks acima                                                                      | tecla <kbd>V</kbd>; `tests/demo.test.ts`                             |
-| p95 de espera × p95 do ciclo (seed 11, 300 s)                                                                                                                                  | normal: 4,4 s de 37,3 s; quase vazio: 0,5 s de 35,2 s; Esteira 9 quebrada: 185,9 s de 229,7 s                                                                                                                                                                                        | painel <kbd>K</kbd>; `tests/espera.test.ts`                          |
-| Demo no navegador (Chromium, build de produção)                                                                                                                                | 49,7 s até o cartão em 6 rodadas, mais 8 s de cartão; etapas na ordem do roteiro; sem erros de console; com movimento reduzido, o mesmo tempo e também sem erros                                                                                                                     | tecla <kbd>V</kbd>                                                   |
-| Profundidade de campo                                                                                                                                                          | +1,4 ms por quadro (4,53 → 5,93 ms, GPU sincronizada a cada quadro)                                                                                                                                                                                                                  | `__gemeo.benchDof()` no console                                      |
-| Gravação (Chromium, RTX 5060 Ti)                                                                                                                                               | MP4 (H.264), 1920×1080: 3.123 quadros em 57,9 s (54,0 FPS), 101,8 MB; uma parada de cerca de 0,5 s no primeiro segundo do arquivo. Na primeira versão da demo, 55,5 e 58,9 FPS em duas gravações                                                                                     | <kbd>Shift</kbd> + <kbd>V</kbd> (a nota ao salvar mostra a contagem) |
-| Custo da medida de espera no motor                                                                                                                                             | sem robôs −2,7% contra o código de antes (dentro da variação entre repetições); com 40 robôs +0,6%                                                                                                                                                                                   | `npm run bench:motor`                                                |
-| Memória ao repetir a demo                                                                                                                                                      | GPU constante (104 geometrias, 61 texturas, 28 programas) em 6 demos seguidas; heap do V8 da página 7,8 MB antes e 8,6 a 9,4 MB depois de cada demo (o acréscimo é quase todo código compilado pelo JIT); worker 11,1 a 11,8 MB em 15 demos (0,05 MB por demo, parado nas 5 últimas) | `npm run bench:demo-memoria`; `scripts/demo_memoria.py`              |
-| Conferência por mutação                                                                                                                                                        | 142 de 142 em 14 especificações (mais 1 equivalente); 34 novas (espera 9, demo 18, vídeo 7). A rodada completa achou a cópia temporária sem git, que deixava as 11 da demanda sem rodar desde a Fase 5; corrigido                                                                    | `npm run mutate`                                                     |
+| O que                                                                                                           | Resultado                                                                                                                                                                                                                                                                                                        | Como reproduzir                                                      |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Demo explicada, **nesta execução** (seed 2026, Esteira 8 quebrada aos 104 s, IA aos 128 s, comparada até 320 s) | entregas 928 × 622 (+49%); p95 do ciclo 91 × 158 s (−43%); p95 de espera 44 × 128 s (−66%); pior fila 201 × 430; quebras de esteira 1 × 2. Cenário escolhido para mostrar cada etapa; o resultado oficial é a tabela de benchmarks acima                                                                         | tecla <kbd>V</kbd>; `tests/demo-explicada.test.ts`                   |
+| Demo curta, **nesta execução** (seed 2026, Esteira 9 quebrada aos 104 s, IA aos 146 s)                          | entregas 730 × 485 (+51%); p95 do ciclo 135 × 180 s (−25%); p95 de espera 89 × 133 s (−33%); pior fila 403 × 548; quebras 1 × 2                                                                                                                                                                                  | `?demo=curta`; `tests/demo.test.ts`                                  |
+| p95 de espera × p95 do ciclo (seed 11, 300 s)                                                                   | normal: 4,4 s de 37,3 s; quase vazio: 0,5 s de 35,2 s; Esteira 9 quebrada: 185,9 s de 229,7 s                                                                                                                                                                                                                    | painel <kbd>K</kbd>; `tests/espera.test.ts`                          |
+| Demo no navegador (Chromium, build de produção)                                                                 | explicada: 102,7 s até o fim (cartão aos 82 s), as etapas nos tempos dos dados, sem erros de console; o mesmo com movimento reduzido e numa tela de celular (390×844). Curta: 49,7 s até o cartão                                                                                                                | tecla <kbd>V</kbd>                                                   |
+| Profundidade de campo                                                                                           | +1,4 ms por quadro (4,53 → 5,93 ms, GPU sincronizada a cada quadro)                                                                                                                                                                                                                                              | `__gemeo.benchDof()` no console                                      |
+| Gravação (Chromium, RTX 5060 Ti)                                                                                | MP4 (H.264), 1920×1080, demo explicada: 5.583 quadros em 103,0 s (54,2 FPS), 171,3 MB; uma parada de cerca de 0,5 s no primeiro segundo. Demo curta: de 54,0 a 58,9 FPS em três gravações                                                                                                                        | <kbd>Shift</kbd> + <kbd>V</kbd> (a nota ao salvar mostra a contagem) |
+| Custo da medida de espera no motor                                                                              | sem robôs −2,7% contra o código de antes (dentro da variação entre repetições); com 40 robôs +0,6%                                                                                                                                                                                                               | `npm run bench:motor`                                                |
+| Memória ao repetir a demo                                                                                       | demo explicada: GPU constante (104 geometrias, 61 texturas, 28 programas) em 6 demos seguidas; heap do V8 da página 8,1 MB antes e de 8,8 a 9,7 MB depois de cada demo (da 2ª à 6ª, +0,5 MB num heap snapshot, quase todo código compilado pelo JIT); worker de 11,1 a 11,6 MB em 15 demos, parado nas 5 últimas | `npm run bench:demo-memoria`; `scripts/demo_memoria.py`              |
+| Conferência por mutação                                                                                         | 153 de 153 em 15 especificações (mais 1 equivalente); 45 desta fase: espera 9, demo curta 18, vídeo 7, demo explicada 11. A rodada completa achou a cópia temporária sem git, que deixava as 11 da demanda sem rodar desde a Fase 5; corrigido                                                                   | `npm run mutate`                                                     |
 
 ### Detector de gargalo com memória (depois da Fase 5)
 
@@ -885,16 +924,18 @@ Bugs encontrados medindo, não supondo:
 - **Não feito:** balanceamento entre docas e redistribuição de robôs na
   heurística, previstos no roteiro original da Fase 4 (`docs/roteiro.md`); ficou
   como não feito por decisão de 2026-10-07.
-- **A demo é uma execução só**, com a seed escolhida pelo roteiro (ver "Demo e
-  gravação"). O cartão diz "nesta execução"; o resultado oficial, com intervalo
-  de confiança, é a tabela de benchmarks.
+- **Cada demo é uma execução só**, num cenário escolhido para mostrar cada etapa
+  (ver "Como o cenário foi escolhido"). O cartão diz "nesta execução" e "não
+  representa a média"; o resultado oficial, com intervalo de confiança, é a tabela
+  de benchmarks.
 - **A gravação depende do navegador:** o Chromium grava MP4 (H.264); onde só há
   WebM (o Firefox, por exemplo), a página avisa, e o WebM não tem os quadros
-  contados. O arquivo fica abaixo de 60 FPS (54,0 na gravação da demo atual;
-  55,5 e 58,9 em duas gravações da primeira versão), com uma parada de cerca de
-  0,5 s no primeiro segundo, quando o codificador começa.
-- **A demo leva cerca de um minuto** numa máquina que acompanha 32× de
-  velocidade; numa mais lenta ela só demora mais (o diretor segue o tempo
+  contados. O arquivo fica abaixo de 60 FPS (54,2 na gravação da demo
+  explicada; de 54,0 a 58,9 nas da demo curta), com uma parada de cerca de 0,5 s
+  no primeiro segundo, quando o codificador começa.
+- **A demo explicada leva cerca de 100 s** numa máquina que acompanha 30× de
+  velocidade (o trecho pedido a 48× fica um pouco mais lento quando o worker não
+  chega lá); numa mais lenta ela só demora mais (o diretor segue o tempo
   simulado, não o relógio).
 - A cópia estática do painel recebe as mesmas entradas, mas as falhas
   automáticas são sorteadas de novo nela (mesma semente): os alvos podem
