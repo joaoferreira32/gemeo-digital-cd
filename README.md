@@ -636,7 +636,7 @@ preview`), em dois passos:
 ## Demo cinema (depois da Fase 6)
 
 <p>
-  <img src="docs/cinema/feed-1-gancho.jpg" width="32%" alt="Gancho: close baixo na fila vermelha da Esteira 8 parada, com a manchete Uma esteira quebrou, o contador NA FILA e o aviso Esteira 8 na cabeça da fila">
+  <img src="docs/cinema/feed-1-gancho.jpg" width="32%" alt="Gancho: close baixo na fila vermelha da Esteira 8 parada, com a manchete Uma esteira quebrou, o contador FILA · ESTEIRA 8 e o aviso Esteira 8 na cabeça da fila">
   <img src="docs/cinema/feed-2-tela-dividida.jpg" width="32%" alt="Tela dividida: em cima sem IA, fila de 146 pacotes; embaixo com IA, fila de 10, com as setas do desvio pela linha A">
   <img src="docs/cinema/feed-4b-previsao-climax.jpg" width="32%" alt="Previsão: em cima, sem IA, a Esteira 16 quebrou; embaixo, com IA, falha evitada, com os gráficos de vibração, temperatura e CUSUM até o limite do alarme">
 </p>
@@ -655,17 +655,18 @@ Nesses endereços, <kbd>V</kbd> roda a demo ao vivo e <kbd>Shift</kbd> +
 estão em [`docs/cinema/`](docs/cinema).
 
 **Roteiro do corte do feed.** A regra de leitura conta toda palavra na tela,
-números e selos incluídos (o selo "5×" vale uma palavra); no raio-X, cada camada
-conta as palavras que aparecem nela.
+números e selos incluídos (o selo "5×" vale uma palavra; o separador "·" do
+contador não é palavra); no raio-X, cada camada conta as palavras que aparecem
+nela.
 
-| Vídeo     | Simulação                              | O que aparece                                                                                                                                                               | Palavras → mínimo |
-| --------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| 0–3 s     | 104→110 s, 2×                          | "Uma esteira quebrou.", o contador NA FILA e ⚠ Esteira 8 na cabeça da fila                                                                                                  | 9 → 3,0 s         |
-| 3–6,5 s   | 110→113,5 s, 1×                        | "Eu programei uma IA para decidir o que fazer.", com a câmera recuando                                                                                                      | 9 → 3,0 s         |
-| 6,5–19 s  | 113,5→176 s, 5×                        | Tela dividida; a IA assume aos 128 s (9,4 s do vídeo), depois "desvio pela linha A" e "A IA desvia o fluxo, e a fila para de crescer."                                      | 37 → 12,3 s       |
-| 19–33 s   | 176→190 s, 1×                          | Raio-X, uma camada por vez: espera (mapa de calor) 3 s, rotas reservadas dos robôs 2 s, "B2: 100% pela linha A" 2 s, cartão "GARGALO AGORA" ligado ao anel da Esteira 3 7 s | 9, 4, 5 e 21      |
-| 33–47,5 s | 190→215 s a 5×, 215→224,5 s a 1×       | O motor da Esteira 16: vibração, temperatura e CUSUM até o limite; "Falha evitada" com IA (219 s) e "A esteira quebrou" sem IA (222,75 s)                                   | 38 → 12,7 s       |
-| 47,5–60 s | 224,5→320 s a 48× (2 s), depois parado | Os números contando: +49% entregas, −43% p95 do ciclo, quebras 2 × 1; o endereço do código nos 3 s finais                                                                   | 37 → 12,3 s       |
+| Vídeo       | Simulação                            | O que aparece                                                                                                                                                                 | Palavras → mínimo |
+| ----------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| 0–3,5 s     | 104→111 s, 2×                        | "Uma esteira quebrou.", o contador FILA · ESTEIRA 8 e ⚠ Esteira 8 na cabeça da fila                                                                                           | 10 → 3,3 s        |
+| 3,5–6,5 s   | 111 s, parado                        | "Eu programei uma IA para decidir o que fazer.", com a câmera recuando                                                                                                        | 9 → 3,0 s         |
+| 6,5–19,5 s  | 111→176 s, 5×                        | Tela dividida, com FILA · ESTEIRA 8 nas duas metades; a IA assume aos 128 s (9,9 s do vídeo), depois "desvio pela linha A" e "A IA desvia o fluxo, e a fila para de crescer." | 39 → 13,0 s       |
+| 19,5–33,5 s | 176→190 s, 1×                        | Raio-X, uma camada por vez: espera (mapa de calor) 3 s, rotas reservadas dos robôs 2 s, "B2: 100% pela linha A" 2 s, cartão "GARGALO AGORA" ligado ao anel da Esteira 3 7 s   | 9, 4, 5 e 21      |
+| 33,5–47,5 s | 190→215 s a 5×, 215→224 s a 1×       | O motor da Esteira 16: vibração, temperatura e CUSUM até o limite; "Falha evitada" com IA (219 s) e "A esteira quebrou" sem IA (222,75 s)                                     | 38 → 12,7 s       |
+| 47,5–60 s   | 224→320 s a 48× (2 s), depois parado | Os números contando: +49% entregas, −43% p95 do ciclo, quebras 2 × 1; o endereço do código nos 3 s finais                                                                     | 37 → 12,3 s       |
 
 A versão completa acrescenta a volta no tempo (a simulação volta aos 84 s, 20 s
 antes da quebra, e continua dali), "como funciona" (uma esteira e um robô entre
@@ -676,14 +677,19 @@ quebras evitadas).
 esteira quebrada e o feixe de alerta saem). Fila: vermelho (o pacote fica todo
 vermelho depois de 4 s parado). IA: ciano (o selo COM IA, as setas do desvio, as
 rotas, o anel do gargalo, o painel do motor). Sem IA: laranja. Aviso do motor:
-amarelo (o halo e a curva do CUSUM). O número NA FILA tem a cor do lado na tela
-dividida e vermelho no gancho. Toda palavra fica numa faixa escura; o que não é o
+amarelo (o halo e a curva do CUSUM). O número do contador tem a cor do lado na
+tela dividida e vermelho no gancho. Toda palavra fica numa faixa escura; o que não é o
 assunto escurece (as prateleiras, na própria cena) e desfoca (profundidade de
 campo em cada plano).
 
-**O contador NA FILA mostra a fila da esteira que quebrou** (a Esteira 8: os
-pacotes parados nela e os que esperam por ela, como o detector conta a fila de
-uma esteira), não os pacotes parados no galpão inteiro. O desvio da IA cria filas
+**O contador é por esteira: "FILA · ESTEIRA 8"** mostra a fila da esteira que
+quebrou (os pacotes parados nela e os que esperam por ela, como o detector conta
+a fila de uma esteira), não os pacotes parados no galpão inteiro. O gancho, o SEM
+IA e o COM IA mostram a mesma medida, com o mesmo rótulo (teste: até a IA assumir,
+os dois lados dão o mesmo número em todo quadro). Os números do galpão inteiro
+ficam no cartão final (entregas, p95 do ciclo e, na versão completa, p95 de
+espera, de todos os pacotes) e na tabela de benchmarks; a fila total do galpão
+(a "pior fila") aparece no cartão da demo explicada. O desvio da IA cria filas
 em outras esteiras (a da Esteira 3, que o raio-X mostra): com IA, o total
 oscila de 45 a 139 pacotes entre 128 e 190 s, e "a fila para de crescer" ficaria
 enganoso. A fila da Esteira 8 com IA cai de 82 para 10 aos 130 s (os pacotes
@@ -729,6 +735,13 @@ benchmarks não mudou.
 | Tempo para gravar                        | 23,5 s                                                                                                 | 35,0 s                                                      |
 | Ao vivo                                  | 60,12 s para 60 s de vídeo; 7 engasgos (quadros a mais de 25 ms), o maior de 95 ms, nas trocas de cena | 100,36 s para 100,25 s; 9 engasgos, o maior de 82 ms        |
 | Custo por quadro, sem gravar             | 3.600 quadros em 22,7 s: 6,3 ms por quadro, com as duas simulações e as duas cenas                     | —                                                           |
+
+Os tempos acima foram medidos com a máquina livre, antes do rótulo por esteira
+(que trouxe o gancho de 3,5 s e a frase com a simulação parada). Depois dele, o
+MP4 foi gravado de novo: 3.600 quadros em 60,000 s (60,000 FPS), maior intervalo
+16,67 ms, 57,6 MB (a versão completa, 6.015 quadros em 100,250 s, 148,0 MB). Os
+tempos de gravação e do modo ao vivo não foram medidos de novo, porque a máquina
+estava ocupada com outro programa pesado; o arquivo não depende deles.
 
 Memória: na página, depois de cada execução a GPU volta a 104 geometrias e 61
 texturas (192 e 94 com as duas cenas), e o heap do V8, depois de uma coleta

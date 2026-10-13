@@ -1641,7 +1641,7 @@ Medidos com as duas execuções tocadas quadro a quadro, como a página pede:
   entregas, saídas e filas de cada esteira em todos os segundos); no fim, cada
   uma tem a impressão digital da execução correspondente da demo explicada, e a
   versão completa, que volta aos 84 s e continua dali, também.
-- **A fila da Esteira 8** (o contador NA FILA: os pacotes parados nela e os que
+- **A fila da Esteira 8** (o contador "FILA · ESTEIRA 8": os pacotes parados nela e os que
   esperam por ela, como o detector conta): 82 pacotes aos 128 s nos dois lados;
   com IA, 10 aos 130 s e 10 até o conserto (189,77 s), em todo quadro; sem IA,
   85 (132 s), 146 (170 s), 161 (176 s) e 194 (188 s). Aos 170 s, o quadro da tela
@@ -1674,21 +1674,26 @@ roteiro (no raio-X, cada camada conta as palavras que aparecem nela):
 
 | Formato  | Trecho                    | Palavras | Mínimo | Tempo   |
 | -------- | ------------------------- | -------- | ------ | ------- |
-| Feed     | gancho                    | 9        | 3,0 s  | 3 s     |
-| Feed     | frase                     | 9        | 3,0 s  | 3,5 s   |
-| Feed     | tela dividida             | 37       | 12,3 s | 12,5 s  |
+| Feed     | gancho                    | 10       | 3,3 s  | 3,5 s   |
+| Feed     | frase                     | 9        | 3,0 s  | 3 s     |
+| Feed     | tela dividida             | 39       | 13,0 s | 13 s    |
 | Feed     | raio-X: calor             | 9        | 3,0 s  | 3 s     |
 | Feed     | raio-X: rotas             | 4        | 1,3 s  | 2 s     |
 | Feed     | raio-X: desvio            | 5        | 1,7 s  | 2 s     |
 | Feed     | raio-X: cartão do gargalo | 21       | 7,0 s  | 7 s     |
-| Feed     | previsão                  | 38       | 12,7 s | 14,5 s  |
+| Feed     | previsão                  | 38       | 12,7 s | 14 s    |
 | Feed     | números e endereço        | 37       | 12,3 s | 12,5 s  |
-| Completa | tela dividida             | 38       | 12,7 s | 16,75 s |
+| Completa | tela dividida             | 40       | 13,3 s | 16,75 s |
 | Completa | números                   | 45       | 15,0 s | 15 s    |
 
-Cada texto também fica na tela pelo menos 1 s a cada 3 palavras dele. Três
-trechos do feed ficam no mínimo exato (o gancho, a primeira e a última camada do
-raio-X).
+Cada texto também fica na tela pelo menos 1 s a cada 3 palavras dele. O rótulo
+do contador, "FILA · ESTEIRA 8", conta 3 palavras (o separador não é lido) mais o
+número, nos dois contadores da tela dividida e no do gancho. Com ele, o gancho
+passou a 3,5 s (104→111 s a 2×), a frase segura esse instante parado por 3 s
+enquanto a câmera recua, a tela dividida tem 13 s (111→176 s a 5×; a IA assume aos
+9,9 s do vídeo) e a previsão 14 s (até 224 s; "A esteira quebrou" fica 1,25 s na
+tela). Quatro trechos do feed ficam no mínimo exato (a frase, a tela dividida e a
+primeira e a última camada do raio-X).
 
 ### Gravação quadro a quadro
 
@@ -1700,8 +1705,16 @@ WebCodecs H.264 e Mediabunny 1.60.0), lido nas caixas do MP4:
 - **Completa:** 1920×1080, 6.015 quadros em 100,250 s (60,000 FPS), maior
   intervalo 16,67 ms, 150,3 MB; a gravação levou 35,0 s.
 
-O MP4 do feed foi também decodificado (Mediabunny e WebCodecs, no Chromium): o
-quadro de 46,9 s é o clímax da previsão, igual ao capturado do canvas. No Edge
+Esses tempos são da versão anterior ao rótulo por esteira. Depois dele, o MP4 foi
+gravado de novo: o feed com 3.600 quadros em 60,000 s (60,000 FPS), maior
+intervalo 16,67 ms, 57,6 MB; a versão completa com 6.015 quadros em 100,250 s,
+148,0 MB. Os tempos de gravação (53,5 s e 93,4 s) e do modo ao vivo dessa nova
+medida não valem como referência: a máquina estava com outro programa pesado
+aberto, ocupando CPU e GPU.
+
+O MP4 do feed da versão anterior foi também decodificado (Mediabunny e WebCodecs,
+no Chromium): o quadro de 46,9 s é o clímax da previsão, igual ao capturado do
+canvas. No Edge
 sem janela, um `<video>` devolveu um quadro em branco: o navegador sem GPU não lê
 o quadro decodificado, o arquivo está certo.
 
@@ -1736,7 +1749,8 @@ o quadro decodificado, o arquivo está certo.
 
 ### Conferência por mutação
 
-`mutations/cinema.json`, **16 de 16**: o lado sem IA recebendo a IA, a volta no
+`mutations/cinema.json`, **18 de 18** (16, mais 2 do rótulo por esteira: o
+separador contado como palavra e o rótulo sem o nome da esteira): o lado sem IA recebendo a IA, a volta no
 tempo sem continuar do passado, o contador pelo caminho estático, a consulta do
 roteamento ignorando o desvio, o quadro entre dois ticks, a pausa da volta no
 tempo sem duração, o raio-X com todas as camadas de uma vez, o número do contador

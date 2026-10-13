@@ -20,18 +20,18 @@ FORMATS = sys.argv[3:] or ["feed", "completa"]
 # Name and video second of each frame (src/demo/cinema.ts gives the segments).
 FRAMES = {
     "feed": [
-        ("1-gancho", 2.9),
-        ("2-tela-dividida", 17.8),
-        ("3a-raio-x-calor", 20.5),
-        ("3b-raio-x-rotas", 23.0),
-        ("3c-raio-x-desvio", 25.0),
-        ("3d-raio-x-gargalo", 27.5),
-        ("4a-previsao", 37.8),
-        ("4b-previsao-climax", 46.9),
+        ("1-gancho", 3.4),
+        ("2-tela-dividida", 18.3),
+        ("3a-raio-x-calor", 21.0),
+        ("3b-raio-x-rotas", 23.5),
+        ("3c-raio-x-desvio", 25.5),
+        ("3d-raio-x-gargalo", 28.0),
+        ("4a-previsao", 38.3),
+        ("4b-previsao-climax", 47.4),
         ("5-resultado", 59.5),
     ],
     "completa": [
-        ("1-gancho", 2.9),
+        ("1-gancho", 3.4),
         ("2-frase", 6.0),
         ("3-volta-no-tempo", 8.5),
         ("4-como-esteiras", 17.0),

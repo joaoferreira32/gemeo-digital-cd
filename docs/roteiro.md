@@ -240,6 +240,14 @@ feito em cada fase está no README e em `docs/resultados.md`.
   linha de transparência da demo explicada; a versão completa com o p95 de
   espera no cartão.
 
+- **2026-10-13, demo cinema: o contador é por esteira.** Pedido antes do merge do
+  PR #12: o rótulo diz o que o contador mede, "FILA · ESTEIRA 8", no gancho e nas
+  duas metades da tela dividida (a mesma medida nos três, conferida por teste); a
+  regra de leitura conferida de novo com o rótulo maior (o gancho passou a 3,5 s,
+  a frase segura o instante parado, a tela dividida tem 13 s e a previsão 14 s); e
+  o README diz que o contador da demo cinema é por esteira e onde ficam os números
+  do galpão inteiro.
+
 ## Apêndice: a primeira versão das fases 2 a 4
 
 Do primeiro pedido. Substituída depois da Fase 1 pelas fases 2 a 6 acima; vários
