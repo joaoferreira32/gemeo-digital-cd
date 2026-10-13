@@ -21,8 +21,20 @@ import type { World } from './world';
  * Every waiting packet of the world's stats (`stats.waiting`) is counted
  * exactly once. `conveyors` and `docks` are overwritten (one entry per belt
  * and per dock).
+ *
+ * `unchosen`: where a first packet that has not chosen its next belt yet is
+ * counted. 'static' (the recording and the detector): the static way. 'next'
+ * (the cinema's counter): the way the routing will send it now. With the AI
+ * sending all of a junction's packets around a stopped belt, 'static' counts
+ * the whole line behind that packet in the stopped belt's queue for the one
+ * tick it has not chosen, and the counter jumps from 10 to 70 and back.
  */
-export function waitingFor(world: World, conveyors: Int32Array, docks: Int32Array): void {
+export function waitingFor(
+  world: World,
+  conveyors: Int32Array,
+  docks: Int32Array,
+  unchosen: 'static' | 'next' = 'static',
+): void {
   conveyors.fill(0);
   docks.fill(0);
   const { graph, dockNodes } = world.layout;
@@ -46,12 +58,14 @@ export function waitingFor(world: World, conveyors: Int32Array, docks: Int32Arra
       continue;
     }
     // The first packet has chosen where it goes once it reached the end. One that has
-    // not (the one before it left in this very step) would take the static way there.
+    // not (the one before it left in this very step) is counted by `unchosen`.
     const head = c.packets[0];
     const chosen = head
       ? head.next >= 0
         ? head.next
-        : world.routing.staticEdge(end, head.destination)
+        : unchosen === 'next'
+          ? world.routing.peekEdge(end, head.destination)
+          : world.routing.staticEdge(end, head.destination)
       : -1;
     next[c.edgeId] = chosen >= 0 ? chosen : NONE;
   }

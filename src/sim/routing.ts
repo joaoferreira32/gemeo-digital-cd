@@ -118,6 +118,18 @@ export class SplitRouter implements Router {
     return this.staticTable[dock * this.nodeCount + node] ?? -1;
   }
 
+  /**
+   * The belt the next packet bound to `dock` will take at `node`, without
+   * taking it (no share spent): what `nextEdge` would answer now.
+   */
+  peekEdge(nodeId: number, dock: number): number {
+    const d = this.decisionAt(nodeId, dock);
+    if (d < 0) return this.staticEdge(nodeId, dock);
+    const decision = this.decisions[d] as RouteDecision;
+    const carry = (this.carry[d] as number) + (this.share[d] as number);
+    return carry >= 1 - 1e-9 ? decision.alternative : decision.primary;
+  }
+
   nextEdge(nodeId: number, packet: Packet): number {
     const d = this.decisionAt(nodeId, packet.destination);
     if (d < 0) return this.staticEdge(nodeId, packet.destination);
