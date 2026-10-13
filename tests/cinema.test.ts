@@ -3,6 +3,7 @@ import {
   AVOIDED,
   BROKE,
   COMPLETA,
+  COUNTER_LABEL,
   FEED,
   PHRASE,
   bottleneckText,
@@ -15,6 +16,7 @@ import {
   lookAt,
   momentAt,
   readingWindows,
+  shortLabel,
   words,
   type CinemaFormat,
   type Item,
@@ -109,10 +111,29 @@ describe('the cinema demo: the script', () => {
         before = time;
       }
       // Only the full version goes back: from where the hook ended to 20 s before the breakdown.
-      expect(jumps).toEqual(f === COMPLETA ? [[E.failure.at + 9.5, E.failure.at - 20]] : []);
+      expect(jumps).toEqual(f === COMPLETA ? [[E.failure.at + 7, E.failure.at - 20]] : []);
       expect(momentAt(f, 0).time).toBe(E.failure.at);
       expect(momentAt(f, formatFrames(f) - 1).time).toBe(E.end);
     }
+    // The holds: the phrase keeps the hook's last moment still for its 3 s; the time travel
+    // keeps it 3 s more under its bar, then jumps 20 s before the breakdown.
+    const at = (f: CinemaFormat, id: SegmentId, local: number) => {
+      let start = 0;
+      for (const s of f.segments) {
+        if (s.id === id) break;
+        start += s.seconds;
+      }
+      return momentAt(f, Math.round((start + local) * 60));
+    };
+    const held = E.failure.at + 7;
+    for (const f of [FEED, COMPLETA]) {
+      expect(at(f, 'gancho', 3.49).time).toBeCloseTo(held, 1);
+      for (const local of [0, 1.5, 2.98]) {
+        expect(at(f, 'frase', local)).toMatchObject({ time: held, speed: 0 });
+      }
+    }
+    expect(at(COMPLETA, 'volta', 2.98)).toMatchObject({ time: held, speed: 0 });
+    expect(at(COMPLETA, 'volta', 3)).toMatchObject({ time: E.failure.at - 20, speed: 1 });
   });
 
   it('the story in order: the break, the AI taking over side by side, the X-ray, the motor, the numbers', () => {
@@ -213,12 +234,48 @@ describe('the cinema demo: the script', () => {
       }
     }
     // The counts the README gives, for the feed.
-    expect(readingWindows(FEED, live).map((w) => w.words)).toEqual([9, 9, 37, 9, 4, 5, 21, 38, 37]);
+    expect(readingWindows(FEED, live).map((w) => w.words)).toEqual([
+      10, 9, 39, 9, 4, 5, 21, 38, 37,
+    ]);
     expect(words('A IA prevê a quebra|pelos sensores do motor.')).toBe(9);
+    // The counter's label: three words (the separator is not read), plus its number.
+    expect(COUNTER_LABEL).toBe('FILA · ESTEIRA 8');
+    expect(words(COUNTER_LABEL)).toBe(3);
   });
 });
 
 describe('the cinema demo: what each text says, on the run', () => {
+  it('the counter measures one thing: the hook, SEM IA and COM IA show the queue of Esteira 8', () => {
+    // Its label names the belt the script breaks.
+    expect(feed.ai.rec.live.conveyorLabel(BROKEN)).toMatch(/^Esteira 8 /);
+    expect(COUNTER_LABEL).toBe(
+      `FILA · ${shortLabel(feed.ai.rec.live.conveyorLabel(BROKEN)).toUpperCase()}`,
+    );
+    // The hook shows the run with AI, which is the run without it until the AI takes over:
+    // frame by frame, both counters show the same number until then, and part after.
+    const until = (m: Map<number, number>, t: number) =>
+      [...m].filter(([tick]) => tick <= feed.ai.tick(t));
+    expect(until(feed.counter.ai, E.aiAt)).toEqual(until(feed.counter.noAi, E.aiAt));
+    expect(until(feed.counter.ai, E.aiAt).length).toBeGreaterThan(300);
+    expect(queue(feed.ai, 170)).not.toBe(queue(feed.noAi, 170));
+    // Each counter is the queue the detector counts for that belt, read where no packet is
+    // between two belts: at the whole seconds of the hook they match the recording.
+    for (let t = E.failure.at + 1; t <= E.failure.at + 7; t++) {
+      for (const r of [feed.ai, feed.noAi]) {
+        expect(queue(r, t)).toBe(
+          r.rec.series.conveyorQueue.get(t * r.rec.series.conveyors + BROKEN),
+        );
+      }
+    }
+    // The hook's counter belongs to no pane (the whole screen), the split's to each pane.
+    const panes = (id: SegmentId) =>
+      segment(FEED, id)
+        .items.filter((i) => i.kind === 'counter')
+        .map((i) => (i.kind === 'counter' ? (i.pane ?? 'tela') : ''));
+    expect(panes('gancho')).toEqual(['tela']);
+    expect(panes('dividida')).toEqual(['no-ai', 'ai']);
+  });
+
   it('the hook: Esteira 8 breaks as it opens, and its queue grows', () => {
     for (const r of [feed.ai, feed.noAi]) {
       const start = r.rec.events.find((e) => e.kind === 'failure-start' && e.target === BROKEN);

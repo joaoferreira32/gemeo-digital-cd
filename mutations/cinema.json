@@ -14,7 +14,11 @@
     {
       "name": "a volta no tempo não continua do passado",
       "edits": [
-        { "file": "src/demo/cinema-run.ts", "find": "      rec.branch();\n", "replace": "" }
+        {
+          "file": "src/demo/cinema-run.ts",
+          "find": "      rec.branch();\n",
+          "replace": ""
+        }
       ]
     },
     {
@@ -72,8 +76,8 @@
       "edits": [
         {
           "file": "src/demo/cinema.ts",
-          "find": "      return words('NA FILA') + 1;",
-          "replace": "      return words('NA FILA');"
+          "find": "      return words(COUNTER_LABEL) + 1;",
+          "replace": "      return words(COUNTER_LABEL);"
         }
       ]
     },
@@ -150,7 +154,31 @@
     {
       "name": "o worker segue o relógio durante a demo cinema",
       "edits": [
-        { "file": "src/worker/host.ts", "find": "    if (this.cinema) return;\n", "replace": "" }
+        {
+          "file": "src/worker/host.ts",
+          "find": "    if (this.cinema) return;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o separador do rótulo conta como palavra",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "    .filter((t) => /[\\p{L}\\p{N}]/u.test(t)).length;",
+          "replace": "    .filter(Boolean).length;"
+        }
+      ]
+    },
+    {
+      "name": "o rótulo do contador não diz a esteira",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "export const COUNTER_LABEL = `FILA · ESTEIRA ${BROKEN + 1}`;",
+          "replace": "export const COUNTER_LABEL = 'NA FILA';"
+        }
       ]
     }
   ]

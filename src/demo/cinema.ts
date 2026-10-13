@@ -115,7 +115,7 @@ export type ItemBody =
       /** Kept to the left (a panel stands to the right). */
       readonly narrow?: boolean;
     }
-  /** "NA FILA" and the packets queuing now. */
+  /** COUNTER_LABEL ("FILA · ESTEIRA 8") and the packets queuing for that belt now. */
   | { readonly kind: 'counter'; readonly pane?: CinemaSide }
   /** "SEM IA" (orange) or "COM IA" (cyan). */
   | { readonly kind: 'tag'; readonly pane: CinemaSide }
@@ -203,6 +203,14 @@ const BROKEN = S.failure.target;
 const WORN = S.wear.target;
 
 export const PHRASE = 'Eu programei uma IA para decidir o que fazer.';
+/**
+ * The counter's label, in the hook and in both panes of the split screen: the
+ * queue it counts is the broken belt's (src/demo/cinema-run.ts), not the
+ * warehouse's, so the label names the belt.
+ */
+export const COUNTER_LABEL = `FILA · ESTEIRA ${BROKEN + 1}`;
+/** Where the hook ends: 7 s of the breakdown at 2×; the phrase holds this moment still. */
+const HOOK_END = S.failure.at + 7;
 export const ADDRESS_LEAD = 'Código e detalhes';
 export const ADDRESS = 'github.com/joaoferreira32/gemeo-digital-cd';
 /** The card's note: the scenario was picked to show each step. */
@@ -257,12 +265,12 @@ const look = (l: Partial<Look>): Look => ({
 
 /** The hook: the broken belt and its queue, low and close; nothing of the AI yet. */
 function gancho(shot: Shot): Segment {
-  const seconds = 3;
+  const seconds = 3.5;
   return {
     id: 'gancho',
     layout: 'single',
     seconds,
-    spans: [{ from: S.failure.at, to: S.failure.at + 6, speed: 2 }],
+    spans: [{ from: S.failure.at, to: HOOK_END, speed: 2 }],
     shot,
     look: look({ racks: 0.45 }),
     items: [
@@ -275,17 +283,17 @@ function gancho(shot: Shot): Segment {
   };
 }
 
-/** "Eu programei uma IA…", while the camera pulls back over the floor. */
+/** "Eu programei uma IA…", the run held still while the camera pulls back over the floor. */
 function frase(shot: Shot): Segment {
-  const seconds = 3.5;
+  const seconds = 3;
   return {
     id: 'frase',
     layout: 'single',
     seconds,
-    spans: [{ from: S.failure.at + 6, to: S.failure.at + 9.5, speed: 1 }],
+    spans: [{ from: HOOK_END, to: HOOK_END, speed: 0, hold: seconds }],
     shot,
     look: look({ racks: 0.6 }),
-    items: [{ kind: 'phrase', text: PHRASE, from: 0.2, to: seconds }],
+    items: [{ kind: 'phrase', text: PHRASE, from: 0, to: seconds }],
   };
 }
 
@@ -529,9 +537,9 @@ export const FEED: CinemaFormat = {
     gancho(HOOK_SHOT),
     frase({ target: point(-6, 0.5, 0.5), radius: 30, phi: 0.62, theta: 0.42, turn: 0, glide: 1.4 }),
     dividida(
-      S.failure.at + 9.5,
+      HOOK_END,
       5,
-      12.5,
+      13,
       {
         target: point(-6, 0.5, 0.5),
         radius: 30,
@@ -545,8 +553,8 @@ export const FEED: CinemaFormat = {
     ),
     raiox(XRAY_SHOT),
     previsao(
-      224.5,
-      14.5,
+      224,
+      14,
       {
         target: motor(WORN, 0.6, 2.5),
         radius: 10.5,
@@ -557,7 +565,7 @@ export const FEED: CinemaFormat = {
       },
       false,
     ),
-    numeros(224.5, 48, 12.5, ['entregas', 'ciclo', 'quebras'], true),
+    numeros(224, 48, 12.5, ['entregas', 'ciclo', 'quebras'], true),
   ],
 };
 
@@ -575,14 +583,14 @@ export const COMPLETA: CinemaFormat = {
       layout: 'single',
       seconds: 6,
       spans: [
-        { from: S.failure.at + 9.5, to: S.failure.at + 9.5, speed: 0, hold: 3 },
+        { from: HOOK_END, to: HOOK_END, speed: 0, hold: 3 },
         { from: S.failure.at - 20, to: S.failure.at - 17, speed: 1 },
       ],
       shot: { target: point(-6, 0.5, 0.5), radius: 40, phi: 0.62, theta: 0.42, turn: 0.05 },
       look: look({ past: 1 }),
       steps: [{ from: 3, look: { past: 0 } }],
       items: [
-        { kind: 'timeline', sim: [S.failure.at + 9.5, S.failure.at - 20], from: 0, to: 3 },
+        { kind: 'timeline', sim: [HOOK_END, S.failure.at - 20], from: 0, to: 3 },
         { kind: 'caption', text: 'Volta no tempo: 20 s antes da quebra.', from: 0.2, to: 6 },
       ],
     },
@@ -906,9 +914,15 @@ const CARD_LABELS: Record<CardRowId, string> = {
 
 // ---------------------------------------------------------------- the reading rule
 
-/** Words of a text, as the reading rule counts them (numbers included; "|" only breaks a line). */
+/**
+ * Words of a text, as the reading rule counts them: numbers included; a
+ * separator such as "·" is not read, and "|" only breaks a line.
+ */
 export const words = (text: string): number =>
-  text.replace(/\|/g, ' ').split(/\s+/).filter(Boolean).length;
+  text
+    .replace(/\|/g, ' ')
+    .split(/\s+/)
+    .filter((t) => /[\p{L}\p{N}]/u.test(t)).length;
 
 /** What an item puts on screen, in words (a live value counts as one; "158 s" as two). */
 export function itemWords(item: Item, live: { readonly bottleneck: string }): number {
@@ -920,7 +934,7 @@ export function itemWords(item: Item, live: { readonly bottleneck: string }): nu
     case 'balloon':
       return words(item.text);
     case 'counter':
-      return words('NA FILA') + 1;
+      return words(COUNTER_LABEL) + 1;
     case 'tag':
       return words('SEM IA');
     case 'badge':

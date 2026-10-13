@@ -4,6 +4,7 @@ import {
   BOTTLENECK_TITLE,
   CARD_NOTE,
   CARD_TITLE,
+  COUNTER_LABEL,
   badgeText,
   type Anchor,
   type CinemaCardRow,
@@ -37,7 +38,7 @@ export interface OverlayScene {
   point(anchor: Anchor, side: CinemaSide): readonly [number, number] | null;
   /** Every robot's reserved route on screen (the X-ray, the AI side's pane). */
   routes(): readonly (readonly (readonly [number, number])[])[];
-  /** The counter: the queue of the belt that broke, by side. */
+  /** The counter: the queue of the belt that broke, by side (the same measure in both). */
   readonly queue: Readonly<Record<CinemaSide, number>>;
   /** Share of B2's packets going by line A (0 … 1). */
   readonly share: number;
@@ -283,7 +284,7 @@ function caption(
   ls.forEach((l, i) => ctx.fillText(l, x, top + size * 0.9 + i * lh));
 }
 
-/** "NA FILA" over the queue of the belt that broke: red alone, the side's color side by side. */
+/** The belt's queue under its label: red alone, the side's color side by side; one measure everywhere. */
 function counter(ctx: Ctx, s: OverlayScene, side: CinemaSide | undefined): void {
   const single = s.layout === 'single';
   const pane = paneOf(s, side);
@@ -293,7 +294,7 @@ function counter(ctx: Ctx, s: OverlayScene, side: CinemaSide | undefined): void 
   const value = Math.round(s.queue[sideOf(s, side)]).toLocaleString('pt-BR');
   const color = single ? RED : side === 'no-ai' ? ORANGE : CYAN;
   ctx.font = `700 ${size * 0.26}px ${D}`;
-  const lw = ctx.measureText('NA FILA').width;
+  const lw = ctx.measureText(COUNTER_LABEL).width;
   ctx.font = `700 ${size}px ${M}`;
   const vw = ctx.measureText(value).width;
   const w = Math.max(lw, vw);
@@ -301,7 +302,7 @@ function counter(ctx: Ctx, s: OverlayScene, side: CinemaSide | undefined): void 
   ctx.textAlign = 'right';
   ctx.font = `700 ${size * 0.26}px ${D}`;
   ctx.fillStyle = INK;
-  ctx.fillText('NA FILA', x, y);
+  ctx.fillText(COUNTER_LABEL, x, y);
   ctx.font = `700 ${size}px ${M}`;
   ctx.fillStyle = color;
   ctx.fillText(value, x, y + size * 0.92);
