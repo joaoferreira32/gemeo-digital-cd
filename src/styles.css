@@ -1421,3 +1421,28 @@ body.recording #demo-overlay {
   height: min(56.25vw, 100vh);
   transform: translate(-50%, -50%);
 }
+
+/* The cinema demo: its frames are drawn into a canvas the size of the video
+   (1080×1350 or 1920×1080), shown whole on any screen; the scene's own canvas
+   only renders into it. */
+#cinema {
+  display: none;
+}
+body.cinema {
+  background: #000;
+}
+body.cinema #cinema {
+  display: block;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  max-width: 100vw;
+  max-height: 100vh;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%);
+}
+body.cinema #scene,
+body.cinema #demo-overlay {
+  visibility: hidden;
+}

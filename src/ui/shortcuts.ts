@@ -194,6 +194,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     label: ['?demo=curta'],
     help: 'demo curta (cerca de 1 min): acrescente ao endereço da página; V e ⇧V passam a rodá-la',
   },
+  {
+    action: 'demo',
+    codes: [],
+    label: ['?demo=cinema'],
+    help: 'demo cinema para o feed (4:5, 60 s): o mesmo galpão sem IA e com IA, lado a lado; V roda ao vivo, ⇧V grava o MP4 quadro a quadro, com 60 FPS exatos',
+  },
+  {
+    action: 'demo',
+    codes: [],
+    label: ['?demo=cinema-completa'],
+    help: 'demo cinema completa (16:9, cerca de 100 s), com a volta no tempo e "como funciona"',
+  },
   { action: 'help', codes: ['KeyH'], label: [k('H')], help: 'atalhos e legenda' },
   { action: 'close', codes: ['Escape'], label: [k('Esc')], help: 'fechar painéis e sair da demo' },
   {

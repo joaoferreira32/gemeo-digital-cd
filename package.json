@@ -19,6 +19,7 @@
     "bench:vigia": "tsx bench/vigia.ts",
     "bench:tempo": "tsx --expose-gc bench/tempo.ts",
     "bench:demo-memoria": "tsx --expose-gc bench/demo-memoria.ts",
+    "bench:cinema-memoria": "tsx --expose-gc bench/cinema-memoria.ts",
     "bench:rotas": "tsx bench/rotas.ts",
     "bench:manutencao": "tsx bench/manutencao.ts",
     "bench:agenda": "tsx bench/agenda.ts",
@@ -32,6 +33,7 @@
   "dependencies": {
     "@fontsource/barlow-condensed": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
+    "mediabunny": "^1.60.0",
     "onnxruntime-web": "^1.30.0",
     "three": "^0.186.1"
   },
