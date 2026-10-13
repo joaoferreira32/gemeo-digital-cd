@@ -1,4 +1,5 @@
 import { BottleneckDetector, topologyOf } from '../ai/bottleneck';
+import { CinemaRun } from '../demo/cinema-run';
 import { DEMO_SCRIPTS, DemoRunner, type DemoKindId } from '../demo/run';
 import { ACTION_LEVELS, observe } from '../ai/env';
 import { eventLogCsv } from '../sim/export';
@@ -78,6 +79,8 @@ export class SimHost {
   private detector: BottleneckDetector;
   /** The demo being played (its script decides the inputs), or null. */
   private demo: DemoRunner | null = null;
+  /** A side of the cinema demo, moved by the page frame by frame, or null. */
+  private cinema: CinemaRun | null = null;
 
   constructor(
     // Only array buffers are transferred (the snapshots); typed without the DOM
@@ -174,6 +177,10 @@ export class SimHost {
       case 'demo':
         this.handleDemo(cmd.action, cmd.action === 'start' ? cmd.script : 'explicada');
         break;
+      case 'cinema':
+        // The page drives the cinema frame by frame: no clock, no regular snapshots.
+        this.handleCinema(cmd);
+        return;
     }
     this.dirty = true;
     this.lastStatus = -Infinity;
@@ -181,6 +188,7 @@ export class SimHost {
   }
 
   pump(): void {
+    if (this.cinema) return;
     const now = this.clock();
     const elapsed = Math.min((now - this.lastPump) / 1000, 0.25);
     this.lastPump = now;
@@ -230,6 +238,7 @@ export class SimHost {
    */
   private restart(config: Partial<SimConfig> = this.config, keepStress = true): void {
     this.demo = null;
+    this.cinema = null;
     const stress = keepStress && this.recorder.live.baseRate === STRESS_ARRIVAL_RATE;
     this.recorder = new Recorder(config);
     this.detector = new BottleneckDetector(topologyOf(this.recorder.live));
@@ -290,7 +299,13 @@ export class SimHost {
   /** The static copy runs while the live run (not a past moment) uses another routing. */
   private syncShadow(): void {
     const rec = this.recorder;
-    if (!rec.viewing && !this.replay && !this.demo && rec.live.policy !== 'static') {
+    if (
+      !rec.viewing &&
+      !this.replay &&
+      !this.demo &&
+      !this.cinema &&
+      rec.live.policy !== 'static'
+    ) {
       this.shadow.start(rec.live);
     } else {
       this.shadow.stop();
@@ -327,6 +342,46 @@ export class SimHost {
     this.jump(() => demo.rewind());
     this.accumulator = 0;
     this.postDemo();
+  }
+
+  /**
+   * The cinema demo: a side of its script (src/demo/cinema-run.ts), already
+   * warmed up; each `to` shows the moment of a video frame and answers with
+   * its snapshot; or back to the ordinary app (the page sends an init).
+   */
+  private handleCinema(cmd: Extract<SimCommand, { type: 'cinema' }>): void {
+    if (cmd.action === 'stop') {
+      this.cinema = null;
+      return;
+    }
+    if (cmd.action === 'start') {
+      this.restart();
+      const run = new CinemaRun(cmd.side);
+      this.cinema = run;
+      this.recorder = run.rec;
+      this.writer.show(run.rec.shown);
+      this.syncShadow();
+      return;
+    }
+    const run = this.cinema;
+    if (!run) return;
+    const jumps = run.jumps;
+    run.to(cmd.time);
+    // Back in time (the time travel): the next frame is a cut, nothing blends across it.
+    if (run.jumps !== jumps) this.writer.show(run.rec.shown);
+    const buffer = this.writer.write({ speed: 0, stress: false, mode: 0, head: run.time });
+    this.post(
+      {
+        type: 'cinema',
+        frame: cmd.frame,
+        buffer,
+        events: run.newEvents(),
+        bottleneck: run.bottleneck(),
+        queue: run.queue(),
+        measure: cmd.measure ? run.measures() : null,
+      },
+      [buffer],
+    );
   }
 
   /** The end of a side of the demo: its measures, and the page is told. */

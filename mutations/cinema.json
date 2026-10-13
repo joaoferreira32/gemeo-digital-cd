@@ -1,0 +1,157 @@
+{
+  "tests": ["tests/cinema.test.ts"],
+  "mutations": [
+    {
+      "name": "o lado sem IA recebe a IA",
+      "edits": [
+        {
+          "file": "src/demo/cinema-run.ts",
+          "find": "      .filter((x) => side === 'ai' || !x.ai)",
+          "replace": "      .filter(() => true)"
+        }
+      ]
+    },
+    {
+      "name": "a volta no tempo não continua do passado",
+      "edits": [
+        { "file": "src/demo/cinema-run.ts", "find": "      rec.branch();\n", "replace": "" }
+      ]
+    },
+    {
+      "name": "o contador conta pelo caminho estático",
+      "edits": [
+        {
+          "file": "src/demo/cinema-run.ts",
+          "find": "waitingFor(this.rec.shown, this.conveyorQueues, this.dockQueues, 'next');",
+          "replace": "waitingFor(this.rec.shown, this.conveyorQueues, this.dockQueues);"
+        }
+      ]
+    },
+    {
+      "name": "a consulta do roteamento ignora o desvio",
+      "edits": [
+        {
+          "file": "src/sim/routing.ts",
+          "find": "    return carry >= 1 - 1e-9 ? decision.alternative : decision.primary;",
+          "replace": "    return decision.primary;"
+        }
+      ]
+    },
+    {
+      "name": "o quadro cai entre dois ticks",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "      const ticks = Math.round(s.from * CINEMA_FPS) + s.speed * left;",
+          "replace": "      const ticks = Math.round(s.from * CINEMA_FPS) + s.speed * left + 0.5;"
+        }
+      ]
+    },
+    {
+      "name": "a pausa da volta no tempo não dura",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "(s.hold ?? 0) * CINEMA_FPS;",
+          "replace": "0;"
+        }
+      ]
+    },
+    {
+      "name": "o raio-X mostra tudo de uma vez",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "  for (const s of segment.steps ?? []) if (local >= s.from) l = { ...l, ...s.look };",
+          "replace": "  for (const s of segment.steps ?? []) l = { ...l, ...s.look };"
+        }
+      ]
+    },
+    {
+      "name": "o número do contador não conta como palavra",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "      return words('NA FILA') + 1;",
+          "replace": "      return words('NA FILA');"
+        }
+      ]
+    },
+    {
+      "name": "o selo de velocidade não conta como palavra",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "    case 'badge':\n      return 1;",
+          "replace": "    case 'badge':\n      return 0;"
+        }
+      ]
+    },
+    {
+      "name": "cada camada do raio-X conta só o próprio rótulo, sem o título",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "        .filter((item) => item.from >= from && item.from < to)",
+          "replace": "        .filter((item) => item.from > from && item.from < to)"
+        }
+      ]
+    },
+    {
+      "name": "o cartão do gargalo perde o artigo",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "  const article = /^(Esteira|Doca)\\b/.test(cause) ? 'a ' : '';",
+          "replace": "  const article = '';"
+        }
+      ]
+    },
+    {
+      "name": "o desvio aparece antes de a IA assumir",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "  const detour = localAt(spans, S.aiAt + 7);",
+          "replace": "  const detour = localAt(spans, S.aiAt - 7);"
+        }
+      ]
+    },
+    {
+      "name": "a falha evitada aparece antes de acontecer",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "        from: localAt(spans, 219),",
+          "replace": "        from: localAt(spans, 218),"
+        }
+      ]
+    },
+    {
+      "name": "o cartão troca os lados nas entregas",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "          headline: change(ai.delivered, noAi.delivered),",
+          "replace": "          headline: change(noAi.delivered, ai.delivered),"
+        }
+      ]
+    },
+    {
+      "name": "o worker não manda as medidas do cartão",
+      "edits": [
+        {
+          "file": "src/worker/host.ts",
+          "find": "        measure: cmd.measure ? run.measures() : null,",
+          "replace": "        measure: null,"
+        }
+      ]
+    },
+    {
+      "name": "o worker segue o relógio durante a demo cinema",
+      "edits": [
+        { "file": "src/worker/host.ts", "find": "    if (this.cinema) return;\n", "replace": "" }
+      ]
+    }
+  ]
+}
