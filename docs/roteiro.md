@@ -218,6 +218,28 @@ feito em cada fase está no README e em `docs/resultados.md`.
   (regra de leitura); e o gargalo novo na Esteira 3, causado pelo desvio, no
   raio-X.
 
+- **2026-10-12, demo cinema: ajustes visuais (rodadas 2 e 3) e implementação.**
+  Rodada 2: faixa escura atrás de todo texto; escurecimento e desfoque do que não
+  é o assunto; cores com um significado só (esteira parada cinza com ⚠, fila
+  vermelha, IA ciano, "sem IA" laranja); gancho com a câmera baixa e a fila
+  enchendo o quadro; tela dividida só com NA FILA e um selo de velocidade na
+  divisória; raio-X uma camada por vez, com uma linha do cartão ao anel da
+  Esteira 3; previsão sem contador, com os gráficos na escala da subida e o
+  limite desenhado, o painel ao lado do motor; percentuais grandes no cartão e o
+  endereço numa faixa. Rodada 3 (aprovada com a implementação): o ⚠ "Esteira 8"
+  na cabeça da fila; o número NA FILA com a cor do lado na tela dividida (o
+  vermelho fica para a fila na cena); a faixa do título do raio-X escura o
+  bastante para as rotas não aparecerem por cima; e uma captura do clímax da
+  previsão no PR. Decididos na implementação e relatados: o aviso do motor em
+  amarelo (halo e CUSUM) e o anel do gargalo em ciano; o contador mostra a fila
+  da Esteira 8, não a do galpão inteiro (com IA o total oscila de 45 a 139
+  pacotes por causa das filas que o desvio cria, e "a fila para de crescer"
+  ficaria enganoso); a contagem do contador pergunta ao roteamento o caminho do
+  pacote que ainda não escolheu (a do motor supunha o estático e dava picos de
+  um tick); o rótulo "rotas reservadas dos robôs"; o cartão do feed com a mesma
+  linha de transparência da demo explicada; a versão completa com o p95 de
+  espera no cartão.
+
 ## Apêndice: a primeira versão das fases 2 a 4
 
 Do primeiro pedido. Substituída depois da Fase 1 pelas fases 2 a 6 acima; vários

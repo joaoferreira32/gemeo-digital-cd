@@ -1,3 +1,12 @@
+# Demo cinema (2026-10-13)
+
+Implementada no branch `demo-cinema` (sobre a `main`, depois do PR #11), com o
+PR aberto para revisão. Roteiro e visual aprovados em três rodadas de capturas
+(registro em `docs/roteiro.md`); números em `docs/resultados.md`, "Demo cinema".
+Ao retomar: `git status`, `git diff`, `git stash list`, `git worktree list`,
+`npm run lint` e `npm test`. O que falta depende da revisão do PR: o merge (pelo
+usuário), conferir o deploy do Pages e a demo publicada em `?demo=cinema`.
+
 # Retomada da Fase 6 (demo, gravação e entrega final)
 
 > **Concluída em 2026-10-09.** Todos os passos abaixo foram feitos: a investigação
