@@ -580,6 +580,34 @@ export class WarehouseView {
     this.add(uprights.build(this.tracker, uprightMat, { cast: true }));
     this.add(beams.build(this.tracker, beamMat, { cast: true }));
     this.add(totes.build(this.tracker, toteMat, { cast: true, receive: true }));
+    this.rackMaterials = [uprightMat, beamMat, toteMat].map((m) => ({
+      material: m,
+      color: m.color.getHex(),
+    }));
+  }
+
+  /** The racks' materials and their colors as built (the cinema dims them). */
+  private rackMaterials: { material: MeshStandardMaterial; color: number }[] = [];
+
+  /**
+   * How bright the racks are (1: as built). The cinema demo dims them where
+   * they are not the subject, so the belts and the queue stand out.
+   */
+  setRackBrightness(factor: number): void {
+    for (const r of this.rackMaterials) r.material.color.setHex(r.color).multiplyScalar(factor);
+  }
+
+  /**
+   * The cinema's look of a stopped belt: plain grey, with no red (red is the
+   * queue's color there; the overlay marks the belt with ⚠).
+   */
+  useGreyBrokenBelts(): void {
+    const m = this.beltBrokenMaterial;
+    m.map = null;
+    m.color.setHex(0x59626d);
+    m.emissive.setHex(0x000000);
+    m.emissiveIntensity = 0;
+    m.needsUpdate = true;
   }
 
   /** Materials whose look depends on quality settings. */

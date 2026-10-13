@@ -31,6 +31,11 @@ export class OrbitCamera {
   preset: CameraPreset | null = 'aerial';
   /** World position to keep centered while following; set every frame by the scene. */
   followPoint: Vector3 | null = null;
+  /**
+   * Ignores the mouse, touch and keys (the cinema demo moves the camera alone:
+   * a recording must not depend on what the hand does meanwhile).
+   */
+  locked = false;
 
   private readonly goal: Pose;
   /** How fast the pose settles on the goal (1/s); the demo's director may slow it. */
@@ -78,6 +83,16 @@ export class OrbitCamera {
     this.goal.radius = radius * Math.max(1, Math.sqrt(1.6 / this.camera.aspect));
     this.goal.phi = phi;
     this.goal.theta = this.pose.theta + wrapAngle(theta - this.pose.theta);
+  }
+
+  /** Cuts to the goal: the pose is the goal at once, with no glide (a cut between shots). */
+  snap(): void {
+    this.clampGoal();
+    this.pose.target.copy(this.goal.target);
+    this.pose.radius = this.goal.radius;
+    this.pose.theta = this.goal.theta;
+    this.pose.phi = this.goal.phi;
+    this.apply();
   }
 
   setPreset(preset: CameraPreset): void {
@@ -178,7 +193,7 @@ export class OrbitCamera {
   }
 
   private applyKeys(dt: number): void {
-    if (this.keys.size === 0) return;
+    if (this.keys.size === 0 || this.locked) return;
     const has = (...codes: string[]) => codes.some((c) => this.keys.has(c));
     const panSpeed = 520 * dt;
     if (has(...CAMERA_KEYS.up)) this.pan(0, panSpeed);
@@ -200,6 +215,7 @@ export class OrbitCamera {
     el.addEventListener(
       'pointerdown',
       (e) => {
+        if (this.locked) return;
         el.setPointerCapture(e.pointerId);
         this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         this.dragMode = e.button === 2 || e.button === 1 || e.shiftKey ? 'pan' : 'orbit';
@@ -241,6 +257,7 @@ export class OrbitCamera {
       'wheel',
       (e) => {
         e.preventDefault();
+        if (this.locked) return;
         this.zoom(Math.exp(e.deltaY * 0.0012), e.clientX, e.clientY);
       },
       { ...opts, passive: false },

@@ -73,6 +73,8 @@ export class SceneView {
   private trailsOn = true;
   /** Rewind look: where it is going (1 looking at the past) and where it is. */
   private rewindTarget = 0;
+  /** The look of the past forced (the cinema's time travel), or null: from the frames. */
+  pastLook: number | null = null;
   private rewindAmount = 0;
   private lastCut: SimFrame | null = null;
 
@@ -157,12 +159,17 @@ export class SceneView {
     this.heat.setLayer(layer);
   }
 
-  /** `pixelRatio` fixes it (the video recording draws exactly 1920×1080); otherwise the screen's, capped. */
+  /**
+   * `pixelRatio` fixes it (the video recording draws exactly 1920×1080);
+   * otherwise the screen's, capped. `sizeRenderer` false: the view draws into
+   * part of the canvas (the cinema's split screen) and leaves the canvas size alone.
+   */
   applyQuality(
     level: QualityLevel,
     viewportWidth: number,
     viewportHeight: number,
     pixelRatio?: number,
+    sizeRenderer = true,
   ): void {
     const q = QUALITY_SETTINGS[level];
     this.warehouse.reflector.visible = q.reflection;
@@ -180,10 +187,12 @@ export class SceneView {
     this.trailsOn = q.trails;
     if (!q.trails) this.trails.reset();
     this.trails.mesh.visible = q.trails;
-    this.renderer.setPixelRatio(
-      pixelRatio ?? Math.min(window.devicePixelRatio || 1, q.maxPixelRatio),
-    );
-    this.renderer.setSize(viewportWidth, viewportHeight, false);
+    if (sizeRenderer) {
+      this.renderer.setPixelRatio(
+        pixelRatio ?? Math.min(window.devicePixelRatio || 1, q.maxPixelRatio),
+      );
+      this.renderer.setSize(viewportWidth, viewportHeight, false);
+    }
     this.orbit.resize(viewportWidth, viewportHeight);
     this.post.setQuality(level, viewportWidth, viewportHeight);
   }
@@ -213,7 +222,7 @@ export class SceneView {
       this.trails.reset();
       this.heat.reset();
     }
-    this.rewindTarget = frame.mode === 1 ? 1 : 0;
+    this.rewindTarget = this.pastLook ?? (frame.mode === 1 ? 1 : 0);
     this.rewindAmount = this.reducedMotion
       ? this.rewindTarget
       : this.rewindAmount + (this.rewindTarget - this.rewindAmount) * Math.min(1, realDt * 6);
@@ -282,9 +291,46 @@ export class SceneView {
     this.post.render();
   }
 
-  /** Depth of field focused at `distance` from the camera (m), or off (null). */
-  setFocus(distance: number | null): void {
-    this.post.setFocus(distance);
+  /** Depth of field focused at `distance` from the camera (m), or off (null); `strength` as in PostFX. */
+  setFocus(distance: number | null, strength?: { aperture: number; maxblur: number }): void {
+    this.post.setFocus(distance, strength);
+  }
+
+  /**
+   * Draws into a part of the canvas (the cinema's split screen): `x`, `y`
+   * from its top left, in canvas pixels; the renderer keeps its size.
+   */
+  renderPane(x: number, y: number, w: number, h: number, canvasHeight: number): void {
+    const r = this.renderer;
+    const bottom = canvasHeight - y - h;
+    r.setViewport(x, bottom, w, h);
+    r.setScissor(x, bottom, w, h);
+    r.setScissorTest(true);
+    this.render();
+    r.setScissorTest(false);
+  }
+
+  /**
+   * The cinema demo's look, where each color keeps one meaning: a stopped
+   * belt is plain grey (the overlay marks it with ⚠; no red beam), the queue
+   * is red (a packet turns fully red after 4 s waiting), a worn motor's warning
+   * is yellow, the detector's ring is the AI's cyan; and no route holograms
+   * (the X-ray draws its own).
+   */
+  useCinemaLook(): void {
+    this.warehouse.useGreyBrokenBelts();
+    this.alerts.rings.visible = false;
+    this.alerts.beams.visible = false;
+    this.packets.redAfter = 4;
+    this.packets.redMax = 1;
+    this.motors.setWarningColor(0xffd166);
+    this.bottleneck.setColor(PALETTE.cyan);
+    this.routes.enabled = false;
+  }
+
+  /** How bright the racks are (1: as built). */
+  setRackBrightness(factor: number): void {
+    this.warehouse.setRackBrightness(factor);
   }
 
   /** How strongly the past look is applied right now (0 … 1), for tests. */

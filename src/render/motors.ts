@@ -138,6 +138,15 @@ export class MotorView {
     if (this.halos.instanceColor) this.halos.instanceColor.needsUpdate = true;
   }
 
+  /**
+   * One color for the whole warning, building up and raised (the cinema's
+   * yellow: there red is the queue's color, orange the run without AI).
+   */
+  setWarningColor(hex: number): void {
+    this.amber.setHex(hex);
+    this.red.setHex(hex);
+  }
+
   dispose(): void {
     this.housings.dispose();
     this.halos.dispose();
