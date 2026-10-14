@@ -2,6 +2,7 @@ import '@fontsource/barlow-condensed/500.css';
 import '@fontsource/barlow-condensed/600.css';
 import '@fontsource/barlow-condensed/700.css';
 import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/700.css';
 import './styles.css';
 import {
   ACESFilmicToneMapping,
@@ -14,7 +15,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import { FrameBuffer, decodeFrame, type SimFrame } from './link/frames';
-import { createLink } from './link/link';
+import { createInlineLink, createLink, createWorkerLink } from './link/link';
 import { isTyping, type CameraPreset } from './render/camera';
 import { HEAT_LABEL, HEAT_LAYERS, type HeatLayer } from './render/heatmap';
 import { QualityGovernor, type QualityLevel } from './render/quality';
@@ -37,6 +38,8 @@ import { chooseFormat, VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH, VideoCapture } from
 import { mp4Frames, type Mp4Frames } from './demo/mp4';
 import { Director, type DirectorStage } from './demo/director';
 import { demoKindFrom } from './demo/kinds';
+import { CINEMA_FORMATS, cinemaFormatFrom, type CinemaFormatId } from './demo/cinema';
+import type { CinemaMode, CinemaPlayer, CinemaStage } from './demo/cinema-player';
 import { drawOverlay, type OverlayState } from './demo/overlay';
 import { CpuHeatmap } from './render/heatmap-cpu';
 import { SPEEDS, type RoutingStatus, type SimCommand } from './worker/protocol';
@@ -45,6 +48,7 @@ import { POLICY_CHOICES, type PolicyChoice } from './worker/routing';
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const overlayCanvas = document.getElementById('demo-overlay') as HTMLCanvasElement;
 const overlay = overlayCanvas.getContext('2d') as CanvasRenderingContext2D;
+const cinemaCanvas = document.getElementById('cinema') as HTMLCanvasElement;
 const demoBar = document.getElementById('demo-bar') as HTMLElement;
 const demoNote = document.getElementById('demo-note') as HTMLElement;
 const loading = document.getElementById('loading') as HTMLElement;
@@ -136,6 +140,12 @@ let lastVideo: { label: string; bytes: number; drawn: number; file: Mp4Frames | 
 
 /** The demo of V and ⇧V: the explained one, or the short one at ?demo=curta. */
 const DEMO_KIND = demoKindFrom(location.search);
+/** At ?demo=cinema (or cinema-completa), V plays the cinema demo and ⇧V records it. */
+const CINEMA_FORMAT = cinemaFormatFrom(location.search);
+/** The cinema demo playing, or null. */
+let cinema: CinemaPlayer | null = null;
+/** The app's view is given back while the cinema plays (its two views take the GPU). */
+let viewDisposed = false;
 
 /** What the demo's director moves: the scene's camera, depth of field, heat map, robots, arrows. */
 const stage: DirectorStage = {
@@ -298,6 +308,8 @@ function viewport() {
 }
 
 function applyQuality(level: QualityLevel) {
+  // While the cinema plays the app has no view (buildView applies the level when it comes back).
+  if (viewDisposed) return;
   const { w, h } = viewport();
   view.applyQuality(level, w, h, capture ? 1 : undefined);
 }
@@ -307,6 +319,11 @@ function applyQuality(level: QualityLevel) {
  * scene and the captions only, and the director plays the script.
  */
 function startDemo(record: boolean) {
+  if (CINEMA_FORMAT) {
+    void startCinema(CINEMA_FORMAT, record ? 'record' : 'live');
+    return;
+  }
+  if (cinema) stopCinema();
   if (director.active) endDemo();
   if (record) {
     const format =
@@ -337,6 +354,98 @@ function startDemo(record: boolean) {
   demoBar.hidden = false;
   buildView();
   director.start(DEMO_KIND);
+}
+
+/** What the cinema demo moves on the page: the renderer, its two views, two simulations. */
+function cinemaStage(): CinemaStage {
+  return {
+    renderer,
+    scene: canvas,
+    screen: cinemaCanvas,
+    layout,
+    // The video is the same for everyone: the cinema ignores reduced motion.
+    view: () => new SceneView(renderer, sceneOptions, canvas, false),
+    link: () => {
+      const inline = new URLSearchParams(location.search).get('sim') === 'main';
+      if (!inline && typeof Worker !== 'undefined') {
+        try {
+          return createWorkerLink();
+        } catch {
+          // Falls back to the main thread.
+        }
+      }
+      return createInlineLink();
+    },
+    note: (text) => {
+      demoNote.textContent = text;
+    },
+  };
+}
+
+/**
+ * The cinema demo (src/demo/cinema.ts): live (V), recorded to an MP4 frame
+ * by frame (⇧V), or as fast as it draws (automated checks and captures).
+ */
+async function startCinema(format: CinemaFormatId, mode: CinemaMode) {
+  // The player loads only when the cinema plays (the app does not carry it otherwise).
+  const { CinemaPlayer } = await import('./demo/cinema-player');
+  if (director.active) endDemo();
+  if (cinema) stopCinema();
+  hud.clearEvents();
+  historyPanel.close();
+  labPanel.toggle(false);
+  toggleHelp(false);
+  kpiPanel.toggle(false);
+  document.body.classList.add('demo-mode', 'cinema');
+  demoBar.hidden = false;
+  cinemaCanvas.hidden = false;
+  demoNote.textContent = mode === 'record' ? 'Preparando a gravação…' : '';
+  // The app's run waits, and its view gives its GPU memory back.
+  send({ type: 'speed', speed: 0 });
+  governor.hold('alta');
+  view.dispose();
+  viewDisposed = true;
+  const player = new CinemaPlayer(cinemaStage(), CINEMA_FORMATS[format], mode);
+  cinema = player;
+  try {
+    await player.play();
+  } catch (e) {
+    if (cinema === player) {
+      demoNote.textContent = `A demo cinema parou: ${(e as Error).message}`;
+      console.error('Demo cinema:', e);
+    }
+    return;
+  }
+  if (cinema !== player || mode !== 'record' || !player.video) return;
+  const blob = player.video;
+  const name = `gemeo-digital-cinema-${format}.mp4`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  // The frames the file really holds, read from its boxes.
+  const file = mp4Frames(new Uint8Array(await blob.arrayBuffer()));
+  lastVideo = { label: 'MP4 (H.264)', bytes: blob.size, drawn: player.frames, file };
+  stopCinema();
+  const one = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+  const mb = (blob.size / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+  const frames = file
+    ? `, ${file.frames.toLocaleString('pt-BR')} quadros em ${one(file.seconds)} s (${one(file.fps)} FPS)`
+    : '';
+  note(`Vídeo salvo: ${name} (${mb} MB)${frames}.`);
+}
+
+/** Leaves the cinema demo: its views and simulations go, the app comes back. */
+function stopCinema() {
+  const player = cinema;
+  if (!player) return;
+  cinema = null;
+  player.stop();
+  cinemaCanvas.hidden = true;
+  document.body.classList.remove('cinema');
+  leaveDemo();
 }
 
 /** Back to the ordinary app: a fresh run, the panels and the settings of before. */
@@ -407,7 +516,8 @@ function drawDemoOverlay(state: OverlayState) {
 
 /** Builds a fresh view; the old view's GPU resources are released. */
 function buildView() {
-  view?.dispose();
+  if (!viewDisposed) view?.dispose();
+  viewDisposed = false;
   view = new SceneView(renderer, sceneOptions, canvas, motionQuery.matches);
   applyQuality(governor.level);
   view.setHeatLayer(HEAT_LAYERS[heatIndex] as HeatLayer);
@@ -560,7 +670,9 @@ function bindControls() {
   document.getElementById('btn-lab')!.addEventListener('click', () => labPanel.toggle());
   document.getElementById('btn-demo')!.addEventListener('click', () => startDemo(false));
   document.getElementById('btn-record')!.addEventListener('click', () => startDemo(true));
-  document.getElementById('btn-demo-exit')!.addEventListener('click', () => endDemo());
+  document
+    .getElementById('btn-demo-exit')!
+    .addEventListener('click', () => (cinema ? stopCinema() : endDemo()));
   // Panels above the control bar follow its real height (it wraps on narrow screens).
   const controls = document.querySelector('.hud--controls') as HTMLElement;
   new ResizeObserver(() => {
@@ -641,6 +753,10 @@ function bindControls() {
         toggleHelp();
         break;
       case 'close':
+        if (cinema) {
+          stopCinema();
+          break;
+        }
         if (director.active) {
           endDemo();
           break;
@@ -668,6 +784,7 @@ function bindControls() {
   });
 
   window.addEventListener('resize', () => {
+    if (cinema) return;
     const { w, h } = viewport();
     view.resize(w, h);
   });
@@ -708,6 +825,11 @@ let historyTimer = 0;
 function frame(now: number) {
   const realDt = Math.min((now - last) / 1000, 0.25);
   last = now;
+  // The cinema demo draws its own frames (src/demo/cinema-player.ts).
+  if (cinema) {
+    requestAnimationFrame(frame);
+    return;
+  }
   frameTimes.push(realDt * 1000);
   if (frameTimes.length > 3600) frameTimes.shift();
   const before = frames.renderTime;
@@ -769,6 +891,7 @@ async function boot() {
   await Promise.all([
     document.fonts.load('700 64px "Barlow Condensed"'),
     document.fonts.load('500 16px "JetBrains Mono"'),
+    document.fonts.load('700 64px "JetBrains Mono"'),
   ]).catch(() => undefined);
   // The app runs with the maintenance schedule of phase 4b (off by default in the engine).
   send({ type: 'init', config: { seed: DEFAULT_CONFIG.seed, scheduleMaintenance: true } });
@@ -803,6 +926,16 @@ Object.defineProperty(window, '__gemeo', {
     },
     renderer: () => renderer,
     director,
+    /**
+     * The cinema demo: start it (live, recorded or as fast as it draws), the
+     * player playing, and a frame of it as a PNG once drawn (captures).
+     */
+    cinema: {
+      start: (format: CinemaFormatId, mode: CinemaMode) => void startCinema(format, mode),
+      stop: () => stopCinema(),
+      player: () => cinema,
+      shot: (k: number) => cinema?.shot(k) ?? Promise.resolve(''),
+    },
     /** The last video recorded by the demo: format, bytes, frames drawn, frames in the file. */
     lastVideo: () => lastVideo,
     /**

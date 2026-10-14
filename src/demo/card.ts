@@ -52,9 +52,10 @@ export const EXPLAINED_CARD: CardTexts = {
   avoided: 'Quebras evitadas',
 };
 
-const int = (v: number) => Math.round(v).toLocaleString('pt-BR');
-const seconds = (v: number) => `${Math.round(v).toLocaleString('pt-BR')} s`;
-function change(ai: number, noAi: number): string {
+export const int = (v: number) => Math.round(v).toLocaleString('pt-BR');
+export const seconds = (v: number) => `${Math.round(v).toLocaleString('pt-BR')} s`;
+/** "−27%" (less with AI), "+59%" (more with AI); empty when there is nothing to compare with. */
+export function change(ai: number, noAi: number): string {
   if (!(noAi > 0) || !Number.isFinite(ai)) return '';
   const p = Math.round(((ai - noAi) / noAi) * 100);
   return p === 0 ? '0%' : `${p > 0 ? '+' : '−'}${Math.abs(p)}%`;

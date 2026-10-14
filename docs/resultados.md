@@ -1625,6 +1625,143 @@ Python dão o mesmo resultado. O arquivo é salvo depois da tela final.
 
 Rodada completa depois da demo explicada (2026-10-11): **153 de 153** em 15 especificações, mais 1 equivalente. A da demo explicada (`mutations/explicada.json`), 11 de 11: a pausa que não para a simulação, a pausa que nunca termina, o selo sem "pausado", o selo também em tempo real, a tela final sem esperar, o contador com uma amostra por quadro, as setas que não acendem, a demo curta como padrão, o cartão sem a linha de transparência, a etapa 4 a 3× (pega pelo teste da regra de leitura) e o worker rodando sempre o roteiro curto.
 
+## Demo cinema (depois da demo explicada)
+
+A execução da demo explicada (Esteira 8 quebrando aos 104 s, desgaste da Esteira
+16 aos 118 s, seed 2026), contada em tela dividida: o lado sem IA é o mesmo
+roteiro sem as entradas da IA. Dois formatos: o corte do feed (4:5, 60 s) e a
+versão completa (16:9, 100,25 s). Os números abaixo vêm de `tests/cinema.test.ts`
+e dos scripts citados.
+
+### Os fatos que os textos afirmam
+
+Medidos com as duas execuções tocadas quadro a quadro, como a página pede:
+
+- **Até a IA assumir (128 s), as duas execuções são a mesma**, bit a bit (filas,
+  entregas, saídas e filas de cada esteira em todos os segundos); no fim, cada
+  uma tem a impressão digital da execução correspondente da demo explicada, e a
+  versão completa, que volta aos 84 s e continua dali, também.
+- **A fila da Esteira 8** (o contador "FILA · ESTEIRA 8": os pacotes parados nela e os que
+  esperam por ela, como o detector conta): 82 pacotes aos 128 s nos dois lados;
+  com IA, 10 aos 130 s e 10 até o conserto (189,77 s), em todo quadro; sem IA,
+  85 (132 s), 146 (170 s), 161 (176 s) e 194 (188 s). Aos 170 s, o quadro da tela
+  dividida mostra 146 × 10.
+- **A fila total do galpão com IA** oscila de 45 a 139 pacotes entre 128 e 190 s
+  (o desvio cria filas em outras esteiras): por isso o contador mostra a fila da
+  Esteira 8. Com a contagem do motor (o caminho estático para um pacote que ainda
+  não escolheu), a fila da Esteira 8 com IA dava 68 aos 152 s e 75 aos 171 s, um
+  tick só, com 10 nos segundos vizinhos: o pacote da frente da Esteira 7 sem
+  caminho escolhido somava a linha toda à esteira parada. O contador conta pela
+  escolha que o roteamento vai fazer (`peekEdge`).
+- **O desvio:** a Esteira 12 (B2→A2) leva 70 pacotes de 128 a 176 s com IA e
+  nenhum sem IA; a fatia de B2 pela linha A é 100% de 130 a 188 s (93% aos 190 s).
+- **O gargalo novo:** o detector aponta a Esteira 3 (A2→A3) com 84% de uso de 176
+  a 181 s, nada aos 182 s e 87% de 183 a 190 s, com a causa provável "Esteira 8
+  (B2→B3) quebrada desvia o fluxo para cá". O cartão do raio-X aparece aos 183 s.
+- **O motor da Esteira 16:** soma do CUSUM 3,1 aos 190 s, 18,0 aos 200 s, 42,3 aos
+  214 s, 48,0 aos 217 s (o limite) e 50,4 aos 218 s. Com IA: alarme e manutenção
+  agendada aos 218,00 s, falha evitada aos 219,00 s (a quebra viria em 4 s), volta
+  a operar aos 249 s. Sem IA: alarme aos 215,00 s, nenhuma manutenção agendada, a
+  esteira quebra aos 222,75 s e volta aos 291,3 s.
+- **O cartão:** entregas 928 × 622 (+49%), p95 do ciclo 91 × 158 s (−43%), p95 de
+  espera 44 × 128 s (−66%), quebras de esteira 1 × 2, quebras evitadas 1 × 0: os
+  números da demo explicada.
+
+### A regra de leitura
+
+Contando toda palavra na tela, números e selos incluídos, nas janelas do
+roteiro (no raio-X, cada camada conta as palavras que aparecem nela):
+
+| Formato  | Trecho                    | Palavras | Mínimo | Tempo   |
+| -------- | ------------------------- | -------- | ------ | ------- |
+| Feed     | gancho                    | 10       | 3,3 s  | 3,5 s   |
+| Feed     | frase                     | 9        | 3,0 s  | 3 s     |
+| Feed     | tela dividida             | 39       | 13,0 s | 13 s    |
+| Feed     | raio-X: calor             | 9        | 3,0 s  | 3 s     |
+| Feed     | raio-X: rotas             | 4        | 1,3 s  | 2 s     |
+| Feed     | raio-X: desvio            | 5        | 1,7 s  | 2 s     |
+| Feed     | raio-X: cartão do gargalo | 21       | 7,0 s  | 7 s     |
+| Feed     | previsão                  | 38       | 12,7 s | 14 s    |
+| Feed     | números e endereço        | 37       | 12,3 s | 12,5 s  |
+| Completa | tela dividida             | 40       | 13,3 s | 16,75 s |
+| Completa | números                   | 45       | 15,0 s | 15 s    |
+
+Cada texto também fica na tela pelo menos 1 s a cada 3 palavras dele. O rótulo
+do contador, "FILA · ESTEIRA 8", conta 3 palavras (o separador não é lido) mais o
+número, nos dois contadores da tela dividida e no do gancho. Com ele, o gancho
+passou a 3,5 s (104→111 s a 2×), a frase segura esse instante parado por 3 s
+enquanto a câmera recua, a tela dividida tem 13 s (111→176 s a 5×; a IA assume aos
+9,9 s do vídeo) e a previsão 14 s (até 224 s; "A esteira quebrou" fica 1,25 s na
+tela). Quatro trechos do feed ficam no mínimo exato (a frase, a tela dividida e a
+primeira e a última camada do raio-X).
+
+### Gravação quadro a quadro
+
+`scripts/cinema_gravar.py` (o mesmo caminho do <kbd>Shift</kbd> + <kbd>V</kbd>;
+WebCodecs H.264 e Mediabunny 1.60.0), lido nas caixas do MP4:
+
+- **Feed:** 1080×1350, 3.600 quadros em 60,000 s (60,000 FPS), maior intervalo
+  16,67 ms, 58,9 MB; 3.600 quadros desenhados; a gravação levou 23,5 s.
+- **Completa:** 1920×1080, 6.015 quadros em 100,250 s (60,000 FPS), maior
+  intervalo 16,67 ms, 150,3 MB; a gravação levou 35,0 s.
+
+Esses tempos são da versão anterior ao rótulo por esteira. Depois dele, o MP4 foi
+gravado de novo: o feed com 3.600 quadros em 60,000 s (60,000 FPS), maior
+intervalo 16,67 ms, 57,6 MB; a versão completa com 6.015 quadros em 100,250 s,
+148,0 MB. Os tempos de gravação (53,5 s e 93,4 s) e do modo ao vivo dessa nova
+medida não valem como referência: a máquina estava com outro programa pesado
+aberto, ocupando CPU e GPU.
+
+O MP4 do feed da versão anterior foi também decodificado (Mediabunny e WebCodecs,
+no Chromium): o quadro de 46,9 s é o clímax da previsão, igual ao capturado do
+canvas. No Edge
+sem janela, um `<video>` devolveu um quadro em branco: o navegador sem GPU não lê
+o quadro decodificado, o arquivo está certo.
+
+### Ao vivo e custo por quadro
+
+- **Ao vivo** (`scripts/cinema_ao_vivo.py`, o relógio a partir do primeiro
+  quadro, depois de as simulações aquecerem): feed em 60,12 s para 60 s de vídeo,
+  7 engasgos (dois quadros a mais de 25 ms), o maior de 94,7 ms; completa em
+  100,36 s para 100,25 s, 9 engasgos, o maior de 82,4 ms. Os engasgos coincidem
+  com as trocas de cena (cada metade refaz o pós-processamento no tamanho novo).
+  Nenhum quadro é pulado: numa máquina lenta a demo ao vivo fica mais lenta.
+- **Sem gravar e sem esperar o relógio** (`scripts/cinema_memoria.py`): 3.600
+  quadros em 22,2 a 23,0 s, cerca de 6,3 ms por quadro, com as duas simulações,
+  as duas cenas e os textos.
+- A primeira medida do ritmo contava o relógio desde o pedido de início e dava
+  todos os quadros atrasados em até 525 ms: era o aquecimento das simulações, não
+  o desenho.
+
+### Memória
+
+- **Página** (`scripts/cinema_memoria.py`, 12 execuções do feed): antes, 104
+  geometrias, 61 texturas e 28 programas na GPU e 8,1 MB de heap do V8; no fim de
+  cada execução, com as duas cenas, 192 geometrias, 94 texturas e 30 programas;
+  depois de cada uma, de volta a 104, 61 e 28. Heap depois de cada execução: 9,0 /
+  9,2 / 9,5 / 9,9 / 10,3 / 10,4 / 10,2 / 10,3 / 10,5 / 10,3 / 10,2 / 10,0 MB: sobe
+  nas 5 primeiras e para (código compilado, como na demo explicada).
+- **Worker** (`npm run bench:cinema-memoria`, 8 execuções no mesmo host, cada uma
+  com os 3.600 quadros do feed, voltando ao app entre elas): 12,3 MB antes; 13,7 MB
+  depois da 1ª e 13,2 MB depois da 8ª (−0,51 MB da 1ª à 8ª). A gravação de um lado
+  (320 s simulados) ocupa 1,2 MB. A página cria um worker novo para cada lado e o
+  encerra no fim.
+
+### Conferência por mutação
+
+`mutations/cinema.json`, **18 de 18** (16, mais 2 do rótulo por esteira: o
+separador contado como palavra e o rótulo sem o nome da esteira): o lado sem IA recebendo a IA, a volta no
+tempo sem continuar do passado, o contador pelo caminho estático, a consulta do
+roteamento ignorando o desvio, o quadro entre dois ticks, a pausa da volta no
+tempo sem duração, o raio-X com todas as camadas de uma vez, o número do contador
+e o selo fora da contagem de palavras, o título do raio-X contado em toda camada,
+o cartão do gargalo sem o artigo, o desvio antes de a IA assumir, a falha evitada
+antes de acontecer, o cartão trocando os lados, o worker sem as medidas do cartão
+e o worker seguindo o relógio durante a demo.
+
+Rodada completa depois da demo cinema (2026-10-13): **169 de 169** em 16
+especificações, mais 1 equivalente (a mesma de antes, no laboratório).
+
 ## Bugs que só apareceram medindo
 
 | Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |

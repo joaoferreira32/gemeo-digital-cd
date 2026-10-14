@@ -202,6 +202,51 @@ feito em cada fase está no README e em `docs/resultados.md`.
   cenário foi escolhido (os cinco critérios fixados antes e a ordem de busca); os
   textos das etapas 2(b) e 4; 3 s com o endereço do código depois do cartão; e a
   regra de leitura (1 s a cada 3 palavras) conferida de novo.
+- **2026-10-11, demo cinema (decisões; implementação depois dos ajustes visuais
+  das 5 capturas).** Uma demo "cinema": gancho na quebra nos 3 primeiros
+  segundos, tela dividida SEM IA | COM IA (mesma seed, mesmas falhas, contadores do
+  motor), anotações presas ao 3D, raio-X da decisão, previsão do motor (vibração,
+  temperatura e CUSUM até o limite), câmera cinematográfica e números contando no
+  final. Corte do feed de 60 s em 4:5 (tela dividida em cima/embaixo) e versão
+  completa de cerca de 100 s em 16:9 (lado a lado), mantendo "como funciona" e a
+  volta no tempo; as demos explicada e curta continuam. Aprovado: o texto "Eu
+  programei uma IA para decidir o que fazer." (não "treinei": a demo usa a
+  heurística e os detectores calibrados, não o agente de reforço); a gravação
+  quadro a quadro com WebCodecs (60 FPS exatos), com a biblioteca de MP4 mantida
+  e de licença compatível (o `mp4-muxer` foi descontinuado em favor da
+  Mediabunny, MPL-2.0); os contadores escondidos na previsão do corte do feed
+  (regra de leitura); e o gargalo novo na Esteira 3, causado pelo desvio, no
+  raio-X.
+
+- **2026-10-12, demo cinema: ajustes visuais (rodadas 2 e 3) e implementação.**
+  Rodada 2: faixa escura atrás de todo texto; escurecimento e desfoque do que não
+  é o assunto; cores com um significado só (esteira parada cinza com ⚠, fila
+  vermelha, IA ciano, "sem IA" laranja); gancho com a câmera baixa e a fila
+  enchendo o quadro; tela dividida só com NA FILA e um selo de velocidade na
+  divisória; raio-X uma camada por vez, com uma linha do cartão ao anel da
+  Esteira 3; previsão sem contador, com os gráficos na escala da subida e o
+  limite desenhado, o painel ao lado do motor; percentuais grandes no cartão e o
+  endereço numa faixa. Rodada 3 (aprovada com a implementação): o ⚠ "Esteira 8"
+  na cabeça da fila; o número NA FILA com a cor do lado na tela dividida (o
+  vermelho fica para a fila na cena); a faixa do título do raio-X escura o
+  bastante para as rotas não aparecerem por cima; e uma captura do clímax da
+  previsão no PR. Decididos na implementação e relatados: o aviso do motor em
+  amarelo (halo e CUSUM) e o anel do gargalo em ciano; o contador mostra a fila
+  da Esteira 8, não a do galpão inteiro (com IA o total oscila de 45 a 139
+  pacotes por causa das filas que o desvio cria, e "a fila para de crescer"
+  ficaria enganoso); a contagem do contador pergunta ao roteamento o caminho do
+  pacote que ainda não escolheu (a do motor supunha o estático e dava picos de
+  um tick); o rótulo "rotas reservadas dos robôs"; o cartão do feed com a mesma
+  linha de transparência da demo explicada; a versão completa com o p95 de
+  espera no cartão.
+
+- **2026-10-13, demo cinema: o contador é por esteira.** Pedido antes do merge do
+  PR #12: o rótulo diz o que o contador mede, "FILA · ESTEIRA 8", no gancho e nas
+  duas metades da tela dividida (a mesma medida nos três, conferida por teste); a
+  regra de leitura conferida de novo com o rótulo maior (o gancho passou a 3,5 s,
+  a frase segura o instante parado, a tela dividida tem 13 s e a previsão 14 s); e
+  o README diz que o contador da demo cinema é por esteira e onde ficam os números
+  do galpão inteiro.
 
 ## Apêndice: a primeira versão das fases 2 a 4
 

@@ -91,6 +91,13 @@ export class BottleneckView {
     (this.pulse.material as MeshBasicMaterial).opacity = reducedMotion ? 0.8 : 1 - phase;
   }
 
+  /** The ring's color (the cinema draws it in the AI's cyan: it is the AI's finding there). */
+  setColor(hex: number): void {
+    for (const mesh of [this.dashes, this.pulse]) {
+      (mesh.material as MeshBasicMaterial).color.setHex(hex).multiplyScalar(1.4);
+    }
+  }
+
   dispose(): void {
     this.dashes.dispose();
     this.pulse.dispose();

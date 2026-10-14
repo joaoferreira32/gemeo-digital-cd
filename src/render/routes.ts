@@ -27,6 +27,8 @@ const FADE_FULL = 26;
  */
 export class RouteView {
   readonly mesh: Mesh<BufferGeometry, ShaderMaterial>;
+  /** False: never drawn (the cinema demo draws the routes of its X-ray itself). */
+  enabled = true;
   private readonly pos: Float32Array;
   private readonly u: Float32Array;
   private readonly fade: Float32Array;
@@ -91,7 +93,7 @@ export class RouteView {
     );
     this.mesh.material.uniforms.visibility!.value = visibility;
     this.mesh.material.uniforms.time!.value = time;
-    this.mesh.visible = visibility > 0.01;
+    this.mesh.visible = this.enabled && visibility > 0.01;
     if (!this.mesh.visible) return;
     const s = frame.s;
     let v = 0;

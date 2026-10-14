@@ -1,5 +1,6 @@
 import type { Bottleneck } from '../ai/bottleneck';
-import type { DemoKindId, DemoPhase, DemoResult } from '../demo/run';
+import type { CinemaSide } from '../demo/cinema-run';
+import type { DemoKindId, DemoPhase, DemoResult, DemoSide } from '../demo/run';
 import type { FailureKind, SimEvent } from '../sim/failures';
 import type { Kpis, RunReport } from '../sim/recorder';
 import type { SimConfig } from '../sim/world';
@@ -46,7 +47,15 @@ export type SimCommand =
    * ordinary app.
    */
   | { type: 'demo'; action: 'start'; script: DemoKindId }
-  | { type: 'demo'; action: 'compare' | 'stop' };
+  | { type: 'demo'; action: 'compare' | 'stop' }
+  /**
+   * The cinema demo (src/demo/cinema-run.ts): one side of the split screen,
+   * with no clock of its own. `to` shows the moment of a video frame and
+   * answers with a `cinema` message; `measure` adds the card's numbers.
+   */
+  | { type: 'cinema'; action: 'start'; side: CinemaSide }
+  | { type: 'cinema'; action: 'to'; time: number; frame: number; measure: boolean }
+  | { type: 'cinema'; action: 'stop' };
 
 /** Messages from the simulation to the page. */
 export type SimMessage =
@@ -66,6 +75,18 @@ export type SimMessage =
   | { type: 'replay'; progress: number; done: boolean; ok?: boolean; fingerprint?: string }
   /** Where the demo is; the result once both runs have reached the end. */
   | { type: 'demo'; phase: DemoPhase; result: DemoResult | null }
+  /** One frame of a side of the cinema demo: the snapshot, what happened since, the detector. */
+  | {
+      type: 'cinema';
+      frame: number;
+      buffer: ArrayBuffer;
+      events: SimEvent[];
+      bottleneck: Bottleneck | null;
+      /** The queue of the belt that broke (the counter on screen). */
+      queue: number;
+      /** The card's measures so far, when asked for. */
+      measure: DemoSide | null;
+    }
   | { type: 'error'; message: string };
 
 export const SPEEDS = [1, 4, 16] as const;

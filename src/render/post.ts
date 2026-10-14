@@ -75,8 +75,9 @@ export class PostFX {
   private bloom: UnrealBloomPass | null = null;
   private rewind: ShaderPass | null = null;
   private bokeh: BokehPass | null = null;
-  /** Distance in focus (m), or null without depth of field. */
+  /** Distance in focus (m), or null without depth of field, and how strong it is. */
   private focus: number | null = null;
+  private strength = DOF;
   private target: WebGLRenderTarget | null = null;
   private level: QualityLevel = 'alta';
   private width = 1;
@@ -104,7 +105,7 @@ export class PostFX {
     this.bokeh = new BokehPass(this.scene, this.camera, { focus: 30, ...DOF });
     this.bokeh.enabled = false;
     this.composer.addPass(this.bokeh);
-    this.setFocus(this.focus);
+    this.setFocus(this.focus, this.strength);
     const scale = level === 'alta' ? 1 : 0.5;
     this.bloom = new UnrealBloomPass(new Vector2(width * scale, height * scale), 0.42, 0.4, 0.9);
     this.composer.addPass(this.bloom);
@@ -124,15 +125,25 @@ export class PostFX {
     return this.composer !== null;
   }
 
-  /** Depth of field focused at `distance` (m), or off with null; false without post-processing. */
-  setFocus(distance: number | null): boolean {
+  /**
+   * Depth of field focused at `distance` (m), or off with null; false without
+   * post-processing. `strength`: the aperture and the blur cap (the light
+   * default otherwise).
+   */
+  setFocus(
+    distance: number | null,
+    strength: { aperture: number; maxblur: number } = DOF,
+  ): boolean {
     this.focus = distance;
+    this.strength = strength;
     const pass = this.bokeh;
     if (!pass) return false;
     pass.enabled = distance !== null;
     if (distance !== null) {
       const u = pass.uniforms as Record<string, { value: number }>;
       u.focus!.value = distance;
+      u.aperture!.value = strength.aperture;
+      u.maxblur!.value = strength.maxblur;
     }
     return true;
   }

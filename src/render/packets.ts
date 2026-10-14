@@ -64,6 +64,9 @@ export class PacketView {
   visible = 0;
   /** Packets the simulation holds that did not fit the drawable pile slots. */
   hidden = 0;
+  /** Waiting time (s) at which a queued packet reaches its full red, and how red that is. */
+  redAfter = RED_AFTER;
+  redMax = 0.75;
   private readonly slot = { x: 0, y: 0, z: 0 };
   private readonly inboundAreas: PileArea[];
   private readonly stagingAreas: PileArea[];
@@ -122,7 +125,7 @@ export class PacketView {
       const x = x0 + ((p[o + 3] as number) - x0) * alpha;
       const z = z0 + ((p[o + 4] as number) - z0) * alpha;
       const heading = lerpAngle(p[o + 2] as number, p[o + 5] as number, alpha);
-      const red = Math.min(1, (p[o + 6] as number) / RED_AFTER) * 0.75;
+      const red = Math.min(1, (p[o + 6] as number) / this.redAfter) * this.redMax;
       n = this.write(m, colors, n, s.packetIds[i] as number, x, BELT_TOP, z, -heading, null, red);
     }
 
