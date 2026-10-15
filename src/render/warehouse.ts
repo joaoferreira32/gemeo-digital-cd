@@ -1,4 +1,5 @@
 import {
+  FrontSide,
   Group,
   InstancedMesh,
   Matrix4,
@@ -545,6 +546,13 @@ export class WarehouseView {
       sign.rotation.y = Math.PI / 2;
       sign.position.set(bounds.minX + 0.25, DOOR_H + 0.85, z);
       this.add(sign);
+      // Over the door, read from outside too (one sided each, so neither shows mirrored).
+      const material = sign.material as Material;
+      material.side = FrontSide;
+      const back = new Mesh(sign.geometry, this.tracker.track(material.clone()));
+      back.rotation.y = -Math.PI / 2;
+      back.position.set(bounds.minX + 0.23, DOOR_H + 0.85, z);
+      this.add(back);
     });
   }
 

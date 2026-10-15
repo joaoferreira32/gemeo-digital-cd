@@ -1,4 +1,5 @@
 import type { Bottleneck } from '../ai/bottleneck';
+import type { CinemaLogLine } from '../demo/cinema';
 import type { CinemaSide } from '../demo/cinema-run';
 import type { DemoKindId, DemoPhase, DemoResult, DemoSide } from '../demo/run';
 import type { FailureKind, SimEvent } from '../sim/failures';
@@ -53,7 +54,15 @@ export type SimCommand =
    * with no clock of its own. `to` shows the moment of a video frame and
    * answers with a `cinema` message; `measure` adds the card's numbers.
    */
-  | { type: 'cinema'; action: 'start'; side: CinemaSide }
+  | {
+      type: 'cinema';
+      action: 'start';
+      side: CinemaSide;
+      /** Where the run starts being shown (s); the script's warm-up when absent. */
+      warmup?: number;
+      /** Moments (s) a rewind will show: kept as the run passes them, played back later. */
+      keep?: readonly number[];
+    }
   | { type: 'cinema'; action: 'to'; time: number; frame: number; measure: boolean }
   | { type: 'cinema'; action: 'stop' };
 
@@ -84,6 +93,15 @@ export type SimMessage =
       bottleneck: Bottleneck | null;
       /** The queue of the belt that broke (the counter on screen). */
       queue: number;
+      /** Packets delivered in the minute before this moment (the tour's rate). */
+      rate: number;
+      /** The AI's log so far (its last lines), written from the engine. */
+      log: CinemaLogLine[];
+      /**
+       * The router: the AI's routing on, when it last decided (s, −1 before its
+       * first decision), and its costs (primary, alternative, …).
+       */
+      routing: { active: boolean; decidedAt: number; cost: number[] };
       /** The card's measures so far, when asked for. */
       measure: DemoSide | null;
     }

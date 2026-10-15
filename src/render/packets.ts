@@ -52,6 +52,20 @@ function hash(n: number): number {
   return (h ^ (h >>> 16)) >>> 0;
 }
 
+/** The size of the box drawn for `key` (a packet's id on a belt). */
+export function boxSize(key: number): readonly [number, number, number] {
+  return SIZES[hash(key) % SIZES.length] as readonly [number, number, number];
+}
+
+/** A pile's slight per-box turn, so a pile does not look like one block. */
+const pileYaw = (key: number): number => ((hash(key) & 0xff) / 255 - 0.5) * 0.25;
+
+/** The box in slot `slot` of a dock's staging pile: its key (size) and its yaw. */
+export function stagingBox(dockIndex: number, slot: number): { key: number; yaw: number } {
+  const key = 0x8000 * (dockIndex + 1) + slot;
+  return { key, yaw: pileYaw(key) };
+}
+
 /**
  * Every packet in the scene — on belts, in inbound backlogs, on dock staging,
  * in robot bypass buffers and on the robots — is one instance of a single
@@ -202,7 +216,7 @@ export class PacketView {
     const shown = Math.min(count, pileCapacity(area), MAX_PACKETS - n);
     for (let i = 0; i < shown; i++) {
       pileSlot(area, i, this.slot);
-      const yaw = ((hash(salt + i) & 0xff) / 255 - 0.5) * 0.25;
+      const yaw = pileYaw(salt + i);
       n = this.write(m, colors, n, salt + i, this.slot.x, this.slot.y, this.slot.z, yaw, null, 0);
     }
     return n;

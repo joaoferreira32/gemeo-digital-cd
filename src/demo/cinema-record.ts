@@ -17,14 +17,24 @@ export class CinemaRecording {
     private readonly fps: number,
   ) {}
 
-  /** A recording of `canvas`, or why this browser cannot make one. */
-  static async open(canvas: HTMLCanvasElement, fps: number): Promise<CinemaRecording | string> {
+  /**
+   * A recording of `canvas` (at `bitrate` bits per second, or the library's
+   * high quality), or why this browser cannot make one.
+   */
+  static async open(
+    canvas: HTMLCanvasElement,
+    fps: number,
+    bitrate?: number,
+  ): Promise<CinemaRecording | string> {
     if (typeof VideoEncoder === 'undefined') {
       return 'Este navegador não grava vídeo quadro a quadro (WebCodecs): use o Chrome ou o Edge.';
     }
     const { BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, canEncodeVideo } =
       await import('mediabunny');
-    const quality = new Quality('high');
+    const quality =
+      bitrate === undefined
+        ? new Quality('high')
+        : new Quality({ bitrate, bitrateMode: 'variable' });
     const options = { width: canvas.width, height: canvas.height, frameRate: fps, quality };
     if (!(await canEncodeVideo('avc', options))) {
       return `Este navegador não codifica H.264 em ${canvas.width}×${canvas.height}: o vídeo não pode ser gravado aqui.`;

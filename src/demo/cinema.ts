@@ -23,9 +23,12 @@ import { DEMO_EXPLICADA, type DemoSide } from './run';
  * the AI is cyan, "sem IA" is orange, a worn motor's warning is yellow.
  */
 
-export type CinemaFormatId = 'feed' | 'completa';
+export type CinemaFormatId = 'feed' | 'completa' | 'galpao' | 'galpao-completa';
 
 export type SegmentId =
+  | 'teaser'
+  | 'rebobinada'
+  | 'tour'
   | 'gancho'
   | 'frase'
   | 'volta'
@@ -60,7 +63,28 @@ export type Anchor =
   /** A robot in sight with a long reserved route. */
   | { readonly kind: 'route' }
   /** The belt the detector points out. */
-  | { readonly kind: 'bottleneck' };
+  | { readonly kind: 'bottleneck' }
+  /**
+   * The tour's packet (PROTAGONIST): on its belt; in its dock's pile once it
+   * got there; at its entrance before it went in.
+   */
+  | { readonly kind: 'protagonist'; readonly y: number }
+  /** A robot of the fleet, by its number (the tour's robot at a shelf). */
+  | { readonly kind: 'fleet'; readonly robot: number };
+
+/**
+ * A pose of a camera path (src/demo/cinema-player.ts goes through them on a
+ * smooth curve, one continuous shot): at `at` seconds into the segment.
+ */
+export interface CameraKey {
+  readonly at: number;
+  readonly target: Anchor;
+  readonly radius: number;
+  readonly phi: number;
+  readonly theta: number;
+  /** Where the depth of field is sharp (the shot's `focus` gives how strong). */
+  readonly focus?: Anchor;
+}
 
 export interface Shot {
   readonly target: Anchor;
@@ -74,6 +98,8 @@ export interface Shot {
   readonly focus?: { readonly at: Anchor; readonly aperture: number; readonly maxblur: number };
   /** The camera glides from the shot before at this rate (1/s); without it the segment opens on a cut. */
   readonly glide?: number;
+  /** A continuous camera move through these poses (it replaces target, radius, angles and turn). */
+  readonly path?: readonly CameraKey[];
 }
 
 export interface Look {
@@ -90,8 +116,9 @@ export interface Look {
 
 /**
  * Simulated seconds played at a whole speed (simulated seconds per video
- * second); with speed 0, `from` held still for `hold` seconds. A span that
- * does not start where the one before ended is a jump in time.
+ * second); with speed 0, `from` held still for `hold` seconds; with a negative
+ * speed, played backward (the rewind: moments of the run shown in reverse
+ * order). A span that does not start where the one before ended is a jump in time.
  */
 export interface Span {
   readonly from: number;
@@ -105,8 +132,8 @@ export type Tone = 'red' | 'cyan' | 'ink' | 'grey';
 export type ItemBody =
   /** Big words at the top, on a dark band. */
   | { readonly kind: 'headline'; readonly text: string }
-  /** The sentence in the middle of the screen. */
-  | { readonly kind: 'phrase'; readonly text: string }
+  /** The sentence in the middle of the screen (`big`: larger, the cover's). */
+  | { readonly kind: 'phrase'; readonly text: string; readonly big?: true }
   /** At the bottom of a pane (or of the screen); "|" breaks a line. */
   | {
       readonly kind: 'caption';
@@ -128,7 +155,10 @@ export type ItemBody =
       readonly label?: string;
       readonly pane?: CinemaSide;
     }
-  /** A label fixed to a point; "{share}" is the share of B2's packets going by line A. */
+  /**
+   * A label fixed to a point; "{share}" is the share of B2's packets going by
+   * line A, "{rate}" the packets delivered in the minute before the moment shown.
+   */
   | {
       readonly kind: 'balloon';
       readonly at: Anchor;
@@ -137,13 +167,40 @@ export type ItemBody =
       readonly dx: number;
       readonly dy: number;
       readonly pane?: CinemaSide;
+      /** Hidden while its point is out of the picture (a moving camera leaves it behind). */
+      readonly inSight?: true;
     }
   /** The X-ray's title, on a band dark enough to hide what passes under it. */
   | { readonly kind: 'title'; readonly text: string }
   /** Every robot's reserved route, glowing (the X-ray). */
   | { readonly kind: 'routes' }
-  /** The detector's card (its live words), a line to the ring and the belt's name there. */
-  | { readonly kind: 'bottleneck' }
+  /**
+   * The detector's card (its live words), a line to the ring and the belt's
+   * name there; without the line where the ring is not in the picture.
+   */
+  | { readonly kind: 'bottleneck'; readonly link?: false }
+  /**
+   * The AI's log (src/demo/cinema-run.ts writes it from the engine): its last
+   * lines, and LOG_STATUS while the router decides every second. `first`: the
+   * kinds of line that first show up in this segment (the reading rule counts
+   * the first line of each kind; the next ones of a kind need not be read).
+   */
+  | {
+      readonly kind: 'log';
+      readonly pane: CinemaSide;
+      readonly first: readonly (LogKind | 'status')[];
+      /** Its last lines shown, and where: at the bottom of the pane or at its top. */
+      readonly lines: number;
+      readonly place: 'bottom' | 'top';
+    }
+  /** The router's two ways at a junction, with the time it expects on each; the one it takes lit. */
+  | { readonly kind: 'compare'; readonly node: string; readonly dx: number; readonly dy: number }
+  /** A ring at each junction where the router splits the flow, every time it decides. */
+  | { readonly kind: 'pulses'; readonly pane: CinemaSide }
+  /** The 24 motors' alarm sums, read every second, the highest one named. */
+  | { readonly kind: 'monitor'; readonly pane: CinemaSide }
+  /** Rings going out from a point (the breakdown). */
+  | { readonly kind: 'wave'; readonly at: Anchor }
   /** The worn motor's readings: vibration, temperature and the alarm sum against its limit. */
   | { readonly kind: 'forecast'; readonly pane: CinemaSide; readonly motor: number }
   /** Darkens what is not the subject (around these points). */
@@ -159,9 +216,11 @@ export type ItemBody =
   /** The numbers of both runs, counting up as the runs go to their end. */
   | { readonly kind: 'card'; readonly rows: readonly CardRowId[] }
   /** Where the code is, on a dark band. */
-  | { readonly kind: 'address' }
+  | { readonly kind: 'address'; readonly cta?: string }
   /** The time travel: a bar going back between two simulated moments (s). */
-  | { readonly kind: 'timeline'; readonly sim: readonly [number, number] };
+  | { readonly kind: 'timeline'; readonly sim: readonly [number, number] }
+  /** A short white flash (the breakdown), fading out. */
+  | { readonly kind: 'flash' };
 
 /** An item on screen from `from` to `to` (seconds into its segment). */
 export type Item = ItemBody & { readonly from: number; readonly to: number };
@@ -193,6 +252,21 @@ export interface CinemaFormat {
   /** How the two runs share the screen: one above the other (4:5) or side by side (16:9). */
   readonly split: 'stack' | 'side';
   readonly segments: readonly Segment[];
+  /**
+   * Where words may go (shares of the frame): none in the bottom `bottom`
+   * (a feed's buttons and caption cover it on a phone), none closer than
+   * `side` to the left and right edges or `top` to the top one.
+   */
+  readonly safe?: { readonly side: number; readonly top: number; readonly bottom: number };
+  /** The video's bitrate (bits per second); a high one survives a site's re-encoding better. */
+  readonly bitrate?: number;
+  /**
+   * Simulated seconds drawn, unseen, before the first frame: what builds up on
+   * screen over time (the heat) is there from the first frame.
+   */
+  readonly preroll?: number;
+  /** A still for the post's thumbnail: a segment held at a moment of it (seconds into it). */
+  readonly cover?: { readonly segment: Segment; readonly local: number };
 }
 
 export const CINEMA_FPS = 60;
@@ -203,6 +277,50 @@ const BROKEN = S.failure.target;
 const WORN = S.wear.target;
 
 export const PHRASE = 'Eu programei uma IA para decidir o que fazer.';
+
+// ---------------------------------------------------------------- the AI's log
+
+/**
+ * The kinds of line of the AI's log, all from the engine: the AI taking over
+ * (the script's input), a way of a routing choice cut by a stopped belt (its
+ * cost goes infinite) and back, and a maintenance scheduled on a motor's alarm.
+ */
+export type LogKind = 'assume' | 'corte' | 'retorno' | 'manutencao';
+
+export interface CinemaLogLine {
+  /** Simulated seconds. */
+  readonly at: number;
+  readonly kind: LogKind;
+  readonly text: string;
+}
+
+/** The fixed line under the log while the router decides every second. */
+export const LOG_STATUS = 'reavaliando a divisão a cada segundo';
+
+const stamp = (t: number) => `${Math.round(t)} s`;
+/** The texts of the log's lines (worker and tests write them the same way). */
+export const LOG_TEXT = {
+  assume: (t: number) => `${stamp(t)} · IA assume roteamento e manutenção`,
+  /** At `node`, the way through `belt` (stopped) is cut: the flow goes by `way`. */
+  corte: (t: number, node: string, belt: string, state: string, way: string) =>
+    `${stamp(t)} · ${node}: ${belt} ${state} → ${way}`,
+  retorno: (t: number, node: string, belt: string) => `${stamp(t)} · ${node}: ${belt} de volta`,
+  manutencao: (t: number, belt: string) =>
+    `${stamp(t)} · ${belt}: motor fora do padrão → manutenção agendada`,
+} as const;
+
+/** A line of each kind as this run writes it (the reading rule counts its words). */
+export const LOG_EXAMPLE: Record<LogKind, string> = {
+  assume: LOG_TEXT.assume(128),
+  corte: LOG_TEXT.corte(129, 'B2', 'Esteira 8', 'parada', 'linha A'),
+  retorno: LOG_TEXT.retorno(190, 'B2', 'Esteira 8'),
+  manutencao: LOG_TEXT.manutencao(218, 'Esteira 16'),
+};
+
+/** The router's costs at a junction: what they are. */
+export const COMPARE_TITLE = 'tempo previsto (viagem + fila)';
+/** The 24 motors' panel. */
+export const MONITOR_TITLE = 'Monitoramento: 24 motores';
 /**
  * The counter's label, in the hook and in both panes of the split screen: the
  * queue it counts is the broken belt's (src/demo/cinema-run.ts), not the
@@ -213,6 +331,8 @@ export const COUNTER_LABEL = `FILA · ESTEIRA ${BROKEN + 1}`;
 const HOOK_END = S.failure.at + 7;
 export const ADDRESS_LEAD = 'Código e detalhes';
 export const ADDRESS = 'github.com/joaoferreira32/gemeo-digital-cd';
+/** The end card's call: the demo runs in the browser, at the address. */
+export const ADDRESS_CTA = 'Roda no seu navegador: teste você mesmo';
 /** The card's note: the scenario was picked to show each step. */
 export const CARD_NOTE = 'Cenário escolhido para mostrar cada etapa;|não representa a média.';
 /** The moment the AI half's caption claims, and what it says then. */
@@ -239,7 +359,7 @@ const SPLIT_SPOT = [
   point(0, 0.5, -3),
 ];
 
-/** Seconds into a segment at which its run shows the simulated moment `time`. */
+/** Seconds into a segment at which its run shows the simulated moment `time` (played forward). */
 export function localAt(spans: readonly Span[], time: number): number {
   let local = 0;
   for (const s of spans) {
@@ -247,11 +367,15 @@ export function localAt(spans: readonly Span[], time: number): number {
       local += s.hold ?? 0;
       continue;
     }
-    if (time <= s.to) return local + Math.max(0, time - s.from) / s.speed;
-    local += (s.to - s.from) / s.speed;
+    if (s.speed > 0 && time <= s.to) return local + Math.max(0, time - s.from) / s.speed;
+    local += Math.abs(s.to - s.from) / Math.abs(s.speed);
   }
   return local;
 }
+
+/** Video seconds a span lasts. */
+const spanSeconds = (s: Span): number =>
+  s.speed === 0 ? (s.hold ?? 0) : Math.abs(s.to - s.from) / Math.abs(s.speed);
 
 /** The look of a segment that a scene shows (before any step). */
 const look = (l: Partial<Look>): Look => ({
@@ -297,6 +421,13 @@ function frase(shot: Shot): Segment {
   };
 }
 
+/** What the tour's version adds to a segment: its own spans, more items. */
+interface SegmentOptions {
+  readonly spans?: readonly Span[];
+  /** Items over the scene (the AI's log, its costs, its pulses), placed on the segment's spans. */
+  readonly extra?: (spans: readonly Span[]) => Item[];
+}
+
 /** The same warehouse with and without the AI, from the same moment. */
 function dividida(
   from: number,
@@ -305,10 +436,16 @@ function dividida(
   shot: Shot,
   intro: string,
   captionPane: CinemaSide | undefined,
+  opts: SegmentOptions & {
+    readonly detourAt?: number;
+    /** The tour's version: the intro until this moment (s), then no balloon nor closing caption. */
+    readonly introUntil?: number;
+  } = {},
 ): Segment {
-  const spans = [{ from, to: 176, speed }];
+  const spans = opts.spans ?? [{ from, to: 176, speed }];
   // The balloon shows once the AI has taken over and its arrows are up.
-  const detour = localAt(spans, S.aiAt + 7);
+  const detour = localAt(spans, opts.detourAt ?? S.aiAt + 7);
+  const told = opts.introUntil !== undefined;
   const where = captionPane ? { pane: captionPane } : {};
   return {
     id: 'dividida',
@@ -332,48 +469,66 @@ function dividida(
         { kind: 'pin', at: belt(BROKEN, 0.3), pane, ...always(seconds) },
       ]),
       { kind: 'badge', ...always(seconds) },
-      { kind: 'caption', text: intro, ...where, from: 0, to: detour - 0.3 },
-      {
-        kind: 'balloon',
-        at: belt(11, 0.5, 0.7),
-        text: 'desvio pela linha A',
-        tone: 'cyan',
-        dx: -60,
-        dy: -90,
-        pane: 'ai',
-        from: detour,
-        to: seconds,
-      },
       {
         kind: 'caption',
-        text: 'A IA desvia o fluxo, e a fila para de crescer.',
+        text: intro,
         ...where,
-        from: detour + 1.2,
-        to: seconds,
+        from: 0,
+        to: told ? localAt(spans, opts.introUntil as number) : detour - 0.3,
       },
+      // The tour's version leaves these to the AI's log and costs.
+      ...(told
+        ? []
+        : [
+            {
+              kind: 'balloon' as const,
+              at: belt(11, 0.5, 0.7),
+              text: 'desvio pela linha A',
+              tone: 'cyan' as const,
+              dx: -60,
+              dy: -90,
+              pane: 'ai' as const,
+              from: detour,
+              to: seconds,
+            },
+            {
+              kind: 'caption' as const,
+              text: 'A IA desvia o fluxo, e a fila para de crescer.',
+              ...where,
+              from: detour + 1.2,
+              to: seconds,
+            },
+          ]),
+      ...(opts.extra?.(spans) ?? []),
     ],
   };
 }
 
-/** What the AI sees, one layer at a time: the waiting, the routes, the detour, the new bottleneck. */
-function raiox(shot: Shot): Segment {
-  const seconds = 14;
-  const layers = [0, 3, 5, 7];
+/**
+ * What the AI sees, one layer at a time: the waiting, the routes, the detour,
+ * the new bottleneck. The tour's version leaves the robots' routes out: they
+ * are planned by the robots' own system, which no part of the AI reads.
+ */
+function raiox(shot: Shot, robots = true, extra: readonly Item[] = []): Segment {
+  const seconds = robots ? 14 : 12;
+  const layers = robots ? [0, 3, 5, 7] : [0, 3, 5];
+  const share = layers[layers.length - 2] as number;
+  const card = layers[layers.length - 1] as number;
   return {
     id: 'raiox',
     layout: 'single',
     seconds,
-    spans: [{ from: 176, to: 190, speed: 1 }],
+    spans: [{ from: 176, to: 176 + seconds, speed: 1 }],
     shot,
     look: look({ heat: 'espera', racks: 0.28 }),
     steps: [
-      { from: layers[2] as number, look: { arrows: 2.6 } },
-      { from: layers[3] as number, look: { arrows: 2.6, ring: true } },
+      { from: share, look: { arrows: 2.6 } },
+      { from: card, look: { arrows: 2.6, ring: true } },
     ],
     windows: layers,
     items: [
       { kind: 'spotlight', around: LINE_B, pad: [140, 150], alpha: 0.35, from: 0, to: 3 },
-      { kind: 'routes', from: 3, to: seconds },
+      ...(robots ? [{ kind: 'routes' as const, from: 3, to: seconds }] : []),
       { kind: 'title', text: 'O que a IA vê', ...always(seconds) },
       { kind: 'pin', at: belt(BROKEN, 0.3), ...always(seconds) },
       {
@@ -386,16 +541,20 @@ function raiox(shot: Shot): Segment {
         from: 0,
         to: 3,
       },
-      {
-        kind: 'balloon',
-        at: { kind: 'route' },
-        text: 'rotas reservadas dos robôs',
-        tone: 'cyan',
-        dx: -60,
-        dy: -120,
-        from: 3,
-        to: 5,
-      },
+      ...(robots
+        ? [
+            {
+              kind: 'balloon' as const,
+              at: { kind: 'route' as const },
+              text: 'rotas reservadas dos robôs',
+              tone: 'cyan' as const,
+              dx: -60,
+              dy: -120,
+              from: 3,
+              to: 5,
+            },
+          ]
+        : []),
       {
         kind: 'balloon',
         at: { kind: 'node', name: 'B2', y: 0.7 },
@@ -403,21 +562,37 @@ function raiox(shot: Shot): Segment {
         tone: 'cyan',
         dx: 60,
         dy: 150,
-        from: 5,
-        to: 7,
+        from: share,
+        to: card,
       },
-      { kind: 'bottleneck', from: 7, to: seconds },
+      { kind: 'bottleneck', from: card, to: seconds },
+      ...extra,
     ],
   };
 }
 
-/** The worn motor: the AI reads it and stops the belt in time; without it, the belt breaks. */
-function previsao(slow: number, seconds: number, shot: Shot, panelBelow: boolean): Segment {
-  const spans = [
+/**
+ * The worn motor: the AI reads it and stops the belt in time; without it, the
+ * belt breaks. The tour's version opens on all 24 motors (`chartsAt`: the
+ * simulated moment the worn motor's charts take their place).
+ */
+function previsao(
+  slow: number,
+  seconds: number,
+  shot: Shot,
+  panelBelow: boolean,
+  opts: SegmentOptions & {
+    readonly chartsAt?: number;
+    /** Without the AI side's caption (the tour's version: its log and panels tell it). */
+    readonly quiet?: boolean;
+  } = {},
+): Segment {
+  const spans = opts.spans ?? [
     { from: 190, to: 215, speed: 5 },
     { from: 215, to: slow, speed: 1 },
   ];
   const fast = localAt(spans, 215);
+  const charts = opts.chartsAt === undefined ? 0 : localAt(spans, opts.chartsAt);
   return {
     id: 'previsao',
     layout: 'split',
@@ -449,20 +624,27 @@ function previsao(slow: number, seconds: number, shot: Shot, panelBelow: boolean
         from: 0,
         to: localAt(spans, 222.75),
       },
-      { kind: 'forecast', pane: 'ai', motor: WORN, ...always(seconds) },
+      ...(charts > 0
+        ? [{ kind: 'monitor' as const, pane: 'ai' as const, from: 0, to: charts }]
+        : []),
+      { kind: 'forecast', pane: 'ai', motor: WORN, from: charts, to: seconds },
       {
         kind: 'caption',
         text: 'Sem IA, ninguém agenda a manutenção.',
         pane: 'no-ai',
         ...always(seconds),
       },
-      {
-        kind: 'caption',
-        text: 'A IA prevê a quebra|pelos sensores do motor.',
-        pane: 'ai',
-        narrow: !panelBelow,
-        ...always(seconds),
-      },
+      ...(opts.quiet
+        ? []
+        : [
+            {
+              kind: 'caption' as const,
+              text: 'A IA prevê a quebra|pelos sensores do motor.',
+              pane: 'ai' as const,
+              narrow: !panelBelow,
+              ...always(seconds),
+            },
+          ]),
       {
         kind: 'balloon',
         at: motor(WORN),
@@ -482,6 +664,7 @@ function previsao(slow: number, seconds: number, shot: Shot, panelBelow: boolean
         from: localAt(spans, 222.75),
         to: seconds,
       },
+      ...(opts.extra?.(spans) ?? []),
     ],
   };
 }
@@ -526,6 +709,47 @@ const XRAY_SHOT: Shot = {
   theta: 0.3,
   turn: 0.05,
 };
+/** The feed's split screen (and the tour's teaser, the same shot). */
+const FEED_SPLIT_SHOT: Shot = {
+  target: point(-6, 0.5, 0.5),
+  radius: 30,
+  phi: 0.6,
+  theta: 0.42,
+  turn: 0.06,
+  focus: SPLIT_FOCUS,
+};
+const FEED_PREVISAO_SHOT: Shot = {
+  target: motor(WORN, 0.6, 2.5),
+  radius: 10.5,
+  phi: 0.6,
+  theta: 5.8,
+  turn: 0.04,
+  focus: MOTOR_FOCUS,
+};
+const COMPLETA_SPLIT_SHOT: Shot = {
+  target: point(-6, 0.5, 0.5),
+  radius: 24,
+  phi: 0.6,
+  theta: 0.42,
+  turn: 0.06,
+  focus: SPLIT_FOCUS,
+};
+const COMPLETA_PREVISAO_SHOT: Shot = {
+  target: motor(WORN, 0.6, -1.2, 2.4),
+  radius: 9,
+  phi: 0.62,
+  theta: 5.8,
+  turn: 0.04,
+  focus: MOTOR_FOCUS,
+};
+const FEED_FRASE_SHOT: Shot = {
+  target: point(-6, 0.5, 0.5),
+  radius: 30,
+  phi: 0.62,
+  theta: 0.42,
+  turn: 0,
+  glide: 1.4,
+};
 
 /** The feed cut: 4:5, 60 s, the split screen one run above the other. */
 export const FEED: CinemaFormat = {
@@ -535,36 +759,17 @@ export const FEED: CinemaFormat = {
   split: 'stack',
   segments: [
     gancho(HOOK_SHOT),
-    frase({ target: point(-6, 0.5, 0.5), radius: 30, phi: 0.62, theta: 0.42, turn: 0, glide: 1.4 }),
+    frase(FEED_FRASE_SHOT),
     dividida(
       HOOK_END,
       5,
       13,
-      {
-        target: point(-6, 0.5, 0.5),
-        radius: 30,
-        phi: 0.6,
-        theta: 0.42,
-        turn: 0.06,
-        focus: SPLIT_FOCUS,
-      },
+      FEED_SPLIT_SHOT,
       'Mesmo galpão, mesmas falhas. Em cima, sem IA; embaixo, com IA.',
       'ai',
     ),
     raiox(XRAY_SHOT),
-    previsao(
-      224,
-      14,
-      {
-        target: motor(WORN, 0.6, 2.5),
-        radius: 10.5,
-        phi: 0.6,
-        theta: 5.8,
-        turn: 0.04,
-        focus: MOTOR_FOCUS,
-      },
-      false,
-    ),
+    previsao(224, 14, FEED_PREVISAO_SHOT, false),
     numeros(224, 48, 12.5, ['entregas', 'ciclo', 'quebras'], true),
   ],
 };
@@ -661,31 +866,12 @@ export const COMPLETA: CinemaFormat = {
       S.failure.at + 5,
       4,
       16.75,
-      {
-        target: point(-6, 0.5, 0.5),
-        radius: 24,
-        phi: 0.6,
-        theta: 0.42,
-        turn: 0.06,
-        focus: SPLIT_FOCUS,
-      },
+      COMPLETA_SPLIT_SHOT,
       'Mesmo galpão, mesmas falhas. À esquerda, sem IA; à direita, com IA.',
       undefined,
     ),
     raiox({ ...XRAY_SHOT, radius: 32 }),
-    previsao(
-      226,
-      16,
-      {
-        target: motor(WORN, 0.6, -1.2, 2.4),
-        radius: 9,
-        phi: 0.62,
-        theta: 5.8,
-        turn: 0.04,
-        focus: MOTOR_FOCUS,
-      },
-      true,
-    ),
+    previsao(226, 16, COMPLETA_PREVISAO_SHOT, true),
     numeros(226, 47, 15, ['entregas', 'ciclo', 'espera', 'quebras', 'evitadas'], false),
     {
       id: 'endereco',
@@ -702,15 +888,552 @@ export const COMPLETA: CinemaFormat = {
   ],
 };
 
+// ---------------------------------------------------------------- the warehouse tour
+
+/**
+ * The tour's version of the feed (?demo=cinema-galpao, 2026-10-13): it opens
+ * on the split screen's climax, rewinds the run two minutes, follows one
+ * packet through the working warehouse in one continuous shot (to its dock,
+ * across Esteira 8 before it breaks), and ends that shot on Esteira 8 as it
+ * breaks; from there on, the feed's story. It closes on the aerial shot it
+ * opened the tour with.
+ */
+
+/** The teaser's moment: the split screen's climax (the split shows it again later, the same numbers). */
+export const TEASER_AT = 170;
+/** Where the rewind lands and the tour starts. */
+export const TOUR_FROM = 50;
+/**
+ * The tour's packet: the last to go onto Esteira 6 (Entrada 2) before 65 s;
+ * it crosses Esteira 8 between 74 and 79 s and reaches Doca 4 at 91 s, over a
+ * robot passing under Esteira 10 (tests/cinema.test.ts checks all of it on the run).
+ */
+export const PROTAGONIST = { id: 279, entrance: 'Entrada 2' } as const;
+/**
+ * The robot taking boxes off a shelf near Entrada 2 as the packet goes in
+ * (63–66 s, beside line B): the tour's "40 robôs" points at it.
+ */
+export const SHELF_ROBOT = 7;
+/** The robot passing under Esteira 10 as the packet goes over it (83–85.5 s): the tour's 0,97 m. */
+export const GATE_ROBOT = 28;
+export const TEASER_TEXT = 'Mesma quebra. Duas decisões.';
+/** The scale of the warehouse, each fixed to its place in the tour (checked on the engine). */
+export const SCALE = {
+  belts: '24 esteiras',
+  robots: '40 robôs',
+  distance: 'robôs a no mínimo 0,97 m uns dos outros',
+  rate: '{rate} entregas por minuto',
+} as const;
+
+/** "⏪ 2 minutos antes": how far back the rewind goes (simulated seconds). */
+export function rewindText(seconds: number): string {
+  if (seconds % 60 !== 0) return `⏪ ${seconds} s antes`;
+  const minutes = seconds / 60;
+  return `⏪ ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'} antes`;
+}
+
+/** A shot that moves through these poses (its fixed fields are the first pose's). */
+function pathShot(
+  keys: readonly CameraKey[],
+  strength: { aperture: number; maxblur: number },
+): Shot {
+  const first = keys[0] as CameraKey;
+  return {
+    target: first.target,
+    radius: first.radius,
+    phi: first.phi,
+    theta: first.theta,
+    turn: 0,
+    focus: { at: first.focus ?? first.target, ...strength },
+    path: keys,
+  };
+}
+
+const TOUR_PACKET: Anchor = { kind: 'protagonist', y: 0.9 };
+/**
+ * The whole warehouse from above, seen from behind the entrances (the long
+ * side runs into the picture, which suits 4:5): where the tour starts and
+ * the video ends.
+ */
+const AERIAL: Omit<CameraKey, 'at'> = {
+  target: point(-2, 0, 0),
+  radius: 60,
+  phi: 0.62,
+  theta: -1.35,
+};
+
+const secondsOf = (spans: readonly Span[]) => spans.reduce((t, s) => t + spanSeconds(s), 0);
+
+/** What the tour's two versions (4:5 for the feed, 16:9 at about two minutes) do differently. */
+interface TourSpec {
+  readonly id: CinemaFormatId;
+  readonly width: number;
+  readonly height: number;
+  readonly split: 'stack' | 'side';
+  /** The tour: the aerial, the packet's way (slow), the return to Esteira 8. */
+  readonly tour: readonly Span[];
+  /** "Pacotes chegam pelas entradas…" while the camera goes with the packet (the long version). */
+  readonly how: boolean;
+  readonly splitShot: Shot;
+  /** The split screen: 4×, at 2× while the AI takes over and decides. */
+  readonly splitSpans: readonly Span[];
+  readonly intro: string;
+  readonly xray: Shot;
+  readonly forecastShot: Shot;
+  readonly forecastSpans: readonly Span[];
+  readonly panelBelow: boolean;
+  readonly numbers: {
+    readonly speed: number;
+    readonly seconds: number;
+    readonly rows: readonly CardRowId[];
+  };
+  readonly cover: boolean;
+}
+
+/** The climax of the split screen, before anything is told: the same moment the split shows later. */
+function teaser(seconds: number, split: Shot, splitSpans: readonly Span[]): Segment {
+  // The split's own pose at TEASER_AT (its camera turns over the whole split).
+  const at = split.theta + split.turn * (localAt(splitSpans, TEASER_AT) / secondsOf(splitSpans));
+  const shot = { ...split, theta: at - 0.02, turn: 0.02 };
+  return {
+    id: 'teaser',
+    layout: 'split',
+    seconds,
+    spans: [{ from: TEASER_AT - seconds, to: TEASER_AT, speed: 1 }],
+    shot,
+    look: look({ heat: 'espera', racks: 0.5, arrows: 2 }),
+    items: [
+      ...splitFrame(seconds),
+      { kind: 'pulses', pane: 'ai', ...always(seconds) },
+      { kind: 'phrase', text: TEASER_TEXT, ...always(seconds) },
+    ],
+  };
+}
+
+/** Both panes of a split screen: the subject lit, each side's tag, its counter, ⚠ on Esteira 8. */
+function splitFrame(seconds: number): Item[] {
+  return (['no-ai', 'ai'] as const).flatMap((pane): Item[] => [
+    { kind: 'spotlight', around: SPLIT_SPOT, pad: [110, 90], alpha: 0.5, pane, ...always(seconds) },
+    { kind: 'tag', pane, ...always(seconds) },
+    { kind: 'counter', pane, ...always(seconds) },
+    { kind: 'pin', at: belt(BROKEN, 0.3), pane, ...always(seconds) },
+  ]);
+}
+
+/**
+ * The thumbnail of the post: the split screen at the teaser's moment
+ * (146 × 10), still, with the teaser's sentence large across the line
+ * between the runs.
+ */
+function capa(split: Shot, splitSpans: readonly Span[]): Segment {
+  const t = teaser(1, split, splitSpans);
+  return {
+    ...t,
+    spans: [{ from: TEASER_AT, to: TEASER_AT, speed: 0, hold: 1 }],
+    shot: { ...t.shot, turn: 0 },
+    items: [...splitFrame(1), { kind: 'phrase', text: TEASER_TEXT, big: true, ...always(1) }],
+  };
+}
+
+/** The time travel of the app, for real: the run's own moments, backward, to where the tour starts. */
+function rebobinada(seconds: number, split: Shot): Segment {
+  const back = TEASER_AT - TOUR_FROM;
+  return {
+    id: 'rebobinada',
+    layout: 'single',
+    seconds,
+    spans: [{ from: TEASER_AT, to: TOUR_FROM, speed: -back / seconds }],
+    shot: pathShot(
+      [
+        { at: 0, target: split.target, radius: split.radius, phi: split.phi, theta: 0.47 },
+        { at: seconds, ...AERIAL },
+      ],
+      { aperture: 0.001, maxblur: 0.004 },
+    ),
+    look: look({ racks: 0.6, past: 1 }),
+    items: [
+      { kind: 'headline', text: rewindText(back), ...always(seconds) },
+      { kind: 'timeline', sim: [TEASER_AT, TOUR_FROM], ...always(seconds) },
+    ],
+  };
+}
+
+/** The long version's words on how the floor works, while the camera goes with the packet. */
+export const TOUR_HOW = 'Pacotes chegam pelas entradas, andam pelas esteiras e saem pelas docas.';
+
+/**
+ * The warehouse working, one continuous shot: the camera comes down from the
+ * whole floor, picks up the packet at its entrance and travels with it slowly
+ * (a slow orbit to the racks' side, low over the robots passing under Esteira
+ * 10, up to its dock), then rises and turns back to Esteira 8 for the moment
+ * it breaks. The scale of the place, one fact at a time, fixed to where it is.
+ * Poses and labels are placed by the simulated moment they show.
+ */
+function tour(spans: readonly Span[], how: boolean): Segment {
+  const seconds = secondsOf(spans);
+  const t = (sim: number) => localAt(spans, sim);
+  const keys: CameraKey[] = [
+    { at: 0, ...AERIAL },
+    // Down toward Entrada 2 (a crane shot): a robot at a shelf beside it, the packet going in.
+    { at: t(60.2), target: point(-24, 0.5, 4), radius: 26, phi: 0.85, theta: -1.4 },
+    { at: t(64.7), target: TOUR_PACKET, radius: 12, phi: 1.0, theta: -1.55 },
+    // With the packet along line B, turning slowly to the far side (the racks behind it).
+    { at: t(69.5), target: TOUR_PACKET, radius: 10, phi: 1.05, theta: -1.9 },
+    { at: t(74.6), target: TOUR_PACKET, radius: 10.5, phi: 1.0, theta: -2.5 },
+    { at: t(79.4), target: TOUR_PACKET, radius: 9.5, phi: 1.08, theta: -2.8 },
+    // Low between the lines, where robots pass under Esteira 10.
+    { at: t(83.9), target: TOUR_PACKET, radius: 7, phi: 1.2, theta: -2.75 },
+    // To its dock, the truck beyond it.
+    { at: t(87.8), target: TOUR_PACKET, radius: 10, phi: 1.02, theta: -2.6 },
+    { at: t(91.4), target: TOUR_PACKET, radius: 12, phi: 0.92, theta: -2.75 },
+    // Up and around, back to Esteira 8 for the moment it breaks (the focus goes with it);
+    // the turn spread over the whole way back, the most of it from high up.
+    {
+      at: t(96),
+      target: point(9, 0.5, 2.5),
+      radius: 26,
+      phi: 0.62,
+      theta: -3.55,
+      focus: belt(BROKEN, 0.5, 0.5),
+    },
+    {
+      at: t(100.6),
+      target: point(-6, 0.5, 3),
+      radius: 15,
+      phi: 0.98,
+      theta: -4.35,
+      focus: belt(BROKEN, 0.5, 0.5),
+    },
+    {
+      at: seconds,
+      target: HOOK_SHOT.target,
+      radius: HOOK_SHOT.radius,
+      phi: HOOK_SHOT.phi,
+      // The hook's angle, reached turning on the same way round.
+      theta: HOOK_SHOT.theta - 2 * Math.PI,
+      focus: HOOK_SHOT.target,
+    },
+  ];
+  // Each fact in a window of its own (the reading rule): the robot at the shelf from 63.4 s,
+  // the one under Esteira 10 from 82.4 s, the deliveries from 89.4 s.
+  const windows = [0, t(63.4) - 0.05, t(82.4) - 0.05, t(89.4) - 0.05];
+  const sharpUntil = t(96);
+  return {
+    id: 'tour',
+    layout: 'single',
+    seconds,
+    spans,
+    shot: pathShot(
+      // Sharp on the packet while the camera goes with it.
+      keys.map((k) =>
+        k.at > 0 && k.at < sharpUntil && !k.focus ? { ...k, focus: TOUR_PACKET } : k,
+      ),
+      { aperture: 0.003, maxblur: 0.01 },
+    ),
+    look: look({}),
+    windows,
+    items: [
+      { kind: 'badge', ...always(seconds) },
+      {
+        kind: 'balloon',
+        at: belt(11, 0.5, 0.9),
+        text: SCALE.belts,
+        tone: 'ink',
+        inSight: true,
+        dx: 60,
+        dy: -130,
+        from: 0.4,
+        to: t(63.4) - 0.2,
+      },
+      {
+        kind: 'balloon',
+        at: { kind: 'fleet', robot: SHELF_ROBOT },
+        text: SCALE.robots,
+        tone: 'ink',
+        inSight: true,
+        dx: -60,
+        dy: -120,
+        from: t(63.4),
+        to: t(70),
+      },
+      ...(how ? [{ kind: 'caption' as const, text: TOUR_HOW, from: t(70.5), to: t(79) }] : []),
+      {
+        kind: 'balloon',
+        at: { kind: 'fleet', robot: GATE_ROBOT },
+        text: SCALE.distance,
+        tone: 'ink',
+        inSight: true,
+        dx: -40,
+        dy: -170,
+        from: t(82.4),
+        to: t(89),
+      },
+      {
+        kind: 'balloon',
+        at: { kind: 'node', name: 'Doca 4', y: 1.2 },
+        text: SCALE.rate,
+        tone: 'ink',
+        inSight: true,
+        dx: -60,
+        dy: -150,
+        from: t(89.4),
+        to: t(96),
+      },
+    ],
+  };
+}
+
+/**
+ * The breakdown, where the tour's shot ends: a short flash, rings going out
+ * from the belt, and the bottleneck detector's card as it names the belt on
+ * its own (105 s, a second later), in real time; the AI does not route yet
+ * (it takes over at 128 s, in the split screen).
+ */
+function quebra(): Segment {
+  const spans = [{ from: S.failure.at, to: HOOK_END, speed: 1 }];
+  const seconds = secondsOf(spans);
+  return {
+    id: 'quebra',
+    layout: 'single',
+    seconds,
+    spans,
+    shot: HOOK_SHOT,
+    look: look({ racks: 0.45 }),
+    items: [
+      { kind: 'flash', from: 0, to: 0.35 },
+      { kind: 'wave', at: belt(BROKEN, 0.1, 0.9), from: 0, to: 1.6 },
+      { kind: 'spotlight', around: LINE_B, pad: [200, 220], alpha: 0.6, ...always(seconds) },
+      { kind: 'headline', text: 'Uma esteira quebrou.', ...always(seconds) },
+      { kind: 'counter', ...always(seconds) },
+      { kind: 'pin', at: { kind: 'queue-head' }, label: 'Esteira 8', ...always(seconds) },
+      {
+        kind: 'bottleneck',
+        link: false,
+        from: localAt(spans, S.failure.at + 1),
+        to: seconds,
+      },
+    ],
+  };
+}
+
+/**
+ * The end: the camera goes back up to the aerial shot the tour opened on,
+ * with the address and the call to try it, then the card holds still for
+ * `hold` seconds (time to read the address).
+ */
+function fim(seconds: number, hold: number): Segment {
+  return {
+    id: 'endereco',
+    layout: 'single',
+    seconds: seconds + hold,
+    spans: [
+      { from: S.end, to: S.end + seconds, speed: 1 },
+      { from: S.end + seconds, to: S.end + seconds, speed: 0, hold },
+    ],
+    shot: pathShot(
+      [
+        { at: 0, target: { kind: 'center' }, radius: 80, phi: 0.6, theta: 1.25 },
+        { at: seconds, ...AERIAL },
+      ],
+      { aperture: 0.001, maxblur: 0.004 },
+    ),
+    look: look({}),
+    items: [{ kind: 'address', cta: ADDRESS_CTA, ...always(seconds + hold) }],
+  };
+}
+
+/** The router's first decision once the AI takes over (it decides on every whole second). */
+const FIRST_DECISION = S.aiAt + 1;
+/** Seconds the router's costs stay up from its first decision (the reading rule: 10 words). */
+const COSTS_SHOWN = 3.75;
+
+/**
+ * The tour's version and the AI at work: on the AI's side, from 128 s, its
+ * log (from the engine), the router's pulses at every decision, its costs at
+ * B2 when it first decides, the 24 motors before the worn one's charts.
+ */
+function galpao(spec: TourSpec): CinemaFormat {
+  return {
+    id: spec.id,
+    width: spec.width,
+    height: spec.height,
+    split: spec.split,
+    // A feed's buttons and caption cover the bottom of the video on a phone.
+    safe: { side: 0.05, top: 0.03, bottom: 0.08 },
+    bitrate: 25_000_000,
+    preroll: 12,
+    ...(spec.cover ? { cover: { segment: capa(spec.splitShot, spec.splitSpans), local: 0 } } : {}),
+    segments: [
+      teaser(5.5, spec.splitShot, spec.splitSpans),
+      rebobinada(2, spec.splitShot),
+      tour(spec.tour, spec.how),
+      quebra(),
+      frase(FEED_FRASE_SHOT),
+      dividida(HOOK_END, 4, secondsOf(spec.splitSpans), spec.splitShot, spec.intro, 'ai', {
+        spans: spec.splitSpans,
+        introUntil: S.aiAt - 0.5,
+        extra: (spans) => {
+          const seconds = secondsOf(spans);
+          const costs = localAt(spans, FIRST_DECISION);
+          return [
+            { kind: 'pulses', pane: 'ai', ...always(seconds) },
+            {
+              kind: 'log',
+              pane: 'ai',
+              first: ['assume', 'corte', 'status'],
+              lines: 2,
+              place: 'bottom',
+              ...always(seconds),
+            },
+            {
+              kind: 'compare',
+              node: 'B2',
+              dx: -40,
+              dy: -150,
+              from: costs,
+              to: costs + COSTS_SHOWN,
+            },
+          ];
+        },
+      }),
+      raiox(spec.xray, false, [{ kind: 'pulses', pane: 'ai', from: 0, to: 12 }]),
+      previsao(
+        (spec.forecastSpans.at(-1) as Span).to,
+        secondsOf(spec.forecastSpans),
+        spec.forecastShot,
+        spec.panelBelow,
+        {
+          spans: spec.forecastSpans,
+          chartsAt: 205,
+          quiet: true,
+          extra: (spans) => {
+            const seconds = secondsOf(spans);
+            return [
+              { kind: 'pulses', pane: 'ai', ...always(seconds) },
+              {
+                kind: 'log',
+                pane: 'ai',
+                first: ['retorno', 'manutencao'],
+                lines: 1,
+                place: 'top',
+                ...always(seconds),
+              },
+            ];
+          },
+        },
+      ),
+      numeros(
+        (spec.forecastSpans.at(-1) as Span).to,
+        spec.numbers.speed,
+        spec.numbers.seconds,
+        spec.numbers.rows,
+        false,
+      ),
+      fim(3, 1.5),
+    ],
+  };
+}
+
+/** The feed with the warehouse tour: 4:5, the split screen top and bottom. */
+export const GALPAO: CinemaFormat = galpao({
+  id: 'galpao',
+  width: 1080,
+  height: 1350,
+  split: 'stack',
+  tour: [
+    { from: TOUR_FROM, to: 62, speed: 4 },
+    { from: 62, to: 92, speed: 2 },
+    { from: 92, to: S.failure.at, speed: 3 },
+  ],
+  how: false,
+  splitShot: FEED_SPLIT_SHOT,
+  splitSpans: [
+    { from: HOOK_END, to: 123, speed: 4 },
+    { from: 123, to: 141, speed: 2 },
+    { from: 141, to: 176, speed: 4 },
+  ],
+  intro: 'Mesmo galpão, mesmas falhas. Em cima, sem IA; embaixo, com IA.',
+  xray: XRAY_SHOT,
+  forecastShot: FEED_PREVISAO_SHOT,
+  forecastSpans: [
+    { from: 188, to: 215, speed: 3 },
+    { from: 215, to: 224, speed: 1 },
+  ],
+  panelBelow: false,
+  numbers: { speed: 48, seconds: 11, rows: ['entregas', 'ciclo', 'quebras'] },
+  cover: true,
+});
+
+/** The long version with the tour: 16:9, about two minutes, side by side, the tour at real time. */
+export const GALPAO_COMPLETA: CinemaFormat = galpao({
+  id: 'galpao-completa',
+  width: 1920,
+  height: 1080,
+  split: 'side',
+  tour: [
+    { from: TOUR_FROM, to: 62, speed: 3 },
+    { from: 62, to: 80, speed: 1 },
+    { from: 80, to: 92, speed: 2 },
+    { from: 92, to: S.failure.at, speed: 3 },
+  ],
+  how: true,
+  splitShot: COMPLETA_SPLIT_SHOT,
+  splitSpans: [
+    { from: HOOK_END, to: 123, speed: 4 },
+    { from: 123, to: 147, speed: 2 },
+    { from: 147, to: 176, speed: 4 },
+  ],
+  intro: 'Mesmo galpão, mesmas falhas. À esquerda, sem IA; à direita, com IA.',
+  xray: { ...XRAY_SHOT, radius: 32 },
+  forecastShot: COMPLETA_PREVISAO_SHOT,
+  forecastSpans: [
+    { from: 188, to: 215, speed: 3 },
+    { from: 215, to: 226, speed: 1 },
+  ],
+  panelBelow: true,
+  numbers: {
+    speed: 47,
+    seconds: 15.5,
+    rows: ['entregas', 'ciclo', 'espera', 'quebras', 'evitadas'],
+  },
+  cover: false,
+});
+
 export const CINEMA_FORMATS: Record<CinemaFormatId, CinemaFormat> = {
   feed: FEED,
   completa: COMPLETA,
+  galpao: GALPAO,
+  'galpao-completa': GALPAO_COMPLETA,
 };
 
-/** The cinema demo the page plays: ?demo=cinema (the feed cut), ?demo=cinema-completa, or none. */
+/**
+ * The cinema demo the page plays: ?demo=cinema (the feed cut),
+ * ?demo=cinema-completa, ?demo=cinema-galpao (the feed with the warehouse
+ * tour), ?demo=cinema-galpao-completa (its 16:9 version), or none.
+ */
 export function cinemaFormatFrom(search: string): CinemaFormatId | null {
   const demo = new URLSearchParams(search).get('demo');
-  return demo === 'cinema' ? 'feed' : demo === 'cinema-completa' ? 'completa' : null;
+  const ids: Record<string, CinemaFormatId> = {
+    cinema: 'feed',
+    'cinema-completa': 'completa',
+    'cinema-galpao': 'galpao',
+    'cinema-galpao-completa': 'galpao-completa',
+  };
+  return demo !== null && Object.hasOwn(ids, demo) ? (ids[demo] as CinemaFormatId) : null;
+}
+
+/**
+ * The moments the rewinds of a format show (s, ascending): a run keeps a
+ * snapshot of each as it passes them going forward, and the rewind plays them back.
+ */
+export function rewindMoments(f: CinemaFormat): number[] {
+  const out = new Set<number>();
+  const frames = formatFrames(f);
+  for (let k = 0; k < frames; k++) {
+    const m = momentAt(f, k);
+    if (m.speed < 0) out.add(m.time);
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 // ---------------------------------------------------------------- reading the script
@@ -762,8 +1485,7 @@ export function momentAt(f: CinemaFormat, frame: number): Moment {
 function simAt(segment: Segment, frames: number): { time: number; speed: number } {
   let left = frames;
   for (const s of segment.spans) {
-    const length =
-      s.speed > 0 ? ((s.to - s.from) / s.speed) * CINEMA_FPS : (s.hold ?? 0) * CINEMA_FPS;
+    const length = spanSeconds(s) * CINEMA_FPS;
     if (left < length - 1e-6) {
       // In ticks (1/60 s), so a whole frame at a whole speed is a whole tick.
       const ticks = Math.round(s.from * CINEMA_FPS) + s.speed * left;
@@ -916,7 +1638,8 @@ const CARD_LABELS: Record<CardRowId, string> = {
 
 /**
  * Words of a text, as the reading rule counts them: numbers included; a
- * separator such as "·" is not read, and "|" only breaks a line.
+ * separator such as "·" (or the rewind's "⏪") is not read, and "|" only
+ * breaks a line.
  */
 export const words = (text: string): number =>
   text
@@ -942,8 +1665,20 @@ export function itemWords(item: Item, live: { readonly bottleneck: string }): nu
     case 'pin':
       return words(item.label ?? '');
     case 'bottleneck':
-      // Its title, its live words and the belt's name at the ring ("Esteira 3").
-      return words(BOTTLENECK_TITLE) + words(live.bottleneck) + 2;
+      // Its title, its live words and the belt's name at the ring ("Esteira 3"), when drawn.
+      return words(BOTTLENECK_TITLE) + words(live.bottleneck) + (item.link === false ? 0 : 2);
+    case 'log':
+      // The first line of each kind that shows up here (the next ones need not be read).
+      return item.first.reduce(
+        (n, k) => n + words(k === 'status' ? LOG_STATUS : LOG_EXAMPLE[k]),
+        0,
+      );
+    case 'compare':
+      // The title and a row per way: "Esteira 8 ∞", "linha A 11 s".
+      return words(COMPARE_TITLE) + words('Esteira 8 ∞') + words('linha A 11 s');
+    case 'monitor':
+      // The title and the motor it names ("Esteira 16").
+      return words(MONITOR_TITLE) + 2;
     case 'forecast':
       // vibração 3,2 mm/s · temperatura 40,1 °C · CUSUM 42,3 · limite do alarme
       return 1 + 2 + 1 + 2 + 1 + 1 + words('limite do alarme');
@@ -963,13 +1698,16 @@ export function itemWords(item: Item, live: { readonly bottleneck: string }): nu
       return words(CARD_TITLE) + words('SEM IA COM IA') + rows + words(CARD_NOTE);
     }
     case 'address':
-      return words(ADDRESS_LEAD) + words(ADDRESS);
+      return words(ADDRESS_LEAD) + words(ADDRESS) + words(item.cta ?? '');
     case 'timeline':
       // The moment it is at: "84 s".
       return 2;
     case 'routes':
     case 'spotlight':
     case 'shade':
+    case 'flash':
+    case 'pulses':
+    case 'wave':
       return 0;
   }
 }
@@ -988,16 +1726,21 @@ export interface ReadingWindow {
  */
 export function readingWindows(
   f: CinemaFormat,
-  live: { readonly bottleneck: string },
+  live: {
+    readonly bottleneck: string;
+    /** The detector's words where a segment shows another finding (the tour's breakdown). */
+    readonly bottleneckIn?: Partial<Record<SegmentId, string>>;
+  },
 ): ReadingWindow[] {
   const out: ReadingWindow[] = [];
   for (const segment of f.segments) {
     const bounds = segment.windows ?? [0];
+    const here = { bottleneck: live.bottleneckIn?.[segment.id] ?? live.bottleneck };
     bounds.forEach((from, i) => {
       const to = bounds[i + 1] ?? segment.seconds;
       const n = segment.items
         .filter((item) => item.from >= from && item.from < to)
-        .reduce((sum, item) => sum + itemWords(item, live), 0);
+        .reduce((sum, item) => sum + itemWords(item, here), 0);
       out.push({ segment: segment.id, from, to, words: n });
     });
   }

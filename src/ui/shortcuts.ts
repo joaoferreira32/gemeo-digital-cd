@@ -206,6 +206,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
     label: ['?demo=cinema-completa'],
     help: 'demo cinema completa (16:9, cerca de 100 s), com a volta no tempo e "como funciona"',
   },
+  {
+    action: 'demo',
+    codes: [],
+    label: ['?demo=cinema-galpao'],
+    help: 'demo cinema com o passeio pelo galpão e a IA trabalhando (4:5, cerca de 1 min 45 s): o registro de decisões, os custos e os pulsos do roteador, do motor',
+  },
+  {
+    action: 'demo',
+    codes: [],
+    label: ['?demo=cinema-galpao-completa'],
+    help: 'a mesma, em 16:9 e cerca de 2 min, com o passeio mais longo',
+  },
   { action: 'help', codes: ['KeyH'], label: [k('H')], help: 'atalhos e legenda' },
   { action: 'close', codes: ['Escape'], label: [k('Esc')], help: 'fechar painéis e sair da demo' },
   {

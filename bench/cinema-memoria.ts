@@ -7,15 +7,36 @@
  * each run (the recording of one side: 320 simulated seconds) and after each,
  * back in the app.
  *
- *   npm run bench:cinema-memoria [-- <runs>]       (default 8)
+ *   npm run bench:cinema-memoria [-- <runs> [feed|galpao|galpao-completa]]   (default 8, feed)
+ *
+ * The tour's formats start where their rewind lands and keep, on the AI side,
+ * the moments the rewind plays back (a snapshot each, until the rewind ends):
+ * how many bytes they add up to, the heap when they are all kept (the end of
+ * the teaser) and that they go.
  *
  * The page side (its two scenes on the GPU, the page's heap) is scripts/cinema_memoria.py.
  */
-import { FEED, formatFrames, momentAt } from '../src/demo/cinema';
+import {
+  CINEMA_FORMATS,
+  formatFrames,
+  momentAt,
+  rewindMoments,
+  type CinemaFormatId,
+} from '../src/demo/cinema';
 import { SimHost } from '../src/worker/host';
 import type { SimMessage } from '../src/worker/protocol';
 
 const runs = Number(process.argv[2] ?? 8);
+const format = CINEMA_FORMATS[(process.argv[3] ?? 'feed') as CinemaFormatId];
+if (!format) throw new Error(`formato desconhecido: ${process.argv[3]}`);
+const keep = rewindMoments(format);
+// Where the runs start: the earliest moment the format shows (its rewind's landing).
+const warmup = keep.length
+  ? Math.min(...format.segments.flatMap((g) => g.spans.flatMap((x) => [x.from, x.to])))
+  : undefined;
+/** Bytes of the snapshots a rewind played back (each kept as the run went forward). */
+let keptBytes = 0;
+let rewinding = false;
 const gc = (globalThis as { gc?: () => void }).gc;
 if (!gc) throw new Error('rode com --expose-gc (npm run bench:cinema-memoria)');
 
@@ -23,7 +44,9 @@ let now = 0;
 const host = new SimHost(
   (m: SimMessage) => {
     // The page hands every snapshot back once drawn.
-    if (m.type === 'cinema') host.handle({ type: 'release', buffer: m.buffer });
+    if (m.type !== 'cinema') return;
+    if (rewinding) keptBytes += m.buffer.byteLength;
+    host.handle({ type: 'release', buffer: m.buffer });
   },
   () => now,
 );
@@ -45,21 +68,39 @@ app();
 console.log(`antes da 1ª execução: ${mb(heap())}`);
 const after: number[] = [];
 for (let r = 1; r <= runs; r++) {
-  host.handle({ type: 'cinema', action: 'start', side: r % 2 ? 'ai' : 'no-ai' });
+  const side = r % 2 ? 'ai' : 'no-ai';
+  host.handle({
+    type: 'cinema',
+    action: 'start',
+    side,
+    ...(warmup === undefined ? {} : { warmup }),
+    ...(side === 'ai' && keep.length ? { keep } : {}),
+  });
   let asked = NaN;
-  for (let k = 0; k < formatFrames(FEED); k++) {
-    const m = momentAt(FEED, k);
+  let full = NaN;
+  keptBytes = 0;
+  for (let k = 0; k < formatFrames(format); k++) {
+    const m = momentAt(format, k);
+    // A rewind plays back the AI side's kept moments; the other side is not asked then.
+    if (m.speed < 0 && side === 'no-ai') continue;
     if (m.time === asked) continue;
+    // All the rewind's moments kept: the heap then (once per run).
+    if (m.speed < 0 && Number.isNaN(full)) full = heap();
+    rewinding = m.speed < 0;
     asked = m.time;
     host.handle({ type: 'cinema', action: 'to', time: m.time, frame: k, measure: false });
   }
+  rewinding = false;
   const during = heap();
   const rec = host.currentRecorder;
   host.handle({ type: 'cinema', action: 'stop' });
   app();
   after.push(heap());
+  const kept = Number.isNaN(full)
+    ? ''
+    : `; com a rebobinada guardada ${mb(full)} (${keptBytes ? mb(keptBytes / 1e6) : 'nada'} em quadros)`;
   console.log(
-    `execução ${r}: no fim ${mb(during)} (gravação de um lado: ${mb(rec.memoryBytes / 1e6)}); de volta ao app ${mb(after.at(-1) as number)}`,
+    `execução ${r} (${side}): no fim ${mb(during)} (gravação de um lado: ${mb(rec.memoryBytes / 1e6)})${kept}; de volta ao app ${mb(after.at(-1) as number)}`,
   );
 }
 const first = after[0] as number;

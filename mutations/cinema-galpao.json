@@ -1,0 +1,215 @@
+{
+  "tests": ["tests/cinema-galpao.test.ts"],
+  "mutations": [
+    {
+      "name": "o registro escreve o corte de um caminho que não levava pacotes",
+      "edits": [
+        {
+          "file": "src/demo/cinema-run.ts",
+          "find": "          if (!carried) return;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o registro escreve a volta de um corte que não escreveu",
+      "edits": [
+        {
+          "file": "src/demo/cinema-run.ts",
+          "find": "          if (!this.told[i * 2 + k]) return;\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "depois de voltar no tempo, o registro não refaz o estado dos cortes",
+      "edits": [
+        {
+          "file": "src/demo/cinema-run.ts",
+          "find": "      this.resyncCuts(rec.live);\n",
+          "replace": ""
+        }
+      ]
+    },
+    {
+      "name": "o roteador \"decide\" antes de a IA assumir",
+      "edits": [
+        {
+          "file": "src/demo/cinema-run.ts",
+          "find": "        if (rec.live.policy === 'heuristic') this.decidedAt = rec.headTick / this.perSecond;",
+          "replace": "        this.decidedAt = rec.headTick / this.perSecond;"
+        }
+      ]
+    },
+    {
+      "name": "o worker não guarda os momentos da rebobinada",
+      "edits": [
+        {
+          "file": "src/worker/host.ts",
+          "find": "      if (keep.size > 0) {",
+          "replace": "      if (keep.size < 0) {"
+        }
+      ]
+    },
+    {
+      "name": "a rebobinada conta os momentos parados",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "    if (m.speed < 0) out.add(m.time);",
+          "replace": "    if (m.speed <= 0) out.add(m.time);"
+        }
+      ]
+    },
+    {
+      "name": "a tela dividida não desacelera quando a IA assume",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "    { from: 123, to: 141, speed: 2 },",
+          "replace": "    { from: 123, to: 141, speed: 4 },"
+        }
+      ]
+    },
+    {
+      "name": "a legenda de abertura fica depois que a IA assume",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "        introUntil: S.aiAt - 0.5,",
+          "replace": "        introUntil: S.aiAt + 5,"
+        }
+      ]
+    },
+    {
+      "name": "voltam o balão do desvio e a legenda final da tela dividida",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "  const told = opts.introUntil !== undefined;",
+          "replace": "  const told = false;"
+        }
+      ]
+    },
+    {
+      "name": "volta a legenda da previsão com IA",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "      ...(opts.quiet",
+          "replace": "      ...(false"
+        }
+      ]
+    },
+    {
+      "name": "o registro do lado com IA não declara o primeiro corte para a regra de leitura",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "              first: ['assume', 'corte', 'status'],",
+          "replace": "              first: ['assume', 'status'],"
+        }
+      ]
+    },
+    {
+      "name": "o cartão final não segura parado",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "      fim(3, 1.5),",
+          "replace": "      fim(3, 0),"
+        }
+      ]
+    },
+    {
+      "name": "o cartão final sem a chamada",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "    items: [{ kind: 'address', cta: ADDRESS_CTA, ...always(seconds + hold) }],",
+          "replace": "    items: [{ kind: 'address', ...always(seconds + hold) }],"
+        }
+      ]
+    },
+    {
+      "name": "taxa de bits baixa",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "    bitrate: 25_000_000,",
+          "replace": "    bitrate: 8_000_000,"
+        }
+      ]
+    },
+    {
+      "name": "sem o aquecimento antes do primeiro quadro",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "    preroll: 12,",
+          "replace": "    preroll: 0,"
+        }
+      ]
+    },
+    {
+      "name": "o pacote do passeio é outro",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "export const PROTAGONIST = { id: 279, entrance: 'Entrada 2' } as const;",
+          "replace": "export const PROTAGONIST = { id: 281, entrance: 'Entrada 2' } as const;"
+        }
+      ]
+    },
+    {
+      "name": "o \"40 robôs\" aponta um robô que não está na prateleira",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "export const SHELF_ROBOT = 7;",
+          "replace": "export const SHELF_ROBOT = 5;"
+        }
+      ]
+    },
+    {
+      "name": "os 0,97 m apontam um robô longe da passagem",
+      "edits": [
+        {
+          "file": "src/demo/cinema.ts",
+          "find": "export const GATE_ROBOT = 28;",
+          "replace": "export const GATE_ROBOT = 26;"
+        }
+      ]
+    },
+    {
+      "name": "as legendas ignoram a área segura",
+      "edits": [
+        {
+          "file": "src/demo/cinema-overlay.ts",
+          "find": "  const pane = roomOf(s, side);\n  // Beside the motor's panel",
+          "replace": "  const pane = paneOf(s, side);\n  // Beside the motor's panel"
+        }
+      ]
+    },
+    {
+      "name": "o registro ignora a área segura",
+      "edits": [
+        {
+          "file": "src/demo/cinema-overlay.ts",
+          "find": "  const room = roomOf(s, side);",
+          "replace": "  const room = paneOf(s, side);"
+        }
+      ]
+    },
+    {
+      "name": "o cartão do detector ignora a área segura",
+      "edits": [
+        {
+          "file": "src/demo/cinema-overlay.ts",
+          "find": "  const y = Math.min(s.height - h - 60, s.safe.bottom - h - 12);",
+          "replace": "  const y = s.height - h - 60;"
+        }
+      ]
+    }
+  ]
+}

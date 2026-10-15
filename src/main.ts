@@ -384,9 +384,15 @@ function cinemaStage(): CinemaStage {
 
 /**
  * The cinema demo (src/demo/cinema.ts): live (V), recorded to an MP4 frame
- * by frame (⇧V), or as fast as it draws (automated checks and captures).
+ * by frame (⇧V), or as fast as it draws (automated checks and captures); or,
+ * with `cover`, only the format's cover, drawn once (its PNG is returned).
  */
-async function startCinema(format: CinemaFormatId, mode: CinemaMode) {
+async function startCinema(
+  format: CinemaFormatId,
+  mode: CinemaMode,
+  until?: number,
+  cover = false,
+): Promise<string | undefined> {
   // The player loads only when the cinema plays (the app does not carry it otherwise).
   const { CinemaPlayer } = await import('./demo/cinema-player');
   if (director.active) endDemo();
@@ -405,8 +411,13 @@ async function startCinema(format: CinemaFormatId, mode: CinemaMode) {
   governor.hold('alta');
   view.dispose();
   viewDisposed = true;
-  const player = new CinemaPlayer(cinemaStage(), CINEMA_FORMATS[format], mode);
+  const player = new CinemaPlayer(cinemaStage(), CINEMA_FORMATS[format], mode, until);
   cinema = player;
+  if (cover) {
+    const png = await player.cover();
+    if (cinema === player) stopCinema();
+    return png;
+  }
   try {
     await player.play();
   } catch (e) {
@@ -418,7 +429,7 @@ async function startCinema(format: CinemaFormatId, mode: CinemaMode) {
   }
   if (cinema !== player || mode !== 'record' || !player.video) return;
   const blob = player.video;
-  const name = `gemeo-digital-cinema-${format}.mp4`;
+  const name = `gemeo-digital-cinema-${format}${until === undefined ? '' : '-previa'}.mp4`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -927,11 +938,15 @@ Object.defineProperty(window, '__gemeo', {
     renderer: () => renderer,
     director,
     /**
-     * The cinema demo: start it (live, recorded or as fast as it draws), the
-     * player playing, and a frame of it as a PNG once drawn (captures).
+     * The cinema demo: start it (live, recorded or as fast as it draws; the
+     * first `until` seconds only, for a preview), the player playing, and a
+     * frame of it as a PNG once drawn (captures).
      */
     cinema: {
-      start: (format: CinemaFormatId, mode: CinemaMode) => void startCinema(format, mode),
+      start: (format: CinemaFormatId, mode: CinemaMode, until?: number) =>
+        void startCinema(format, mode, until),
+      /** The format's cover (the post's thumbnail), as a PNG data URL. */
+      cover: (format: CinemaFormatId) => startCinema(format, 'fast', undefined, true),
       stop: () => stopCinema(),
       player: () => cinema,
       shot: (k: number) => cinema?.shot(k) ?? Promise.resolve(''),

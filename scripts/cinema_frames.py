@@ -2,7 +2,7 @@
 the video (the canvas the recording encodes, saved pixel for pixel), at the
 video seconds below.
 
-    python scripts/cinema_frames.py http://localhost:4173/ pasta-dos-quadros [feed|completa]
+    python scripts/cinema_frames.py http://localhost:4173/ pasta-dos-quadros [feed|completa|galpao|galpao-completa]
 
 Needs Playwright with its Chromium (pip install playwright; playwright install
 chromium) and the app served (npm run build && npx vite preview).
@@ -16,7 +16,7 @@ from playwright.sync_api import sync_playwright
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4173/"
 OUT = sys.argv[2] if len(sys.argv) > 2 else "quadros-cinema"
-FORMATS = sys.argv[3:] or ["feed", "completa"]
+FORMATS = sys.argv[3:] or ["feed", "completa", "galpao", "galpao-completa"]
 # Name and video second of each frame (src/demo/cinema.ts gives the segments).
 FRAMES = {
     "feed": [
@@ -42,6 +42,30 @@ FRAMES = {
         ("9-previsao-climax", 79.15),
         ("10-resultado", 93.0),
         ("11-endereco", 98.0),
+    ],
+    # The tour and the AI at work (?demo=cinema-galpao and its 16:9 version).
+    "galpao": [
+        ("01-teaser", 3.0),
+        ("02-rebobinada", 6.6),
+        ("03-passeio-aereo", 8.4),
+        ("04-passeio-entrada", 12.5),
+        ("05-passeio-portao", 21.3),
+        ("06-passeio-doca", 26.2),
+        ("07-quebra-detector", 33.0),
+        ("08-ia-assume", 46.8),
+        ("09-raio-x", 70.0),
+        ("10-motores", 76.8),
+        ("11-manutencao", 86.0),
+        ("12-falha-evitada", 89.6),
+        ("13-numeros", 95.0),
+        ("14-fim", 104.5),
+    ],
+    "galpao-completa": [
+        ("01-teaser", 3.0),
+        ("04-passeio", 22.0),
+        ("08-ia-assume", 57.0),
+        ("11-manutencao", 96.2),
+        ("13-numeros", 110.0),
     ],
 }
 
