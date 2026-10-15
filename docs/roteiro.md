@@ -248,6 +248,48 @@ feito em cada fase está no README e em `docs/resultados.md`.
   o README diz que o contador da demo cinema é por esteira e onde ficam os números
   do galpão inteiro.
 
+- **2026-10-13, demo cinema com o passeio pelo galpão.** Depois do merge do PR
+  #12, uma versão nova da demo cinema (as anteriores ficam): teaser no clímax da
+  tela dividida (146 × 10), rebobinada de verdade ("⏪ 2 minutos antes"), o
+  galpão vivo num plano contínuo seguindo um pacote real até a doca, com a escala
+  presa aos lugares, a quebra no fim desse plano; depois o que já estava
+  aprovado, e o mesmo plano aéreo no fim. Roteiro com tempos e uma prévia em vídeo
+  do trecho novo antes do acabamento. Medido para o roteiro: o pacote 279 (passa
+  pela Esteira 8 aos 74 s e chega à Doca 4 aos 91 s), o robô 7 numa prateleira e o
+  robô 28 sob a Esteira 10 nos momentos certos, 24 esteiras, 40 robôs, 0,97 m dos
+  testes de segurança (0,993 m nesta execução). Nenhum pacote que passa pela
+  Esteira 8 antes da quebra é carregado num caminhão durante o passeio (o primeiro
+  carregamento é por volta de 180 s): o passeio termina na pilha da doca.
+
+- **2026-10-14, a IA trabalhando.** Pedido: registro de decisões ao vivo, a
+  comparação de custos em B2, pulsos a cada decisão do roteador, o monitoramento
+  dos 24 motores e a detecção na quebra, tudo do motor. Relatado antes de
+  implementar: o motor não registra decisões de roteamento (o registro seria
+  montado a partir dos números de cada segundo); o custo da heurística é tempo
+  de viagem mais fila, sem "ocupação"; o detector percebe a quebra aos 105 s, mas
+  o roteiro só liga a IA aos 128 s; a 5× os pulsos seriam cinco por segundo; o
+  monitoramento roda também sem IA; e a camada das rotas dos robôs estava no
+  raio-X "O que a IA vê" sem que a IA as leia. Decisões: a IA continua aos 128 s
+  (números aprovados mantidos), com a onda e o cartão do detector aos 105 s e o
+  registro "128 s · IA assume roteamento e manutenção"; custo "tempo previsto
+  (viagem + fila)"; registro calmo, só com cortes e retornos de caminho e a linha
+  fixa "reavaliando a divisão a cada segundo"; sem as rotas dos robôs no raio-X;
+  pulsos na cadência real; passeio a 2× e tela dividida a 4×. A regra de leitura
+  não fechou em 95 s (108,5 s): ele escolheu os cortes depois de assistir à
+  prévia.
+
+- **2026-10-15, acabamento final.** Mantida a tela dividida a 2× no momento em
+  que a IA assume; cortados "A IA desvia o fluxo, e a fila para de crescer.", o
+  balão "desvio pela linha A" e "A IA prevê a quebra pelos sensores do motor."
+  (mantidos a legenda de abertura da tela dividida e os rótulos do teaser); fora
+  a linha "A1: Esteira 8 parada → linha A" (e, pela mesma regra, a volta dela:
+  o registro só escreve cortes de caminhos que levavam pacotes); registro em 36
+  px; volta final com pico abaixo de 40°/s (35°/s). Para o LinkedIn: começa no
+  teaser sem fade, áreas seguras (8% de baixo, laterais), cartão final com "Roda
+  no seu navegador: teste você mesmo" e 1,5 s parado, 25 Mbps, capa 1080×1350 e o
+  GIF do README com trechos da versão nova. Depois, a versão 16:9 de cerca de 2
+  min (123,75 s), testes, mutações, memória, documentação e PR.
+
 ## Apêndice: a primeira versão das fases 2 a 4
 
 Do primeiro pedido. Substituída depois da Fase 1 pelas fases 2 a 6 acima; vários

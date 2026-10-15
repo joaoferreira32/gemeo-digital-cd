@@ -1762,34 +1762,142 @@ e o worker seguindo o relógio durante a demo.
 Rodada completa depois da demo cinema (2026-10-13): **169 de 169** em 16
 especificações, mais 1 equivalente (a mesma de antes, no laboratório).
 
+## Demo cinema com o passeio e a IA trabalhando (2026-10-15)
+
+Formatos `galpao` (4:5, 105,75 s) e `galpao-completa` (16:9, 123,75 s), em
+`src/demo/cinema.ts`. Cada número abaixo é medido no motor e tem teste em
+`tests/cinema-galpao.test.ts` (17 testes).
+
+### Os fatos que a tela afirma
+
+| O que aparece                      | Medido no motor                                                                                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Teaser 146 × 10                    | FILA · ESTEIRA 8 aos 170 s: 146 sem IA, 10 com IA; a tela dividida passa pelo mesmo instante depois                                                                                                          |
+| "⏪ 2 minutos antes"               | a rebobinada vai de 170 a 50 s: 120 momentos (51 a 170 s), um por quadro                                                                                                                                     |
+| O pacote do passeio                | o 279, último a entrar na Esteira 6 (Entrada 2) antes de 65 s: entra aos 64,95 s, cruza a Esteira 8 aos 74 s (30 s antes da quebra), chega à Doca 4 aos 91,05 s                                              |
+| "24 esteiras", "40 robôs"          | as arestas da planta e a frota                                                                                                                                                                               |
+| "40 robôs" aponta                  | o robô 7, tirando caixas de uma prateleira (estágio `loading`, tarefa `rack`) aos 63,4 s                                                                                                                     |
+| "robôs a no mínimo 0,97 m…" aponta | o robô 28, a menos de 1,2 m da passagem sob a Esteira 10 aos 83,5 s; a menor distância entre dois robôs nesta execução é 0,9932 m (aos 132,73 s, nos dois lados); nos testes de segurança, 0,974 m           |
+| "207 entregas por minuto"          | entregas entre 29 e 89 s, lidas aos 89,4 s (quando o rótulo aparece)                                                                                                                                         |
+| Cartão do detector na quebra       | nada aos 104 s; aos 105 s, nos dois galpões: "Esteira 8 (B2→B3), 53% de uso. Causa: quebra desta esteira."                                                                                                   |
+| O registro da IA                   | 128 s "IA assume roteamento e manutenção"; 129 s "B2: Esteira 8 parada → linha A"; 190 s "B2: Esteira 8 de volta"; 218 s "Esteira 16: motor fora do padrão → manutenção agendada"; sem IA, nenhuma           |
+| A linha de A1 que não aparece      | aos 129 s o caminho de A1 pela linha B também fica com custo infinito, mas a divisão ali era 0 (nenhum pacote ia por ele): nada muda, nada é escrito                                                         |
+| "tempo previsto (viagem + fila)"   | aos 129 s, Esteira 8 infinito × linha A 11,0 s, divisão 100% pela linha A; as duas escolhas de B2 custam o mesmo de 129 a 189 s (a linha A varia de 11,0 a 15,05 s); aos 190 s, 11,6 × 11,0 s e 5,6 × 11,0 s |
+| Os pulsos                          | a primeira decisão do roteador é aos 129 s (aos 128,5 s ainda nenhuma); depois, uma a cada segundo inteiro                                                                                                   |
+| Os 24 motores                      | a Esteira 16 tem a maior soma de 195 s em diante (38% do limite aos 200 s, quando ganha o nome); alarme aos 218 s (sem IA, aos 215 s, e ninguém agenda)                                                      |
+| O cartão                           | os números da demo explicada: +49% entregas (622 sem IA, 928 com IA), −43% p95 do ciclo (158 s, 91 s), quebras 2 × 1; no 16:9, −66% p95 de espera (128 s, 44 s) e evitadas 0 × 1                             |
+
+As duas execuções terminam na mesma impressão digital da demo explicada, com a
+rebobinada (cada lado volta uma vez, de 170 a 50 s).
+
+### A regra de leitura
+
+Feed: teaser 16 palavras em 5,5 s; rebobinada 5 em 2 s; passeio 3, 2, 9 e 4 nas
+quatro janelas dos fatos; quebra 21 em 7 s; frase 9 em 3 s; tela dividida 55 em
+20,75 s (mínimo 18,3 s); raio-X 9, 5 e 21; previsão 51 em 18 s (mínimo 17 s);
+números 33 em 11 s; endereço 11 em 4,5 s. No registro conta a primeira linha de
+cada tipo, que fica entre as linhas mostradas pelo menos o tempo de ser lida
+(teste); as seguintes do mesmo tipo podem passar.
+
+O alvo era cerca de 95 s. Com o registro e os custos, a regra pediu 108,5 s
+(tela dividida 23,5 s, previsão 20,5 s, quebra 7 s); com os três textos cortados
+na revisão ("A IA desvia o fluxo…", o balão "desvio pela linha A" e "A IA prevê
+a quebra…"), o feed ficou com 105,75 s, já com o cartão final parado 1,5 s a mais.
+
+### Para o feed do LinkedIn
+
+- **Primeiro quadro:** o teaser completo, sem fade nem quadro preto. O mapa de
+  calor se forma com o tempo simulado (meia-vida da camada de espera de 4 s); a
+  página desenha, sem mostrar nem gravar, os 12 s simulados antes do primeiro
+  quadro.
+- **Áreas seguras:** nenhum texto nos 8% de baixo, a menos de 5% das laterais ou
+  de 3% do topo. Testado desenhando um quadro a cada 15 dos dois formatos num
+  contexto 2D que guarda onde cada palavra foi escrita, com os pontos da cena no
+  meio de cada metade e de novo baixos e à esquerda.
+- **Taxa de bits:** 25 Mbps (variável). Feed: 313,1 MB, 23,7 Mbps em média;
+  16:9: 355,6 MB, 23,0 Mbps.
+- **Capa:** 1080×1350, a tela dividida aos 170 s (146 × 10) com "Mesma quebra.
+  Duas decisões." numa linha, emoldurada em ciano.
+
+### Gravação
+
+| Formato | Arquivo (lido nas caixas do MP4)                                                       | Tempo para gravar |
+| ------- | -------------------------------------------------------------------------------------- | ----------------- |
+| Feed    | 6.345 quadros em 105,750 s (60,000 FPS), maior intervalo 16,67 ms, 313,1 MB, 23,7 Mbps | 88,6 s            |
+| 16:9    | 7.425 quadros em 123,750 s (60,000 FPS), maior intervalo 16,67 ms, 355,6 MB, 23,0 Mbps | 122,1 s           |
+
+### Câmera do passeio
+
+Medida quadro a quadro (posição e direção da câmera): acompanhando o pacote, o
+giro fica entre 4 e 13°/s; a volta à Esteira 8 tem pico de 35°/s (era 88°/s na
+primeira prévia e 57°/s na segunda: a volta passou a durar 4 s, a 3×, com a maior
+parte do giro feita do alto). Nenhum tranco além do corte do teaser para a
+rebobinada; a passagem do pacote da esteira para a pilha da doca, que a simulação
+faz de uma vez, é seguida em 0,5 s (antes, a câmera pulava 1,5 m num quadro).
+
+### Memória
+
+- **Página** (`scripts/cinema_memoria.py http://localhost:4173/ 12 galpao`): antes,
+  104 geometrias, 61 texturas e 28 programas na GPU e 8,2 MB de heap do V8; no fim
+  de cada execução, com as duas cenas e o contorno do pacote, 193 geometrias, 95
+  texturas e 35 programas; depois de cada uma, de volta a 104, 61 e 28. Heap
+  depois de cada execução: 9,6 / 9,8 / 10,1 / 10,4 / 10,5 / 10,8 / 11,0 / 10,9 /
+  10,5 / 10,6 / 10,8 / 10,8 MB: sobe nas 7 primeiras e para, como no feed da demo
+  cinema anterior.
+- **Worker** (`npm run bench:cinema-memoria -- 6 galpao`, 6 execuções no mesmo
+  host, alternando os lados, voltando ao app entre elas): 12,6 MB antes; 15,1 MB
+  depois da 1ª e 14,4 MB depois da 6ª (−0,67 MB da 1ª à 6ª). Do lado com IA, os
+  120 quadros guardados para a rebobinada somam 1,9 MB (fora do heap do V8) e saem
+  conforme são tocados; a gravação de um lado ocupa 1,2 MB.
+
+### Conferência por mutação
+
+`mutations/cinema-galpao.json`, **21 de 21**: o registro escrevendo o corte de um
+caminho sem pacotes e a volta de um corte não escrito, o registro sem refazer o
+estado depois de voltar no tempo, o roteador "decidindo" antes de a IA assumir, o
+worker sem guardar a rebobinada, a rebobinada contando momentos parados, a tela
+dividida sem desacelerar, a legenda de abertura depois da IA, a volta do balão e
+das legendas cortadas, o primeiro corte fora da regra de leitura, o cartão final
+sem pausa e sem a chamada, a taxa de bits baixa, sem o aquecimento, o pacote, o
+robô da prateleira e o da passagem trocados, e as legendas, o registro e o cartão
+do detector fora da área segura. Também: `cinema.json` 18 de 18 (dois trechos
+atualizados depois da refatoração), `video.json` 7 de 7, `atalhos.json` 3 de 3,
+`explicada.json` 11 de 11, `gravador.json` 10 de 10.
+
 ## Bugs que só apareceram medindo
 
-| Fase | Sintoma medido                                                       | Causa                                                                | Efeito da correção                                               |
-| ---- | -------------------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| 1    | Fila de entrada crescendo em regime normal (297 pacotes em 15 min)   | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46            | esteiras a 2,0 m/s: E9 a 81%, fila estável                       |
-| 1    | +1 textura na GPU a cada reinício                                    | só a textura do ambiente era liberada, não o render target           | memória estável em 5 reinícios                                   |
-| 1    | 433 chamadas de desenho por quadro                                   | um objeto por anel e por peça de caminhão                            | 284                                                              |
-| 1    | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade          | alvo do ajuste automático em 50 FPS                                  | alvo 55: cai para média e volta a 60 FPS                         |
-| 2    | Frenagens acima do limite ao alcançar a referência                   | curva de frenagem contínua avaliada tick a tick                      | curva discreta e checagem da referência futura: 0 violações      |
-| 2    | Frenagem brusca logo após replanejar                                 | o novo plano mudava a curva na célula seguinte                       | compromisso 2 passos à frente: 0 violações em 8 seeds            |
-| 2    | Exceção "célula já reservada"                                        | robô precisando parar numa célula que outro reservaria no futuro     | esse outro também replaneja                                      |
-| 2    | 31% das tentativas de planejamento sem caminho                       | estação liberada com o robô ainda em cima                            | 1,3%, e plano 10× mais rápido                                    |
-| 3    | Os dois robôs de um par recuavam ao mesmo tempo                      | cada um pedia passagem ao outro na mesma rodada                      | só um recua (teste)                                              |
-| 3    | Robôs saindo da frente à toa atrás de um robô com defeito            | o pedido de passagem passava por quem não podia se mover             | nenhum pedido nesses casos (teste)                               |
-| 3    | 36 casos de impasse custando 11,8 s de CPU                           | cada tentativa sem caminho esgotava 60 mil estados da busca          | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa           |
-| 3    | Robô restaurado divergindo no último bit                             | a soma da janela de métricas era recalculada ao compactar            | compactação sem recálculo: idêntico bit a bit                    |
-| 3    | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas        | pacotes parados nas entradas gravados com todos os campos            | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB         |
-| 3    | Teste de carga perdido ao reiniciar (teste do worker)                | a carga virou entrada gravada e o reinício criava gravação nova      | a carga volta como entrada no tick 0 da nova gravação            |
-| 4    | Treino a 170 decisões/s (2M em 3,3 h)                                | o tsx (keepNames) gastava ~75% do episódio num ajudante              | build com esbuild: ~490/s, 2M em cerca de 70 min                 |
-| 4    | Detector com 20% a 69% de precisão                                   | modelo fixo do motor: viés de cada motor e da carga                  | filtro de Kalman aprende o normal de cada motor                  |
-| 4    | 29 de 29 alarmes falsos logo depois de um reparo                     | o motor que quebrou gasto volta quente (memória térmica)             | o gêmeo ressincroniza a temperatura quando o motor religa        |
-| 4    | 100% de precisão e de recall                                         | desgaste sempre forte e nenhum distúrbio no modelo dos sinais        | quebras súbitas, desgaste fraco, pancadas e enroscos             |
-| 4    | Conferência por mutação parada por mais de 7 min                     | mutante transformou "espere um desgaste" em laço infinito            | teste com limite; rodada encerrada em 5× a linha de base         |
-| 4    | Worker de 89 kB → 510 kB                                             | o formato IIFE embutia o runtime da rede no import dinâmico          | worker em módulo ES: 101 kB, runtime baixado sob demanda         |
-| 4    | Motor sem robôs 12% mais lento que a `main` (gate do CI)             | monitoramento dos 24 motores a cada segundo simulado                 | agregados contados só quando lidos: 15% mais rápido que a `main` |
-| 4b   | Com a agenda, o modo automático aplicava 36% mais desgastes          | a quebra evitada liberava cedo a vaga do limite de 2 falhas          | a vaga fica ocupada até quando a quebra teria terminado          |
-| 4b   | Quebras de esteiras do sorter não apontadas (até 296 pacotes a mais) | fila contada só um passo à frente: a esteira curta não passava de 11 | a espera segue a corrente até a raiz: 285 → 291 apontadas        |
-| 4b   | Dois testes antigos passaram de 5 s na suíte completa                | testes novos pesados disputando CPU                                  | testes novos mais leves; 20 s para os dois pesados               |
+| Fase   | Sintoma medido                                                          | Causa                                                                    | Efeito da correção                                               |
+| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| 1      | Fila de entrada crescendo em regime normal (297 pacotes em 15 min)      | esteira E9 recebendo 2,7 pacotes/s com capacidade de 2,46                | esteiras a 2,0 m/s: E9 a 81%, fila estável                       |
+| 1      | +1 textura na GPU a cada reinício                                       | só a textura do ambiente era liberada, não o render target               | memória estável em 5 reinícios                                   |
+| 1      | 433 chamadas de desenho por quadro                                      | um objeto por anel e por peça de caminhão                                | 284                                                              |
+| 1      | CPU 4× mais lenta ficava em 49–51 FPS sem reduzir qualidade             | alvo do ajuste automático em 50 FPS                                      | alvo 55: cai para média e volta a 60 FPS                         |
+| 2      | Frenagens acima do limite ao alcançar a referência                      | curva de frenagem contínua avaliada tick a tick                          | curva discreta e checagem da referência futura: 0 violações      |
+| 2      | Frenagem brusca logo após replanejar                                    | o novo plano mudava a curva na célula seguinte                           | compromisso 2 passos à frente: 0 violações em 8 seeds            |
+| 2      | Exceção "célula já reservada"                                           | robô precisando parar numa célula que outro reservaria no futuro         | esse outro também replaneja                                      |
+| 2      | 31% das tentativas de planejamento sem caminho                          | estação liberada com o robô ainda em cima                                | 1,3%, e plano 10× mais rápido                                    |
+| 3      | Os dois robôs de um par recuavam ao mesmo tempo                         | cada um pedia passagem ao outro na mesma rodada                          | só um recua (teste)                                              |
+| 3      | Robôs saindo da frente à toa atrás de um robô com defeito               | o pedido de passagem passava por quem não podia se mover                 | nenhum pedido nesses casos (teste)                               |
+| 3      | 36 casos de impasse custando 11,8 s de CPU                              | cada tentativa sem caminho esgotava 60 mil estados da busca              | prova no piso: 1,8 s; ~20 ms → ~0,002 ms por tentativa           |
+| 3      | Robô restaurado divergindo no último bit                                | a soma da janela de métricas era recalculada ao compactar                | compactação sem recálculo: idêntico bit a bit                    |
+| 3      | Checkpoints de 211 KB (326 KB no máximo) numa hora com falhas           | pacotes parados nas entradas gravados com todos os campos                | 16 bytes por pacote intacto: média 122 KB, máximo 172 KB         |
+| 3      | Teste de carga perdido ao reiniciar (teste do worker)                   | a carga virou entrada gravada e o reinício criava gravação nova          | a carga volta como entrada no tick 0 da nova gravação            |
+| 4      | Treino a 170 decisões/s (2M em 3,3 h)                                   | o tsx (keepNames) gastava ~75% do episódio num ajudante                  | build com esbuild: ~490/s, 2M em cerca de 70 min                 |
+| 4      | Detector com 20% a 69% de precisão                                      | modelo fixo do motor: viés de cada motor e da carga                      | filtro de Kalman aprende o normal de cada motor                  |
+| 4      | 29 de 29 alarmes falsos logo depois de um reparo                        | o motor que quebrou gasto volta quente (memória térmica)                 | o gêmeo ressincroniza a temperatura quando o motor religa        |
+| 4      | 100% de precisão e de recall                                            | desgaste sempre forte e nenhum distúrbio no modelo dos sinais            | quebras súbitas, desgaste fraco, pancadas e enroscos             |
+| 4      | Conferência por mutação parada por mais de 7 min                        | mutante transformou "espere um desgaste" em laço infinito                | teste com limite; rodada encerrada em 5× a linha de base         |
+| 4      | Worker de 89 kB → 510 kB                                                | o formato IIFE embutia o runtime da rede no import dinâmico              | worker em módulo ES: 101 kB, runtime baixado sob demanda         |
+| 4      | Motor sem robôs 12% mais lento que a `main` (gate do CI)                | monitoramento dos 24 motores a cada segundo simulado                     | agregados contados só quando lidos: 15% mais rápido que a `main` |
+| 4b     | Com a agenda, o modo automático aplicava 36% mais desgastes             | a quebra evitada liberava cedo a vaga do limite de 2 falhas              | a vaga fica ocupada até quando a quebra teria terminado          |
+| 4b     | Quebras de esteiras do sorter não apontadas (até 296 pacotes a mais)    | fila contada só um passo à frente: a esteira curta não passava de 11     | a espera segue a corrente até a raiz: 285 → 291 apontadas        |
+| 4b     | Dois testes antigos passaram de 5 s na suíte completa                   | testes novos pesados disputando CPU                                      | testes novos mais leves; 20 s para os dois pesados               |
+| cinema | As linhas de corte sumiam do registro depois da rebobinada              | ao voltar para antes da IA, o estado "caminho cortado" ficava o de 170 s | o estado é refeito no instante para onde se volta (teste)        |
+| cinema | Um pulso aos 128,0 s, antes da primeira decisão (129 s)                 | a página pulsava a cada segundo inteiro com a IA ligada                  | o worker manda o instante da última decisão                      |
+| cinema | A câmera pulava 1,5 m num quadro quando o pacote entra na pilha da doca | a simulação põe a caixa na pilha de uma vez                              | o ponto da câmera vai até a pilha em 0,5 s                       |
+| cinema | O primeiro quadro sem o calor das filas, que "acendia" depois           | o mapa de calor se forma com o tempo simulado                            | 12 s simulados desenhados antes do primeiro quadro, sem mostrar  |
+| cinema | "Falha evitada" escondido atrás do painel do motor                      | com as margens seguras, o balão trocava de lado                          | fica na borda, a menos que ali cubra o próprio ponto             |
+| cinema | O vermelho do contador virava laranja no GIF                            | a paleta de 160 cores juntava os dois                                    | as cores com significado entram na paleta (176 cores)            |
 
 ## Como reproduzir
 
