@@ -56,8 +56,8 @@
       "edits": [
         {
           "file": "src/demo/cinema.ts",
-          "find": "(s.hold ?? 0) * CINEMA_FPS;",
-          "replace": "0;"
+          "find": "  s.speed === 0 ? (s.hold ?? 0) : Math.abs(s.to - s.from) / Math.abs(s.speed);",
+          "replace": "  s.speed === 0 ? 0 : Math.abs(s.to - s.from) / Math.abs(s.speed);"
         }
       ]
     },
@@ -116,8 +116,8 @@
       "edits": [
         {
           "file": "src/demo/cinema.ts",
-          "find": "  const detour = localAt(spans, S.aiAt + 7);",
-          "replace": "  const detour = localAt(spans, S.aiAt - 7);"
+          "find": "  const detour = localAt(spans, opts.detourAt ?? S.aiAt + 7);",
+          "replace": "  const detour = localAt(spans, opts.detourAt ?? S.aiAt - 7);"
         }
       ]
     },

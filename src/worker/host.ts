@@ -26,6 +26,9 @@ import {
 } from './routing';
 import { history, timeline } from './views';
 
+/** Lines of the AI's log a cinema frame carries (the panel shows the last of them). */
+const LOG_LINES = 6;
+
 /** Real milliseconds of simulation work per pump before yielding to messages. */
 const BUDGET_MS = 40;
 /** Minimum real milliseconds between two snapshots. */
@@ -81,6 +84,8 @@ export class SimHost {
   private demo: DemoRunner | null = null;
   /** A side of the cinema demo, moved by the page frame by frame, or null. */
   private cinema: CinemaRun | null = null;
+  /** Its snapshots kept for a rewind, by tick, with the counter and the rate then. */
+  private readonly kept = new Map<number, { buffer: ArrayBuffer; queue: number; rate: number }>();
 
   constructor(
     // Only array buffers are transferred (the snapshots); typed without the DOM
@@ -239,6 +244,7 @@ export class SimHost {
   private restart(config: Partial<SimConfig> = this.config, keepStress = true): void {
     this.demo = null;
     this.cinema = null;
+    this.kept.clear();
     const stress = keepStress && this.recorder.live.baseRate === STRESS_ARRIVAL_RATE;
     this.recorder = new Recorder(config);
     this.detector = new BottleneckDetector(topologyOf(this.recorder.live));
@@ -352,23 +358,60 @@ export class SimHost {
   private handleCinema(cmd: Extract<SimCommand, { type: 'cinema' }>): void {
     if (cmd.action === 'stop') {
       this.cinema = null;
+      this.kept.clear();
       return;
     }
     if (cmd.action === 'start') {
       this.restart();
-      const run = new CinemaRun(cmd.side);
+      const run = new CinemaRun(cmd.side, undefined, cmd.warmup);
       this.cinema = run;
       this.recorder = run.rec;
       this.writer.show(run.rec.shown);
       this.syncShadow();
+      this.kept.clear();
+      const keep = new Set((cmd.keep ?? []).map((t) => run.tick(t)));
+      // The moments a rewind will show, kept as the run passes them going forward.
+      if (keep.size > 0) {
+        run.onTick = () => {
+          const tick = run.rec.headTick;
+          if (!keep.has(tick) || this.kept.has(tick)) return;
+          const buffer = this.writer.write({ speed: 0, stress: false, mode: 0, head: run.time });
+          this.kept.set(tick, { buffer, queue: run.queue(), rate: run.deliveredLastMinute() });
+        };
+      }
       return;
     }
     const run = this.cinema;
     if (!run) return;
+    // A moment of the rewind: the snapshot kept when the run went through it.
+    const tick = run.tick(cmd.time);
+    const kept = tick < run.rec.headTick ? this.kept.get(tick) : undefined;
+    if (kept) {
+      this.kept.delete(tick);
+      this.post(
+        {
+          type: 'cinema',
+          frame: cmd.frame,
+          buffer: kept.buffer,
+          events: [],
+          bottleneck: null,
+          queue: kept.queue,
+          rate: kept.rate,
+          log: [],
+          routing: { active: false, decidedAt: -1, cost: [] },
+          measure: null,
+        },
+        [kept.buffer],
+      );
+      return;
+    }
     const jumps = run.jumps;
     run.to(cmd.time);
     // Back in time (the time travel): the next frame is a cut, nothing blends across it.
-    if (run.jumps !== jumps) this.writer.show(run.rec.shown);
+    if (run.jumps !== jumps) {
+      this.writer.show(run.rec.shown);
+      this.kept.clear();
+    }
     const buffer = this.writer.write({ speed: 0, stress: false, mode: 0, head: run.time });
     this.post(
       {
@@ -378,6 +421,9 @@ export class SimHost {
         events: run.newEvents(),
         bottleneck: run.bottleneck(),
         queue: run.queue(),
+        rate: run.deliveredLastMinute(),
+        log: run.log.slice(-LOG_LINES),
+        routing: run.routing(),
         measure: cmd.measure ? run.measures() : null,
       },
       [buffer],

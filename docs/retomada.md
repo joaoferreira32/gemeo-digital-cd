@@ -1,3 +1,14 @@
+# Demo cinema com o passeio e a IA trabalhando (2026-10-15)
+
+Implementada no branch `demo-cinema-tour` (sobre a `main`, depois do PR #12),
+com o PR aberto para revisão. Pedidos e decisões em `docs/roteiro.md` (entradas
+de 2026-10-13 a 2026-10-15); números em `docs/resultados.md`, "Demo cinema com o
+passeio e a IA trabalhando". Os MP4 finais (25 Mbps) e a capa ficam fora do
+repositório, em `Desktop\capturas-cinema\final-galpao`. Ao retomar: `git
+status`, `git diff`, `git stash list`, `git worktree list`, `npm run lint` e `npm
+test`. O que falta depende da revisão do PR: o merge (pelo usuário), conferir o
+deploy do Pages e a demo publicada em `?demo=cinema-galpao`.
+
 # Demo cinema (2026-10-13)
 
 Implementada no branch `demo-cinema` (sobre a `main`, depois do PR #11), com o

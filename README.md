@@ -3,9 +3,9 @@
 [![CI](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/ci.yml)
 [![Deploy](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml/badge.svg)](https://github.com/joaoferreira32/gemeo-digital-cd/actions/workflows/deploy.yml)
 
-**Demo:** https://joaoferreira32.github.io/gemeo-digital-cd/ (a tecla <kbd>V</kbd> roda a demo explicada, de cerca de 100 s)
+**Demo:** https://joaoferreira32.github.io/gemeo-digital-cd/ (a tecla <kbd>V</kbd> roda a demo explicada, de cerca de 100 s; em [`?demo=cinema-galpao`](https://joaoferreira32.github.io/gemeo-digital-cd/?demo=cinema-galpao), a demo cinema com o passeio pelo galpão e a IA trabalhando, de onde vêm os trechos abaixo)
 
-![A demo explicada, em 9 etapas: a Esteira 8 quebra e a fila cresce, o detector explica o gargalo, só então a IA assume e a fila para de crescer, a manutenção preditiva evita uma segunda falha, a simulação volta no tempo e roda a mesma situação sem IA, e o cartão compara as duas](docs/demo.gif)
+![Trechos da demo cinema com o passeio: a tela dividida no clímax, 146 pacotes na fila da Esteira 8 sem IA e 10 com IA; a volta de dois minutos no tempo; a câmera descendo sobre o galpão e seguindo um pacote; a quebra, com o cartão do detector de gargalo; a IA assumindo, com o registro de decisões e o tempo previsto em cada caminho; os 24 motores e a manutenção agendada; os números e o endereço](docs/demo.gif)
 
 Simulação 3D em tempo real, no navegador, de um galpão logístico: esteiras,
 pacotes, docas, caminhões e uma frota de 40 robôs (AGVs) que se coordenam por
@@ -20,7 +20,8 @@ do momento, dizendo a causa. Um laboratório compara dois cenários ("e se…?")
 várias seeds ao mesmo tempo, com intervalo de confiança, usando a demanda real
 de um e-commerce (Olist) hora a hora. Demos com legendas contam tudo isso
 sozinhas (a explicada, de cerca de 100 s, e a cinema, com o mesmo galpão sem IA e
-com IA lado a lado) e são gravadas em vídeo direto da página. O motor de
+com IA lado a lado; a versão nova dela passeia pelo galpão e mostra cada decisão
+da IA) e são gravadas em vídeo direto da página. O motor de
 simulação é determinístico, roda num Web Worker e é testado sem navegador.
 
 > **Status:** as 6 fases do roteiro estão concluídas, com a Fase 4b e o detector
@@ -85,31 +86,31 @@ npm run bench:rotas -- --rl teste
 
 ## Controles
 
-| Ação                   | Mouse / teclado                                                                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Girar                  | arrastar · <kbd>Q</kbd> <kbd>E</kbd>                                                                                                                                                  |
-| Mover                  | botão direito ou <kbd>Shift</kbd> + arrastar · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / setas                                                                               |
-| Zoom                   | roda do mouse (em direção ao cursor) · <kbd>+</kbd> <kbd>−</kbd>                                                                                                                      |
-| Inclinar               | <kbd>R</kbd> <kbd>F</kbd>                                                                                                                                                             |
-| Câmeras                | <kbd>1</kbd> aérea · <kbd>2</kbd> chão · <kbd>3</kbd> seguir robô · <kbd>N</kbd> próximo robô                                                                                         |
-| Pausar / velocidade    | <kbd>Espaço</kbd> · <kbd>,</kbd> <kbd>.</kbd> (1×, 4×, 16×)                                                                                                                           |
-| Falhas                 | <kbd>5</kbd> esteira · <kbd>6</kbd> pico de pedidos · <kbd>7</kbd> robô · <kbd>8</kbd> doca                                                                                           |
-| Falhas automáticas     | <kbd>9</kbd>                                                                                                                                                                          |
-| Desgaste numa esteira  | <kbd>0</kbd> (quebraria em 1 a 3 min; o alarme avisa antes e a IA agenda a manutenção: falha evitada)                                                                                 |
-| Roteamento             | <kbd>P</kbd> heurística (padrão) → IA (PPO) → estático; o painel <kbd>K</kbd> compara com o estático ao vivo                                                                          |
-| Mapa de calor          | <kbd>M</kbd> ocupação → tempo de espera → tráfego de robôs → desligado                                                                                                                |
-| Teste de carga         | <kbd>T</kbd> (taxa de pedidos muito acima da capacidade)                                                                                                                              |
-| Qualidade gráfica      | <kbd>G</kbd> (desliga o ajuste automático)                                                                                                                                            |
-| Reiniciar (mesma seed) | <kbd>Shift</kbd> + <kbd>R</kbd>                                                                                                                                                       |
-| Linha do tempo         | arrastar na barra de baixo · <kbd>[</kbd> <kbd>]</kbd> volta / avança 10 s                                                                                                            |
-| Voltar ao vivo         | <kbd>L</kbd>                                                                                                                                                                          |
-| Continuar daqui        | <kbd>C</kbd>, <kbd>Espaço</kbd> ou qualquer falha injetada no passado (descarta o que vinha depois)                                                                                   |
-| Laboratório "e se…?"   | <kbd>B</kbd> (dois cenários em várias seeds, em paralelo; média, IC 95% e B − A)                                                                                                      |
-| Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, roteamento, manutenção, utilização, robôs, últimos 5 min)                                                                            |
-| Histórico              | clique num robô, numa esteira ou numa doca                                                                                                                                            |
-| Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução                                                                                  |
-| Demo                   | <kbd>V</kbd> roda a demo explicada · <kbd>Shift</kbd> + <kbd>V</kbd> grava em vídeo · <kbd>Esc</kbd> sai · `?demo=cinema` (feed, 4:5) e `?demo=cinema-completa` (16:9): a demo cinema |
-| Atalhos e legenda      | <kbd>H</kbd>                                                                                                                                                                          |
+| Ação                   | Mouse / teclado                                                                                                                                                                                                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Girar                  | arrastar · <kbd>Q</kbd> <kbd>E</kbd>                                                                                                                                                                                                                                                          |
+| Mover                  | botão direito ou <kbd>Shift</kbd> + arrastar · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / setas                                                                                                                                                                                       |
+| Zoom                   | roda do mouse (em direção ao cursor) · <kbd>+</kbd> <kbd>−</kbd>                                                                                                                                                                                                                              |
+| Inclinar               | <kbd>R</kbd> <kbd>F</kbd>                                                                                                                                                                                                                                                                     |
+| Câmeras                | <kbd>1</kbd> aérea · <kbd>2</kbd> chão · <kbd>3</kbd> seguir robô · <kbd>N</kbd> próximo robô                                                                                                                                                                                                 |
+| Pausar / velocidade    | <kbd>Espaço</kbd> · <kbd>,</kbd> <kbd>.</kbd> (1×, 4×, 16×)                                                                                                                                                                                                                                   |
+| Falhas                 | <kbd>5</kbd> esteira · <kbd>6</kbd> pico de pedidos · <kbd>7</kbd> robô · <kbd>8</kbd> doca                                                                                                                                                                                                   |
+| Falhas automáticas     | <kbd>9</kbd>                                                                                                                                                                                                                                                                                  |
+| Desgaste numa esteira  | <kbd>0</kbd> (quebraria em 1 a 3 min; o alarme avisa antes e a IA agenda a manutenção: falha evitada)                                                                                                                                                                                         |
+| Roteamento             | <kbd>P</kbd> heurística (padrão) → IA (PPO) → estático; o painel <kbd>K</kbd> compara com o estático ao vivo                                                                                                                                                                                  |
+| Mapa de calor          | <kbd>M</kbd> ocupação → tempo de espera → tráfego de robôs → desligado                                                                                                                                                                                                                        |
+| Teste de carga         | <kbd>T</kbd> (taxa de pedidos muito acima da capacidade)                                                                                                                                                                                                                                      |
+| Qualidade gráfica      | <kbd>G</kbd> (desliga o ajuste automático)                                                                                                                                                                                                                                                    |
+| Reiniciar (mesma seed) | <kbd>Shift</kbd> + <kbd>R</kbd>                                                                                                                                                                                                                                                               |
+| Linha do tempo         | arrastar na barra de baixo · <kbd>[</kbd> <kbd>]</kbd> volta / avança 10 s                                                                                                                                                                                                                    |
+| Voltar ao vivo         | <kbd>L</kbd>                                                                                                                                                                                                                                                                                  |
+| Continuar daqui        | <kbd>C</kbd>, <kbd>Espaço</kbd> ou qualquer falha injetada no passado (descarta o que vinha depois)                                                                                                                                                                                           |
+| Laboratório "e se…?"   | <kbd>B</kbd> (dois cenários em várias seeds, em paralelo; média, IC 95% e B − A)                                                                                                                                                                                                              |
+| Painel de operação     | <kbd>K</kbd> (vazão, tempo de ciclo médio e p95, roteamento, manutenção, utilização, robôs, últimos 5 min)                                                                                                                                                                                    |
+| Histórico              | clique num robô, numa esteira ou numa doca                                                                                                                                                                                                                                                    |
+| Exportar               | botões da linha do tempo: eventos em CSV, relatório JSON; "Carregar relatório" reproduz uma execução                                                                                                                                                                                          |
+| Demo                   | <kbd>V</kbd> roda a demo explicada · <kbd>Shift</kbd> + <kbd>V</kbd> grava em vídeo · <kbd>Esc</kbd> sai · `?demo=cinema` (feed, 4:5) e `?demo=cinema-completa` (16:9): a demo cinema · `?demo=cinema-galpao` (4:5) e `?demo=cinema-galpao-completa` (16:9): com o passeio e a IA trabalhando |
+| Atalhos e legenda      | <kbd>H</kbd>                                                                                                                                                                                                                                                                                  |
 
 ## Arquitetura
 
@@ -718,7 +719,7 @@ benchmarks não mudou.
 - **Tudo é dado** (`src/demo/cinema.ts`): o trecho de simulação e a velocidade de
   cada parte, a câmera, o visual, cada texto e quando aparece. A ordem da história
   e a regra de leitura são testadas nesses dados, e cada fato que um texto
-  afirma é medido no motor (`tests/cinema.test.ts`, 14 testes; 16 de 16
+  afirma é medido no motor (`tests/cinema.test.ts`, 15 testes; 18 de 18
   mutações pegas em `mutations/cinema.json`).
 - **Gravação quadro a quadro:** WebCodecs (H.264) e a biblioteca
   [Mediabunny](https://github.com/Vanilagy/mediabunny) (MPL-2.0) para montar o
@@ -759,6 +760,127 @@ python scripts/cinema_ao_vivo.py http://localhost:4173/ feed     # o ritmo ao vi
 python scripts/cinema_memoria.py http://localhost:4173/ 12       # a memória da página com as duas cenas
 npm run bench:cinema-memoria                                      # a memória do worker
 npm run mutate -- mutations/cinema.json                           # as mutações da demo cinema
+```
+
+## Demo cinema com o passeio e a IA trabalhando
+
+<p>
+  <img src="docs/cinema/galpao-04-passeio-entrada.jpg" width="32%" alt="Passeio: a câmera segue um pacote com contorno ciano entrando pela Entrada 2; o rótulo 40 robôs aponta um robô tirando caixas da prateleira">
+  <img src="docs/cinema/galpao-08-ia-assume.jpg" width="32%" alt="Tela dividida no instante em que a IA assume, a 2×: o quadro tempo previsto (viagem + fila) em B2, Esteira 8 infinito e linha A 11 s acesa, e o registro da IA embaixo">
+  <img src="docs/cinema/galpao-11-manutencao.jpg" width="32%" alt="Previsão: com IA, os gráficos do motor da Esteira 16 com o CUSUM no limite e a linha do registro 218 s, Esteira 16: motor fora do padrão, manutenção agendada">
+</p>
+
+Uma versão nova da demo cinema, pensada para o LinkedIn: começa no clímax,
+volta dois minutos no tempo, mostra o galpão inteiro funcionando num plano
+contínuo antes da quebra e mostra **a IA trabalhando**, com as decisões reais da
+heurística e dos detectores, não só o resultado. As demos explicada, curta e a
+cinema anterior continuam disponíveis.
+
+- **Feed** (`?demo=cinema-galpao`): 4:5 (1080×1350), 105,75 s.
+- **Versão longa** (`?demo=cinema-galpao-completa`): 16:9 (1920×1080), 123,75 s,
+  com o passeio mais longo (parte dele em tempo real).
+
+Nesses endereços, <kbd>V</kbd> roda ao vivo e <kbd>Shift</kbd> + <kbd>V</kbd>
+grava o MP4; `__gemeo.cinema.cover('galpao')` devolve a capa (1080×1350).
+
+**Roteiro do feed** (a mesma regra de leitura da demo cinema; o registro conta a
+primeira linha de cada tipo, que fica na tela o tempo de ser lida):
+
+| Vídeo           | Simulação                                      | O que aparece                                                                                                                                                                                                                                | Palavras → mínimo |
+| --------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| 0–5,5 s         | 164,5→170 s, 1×                                | Teaser: a tela dividida no clímax (135 → **146 × 10**, o mesmo instante que a tela dividida mostra depois), "Mesma quebra. Duas decisões."                                                                                                   | 16 → 5,3 s        |
+| 5,5–7,5 s       | 170→50 s, de trás para a frente                | "⏪ 2 minutos antes" e a linha do tempo voltando, na cena sem cor: os momentos reais da execução, um por quadro                                                                                                                              | 5 → 1,7 s         |
+| 7,5–29,5 s      | 50→62 s a 4×, 62→92 s a 2×, 92→104 s a 3×      | O galpão num plano só: do alto, desce até a Entrada 2 e segue o pacote 279 (contorno ciano) até a Doca 4; "24 esteiras", "40 robôs", "robôs a no mínimo 0,97 m uns dos outros", "207 entregas por minuto"; sobe e volta à Esteira 8          | 3, 2, 9 e 4       |
+| 29,5–36,5 s     | 104→111 s, 1×                                  | Clarão e uma onda saindo da Esteira 8; "Uma esteira quebrou." com FILA · ESTEIRA 8; aos 105 s, o cartão do detector: "Esteira 8 (B2→B3), 53% de uso. Causa: quebra desta esteira."                                                           | 21 → 7,0 s        |
+| 36,5–39,5 s     | 111 s, parado                                  | "Eu programei uma IA para decidir o que fazer."                                                                                                                                                                                              | 9 → 3,0 s         |
+| 39,5–60,25 s    | 111→123 s a 4×, 123→141 s a 2×, 141→176 s a 4× | Tela dividida, desacelerada enquanto a IA assume: "128 s · IA assume roteamento e manutenção", "129 s · B2: Esteira 8 parada → linha A", "reavaliando a divisão a cada segundo", o quadro "tempo previsto (viagem + fila)" em B2 e os pulsos | 55 → 18,3 s       |
+| 60,25–72,25 s   | 176→188 s, 1×                                  | Raio-X: espera (mapa de calor), "B2: 100% pela linha A", o cartão do gargalo da Esteira 3                                                                                                                                                    | 9, 5 e 21         |
+| 72,25–90,25 s   | 188→215 s a 3×, 215→224 s a 1×                 | Os 24 motores, a Esteira 16 subindo em amarelo; depois os gráficos dela; "190 s · B2: Esteira 8 de volta"; "218 s · Esteira 16: motor fora do padrão → manutenção agendada"; "Falha evitada" × "A esteira quebrou"                           | 51 → 17,0 s       |
+| 90,25–101,25 s  | 224→320 s a 48× (2 s), parado                  | Os números: +49% entregas, −43% p95 do ciclo, quebras 2 × 1                                                                                                                                                                                  | 33 → 11,0 s       |
+| 101,25–105,75 s | 320→323 s, 1×, e 1,5 s parado                  | A câmera volta ao plano aéreo do começo: "Roda no seu navegador: teste você mesmo" e o endereço do código                                                                                                                                    | 11 → 3,7 s        |
+
+A versão longa tem o passeio de 32 s (de 62 a 80 s em tempo real, com "Pacotes
+chegam pelas entradas, andam pelas esteiras e saem pelas docas."), a tela
+dividida a 2× de 123 a 147 s e o cartão com cinco linhas (p95 de espera e
+quebras evitadas também).
+
+**Tudo o que aparece vem do motor** (cada fato tem teste em
+`tests/cinema-galpao.test.ts`):
+
+- **O registro da IA.** O motor não registra decisões de roteamento: a
+  heurística refaz as divisões a cada segundo simulado. O registro é escrito
+  pela execução (`src/demo/cinema-run.ts`) a partir dos números de cada segundo,
+  com uma regra fixa: uma linha quando um caminho que levava pacotes fica
+  cortado (custo infinito: uma esteira parada sem ponte de robôs) e quando volta;
+  mais a entrada do roteiro aos 128 s (a IA assume) e a manutenção agendada no
+  alarme do motor (os eventos `maintenance` e `service-planned` do mesmo
+  segundo). Nesta execução são quatro linhas, e o lado sem IA não tem nenhuma.
+  Em A1 o caminho pela linha B também fica cortado aos 129 s, mas nenhum pacote
+  ia por ele: nada muda ali, e nada é escrito.
+- **Os custos em B2** são os da heurística (`HeuristicRouting.cost`), em
+  segundos: tempo de viagem (comprimento ÷ velocidade) mais a fila (pacotes
+  parados × espaçamento ÷ velocidade, com peso 0,5); infinito numa esteira parada
+  sem ponte de robôs. As duas escolhas de B2 (Docas 1–3 e 4–6) custam o mesmo
+  de 129 a 189 s, por isso um quadro só; a linha A varia ao vivo (11,0 a 15,05 s).
+- **Os pulsos** marcam cada decisão do roteador: a cada segundo simulado, em A1,
+  A3 e B2, só com a IA ligada; o primeiro aos 129 s (a página recebe o instante
+  exato da última decisão). A 4× são quatro por segundo de vídeo.
+- **O detector de gargalo** nomeia a Esteira 8 sozinho aos 105 s, um segundo
+  depois da quebra, nos dois galpões (ele lê a gravação, ligado ou não à IA). O
+  roteamento só reage aos 129 s porque o roteiro liga a IA aos 128 s: a tela
+  dividida mostra isso no registro.
+- **Os 24 motores**: a soma do CUSUM de cada um contra o limite do alarme, lida a
+  cada segundo. A Esteira 16 é a mais alta a partir de 195 s e dispara o alarme
+  aos 218 s. O monitoramento roda também sem IA (lá o alarme toca aos 215 s e
+  ninguém age): o que só a IA faz é agendar a manutenção.
+- **O passeio**: o pacote 279 é o último a entrar na Esteira 6 (Entrada 2) antes
+  de 65 s; cruza a Esteira 8 aos 74 s, 30 s antes da quebra, e chega à Doca 4 aos
+  91,05 s. O "40 robôs" aponta o robô 7 tirando caixas de uma prateleira; os
+  0,97 m apontam o robô 28 passando sob a Esteira 10 enquanto o pacote passa por
+  cima. 24 esteiras e 40 robôs são os da planta e da frota; nesta execução, a
+  menor distância entre dois robôs é 0,993 m (nos testes de segurança, 0,974 m).
+  "207 entregas por minuto" são as entregas do minuto anterior ao instante em que
+  o rótulo aparece (89,4 s).
+- **A rebobinada** toca de trás para a frente os momentos reais da execução: o
+  worker do lado com IA guarda um snapshot de cada segundo de 51 a 170 s quando
+  passa por ele (1,9 MB ao todo) e os devolve na volta; depois a execução volta de
+  fato a 50 s (a gravação do motor) e segue. Termina no mesmo mundo da demo
+  explicada (teste).
+- O planejamento de rotas dos robôs (Cooperative A\*) não é a IA desta demo, e
+  a camada das rotas dos robôs saiu do raio-X ("O que a IA vê").
+
+**Para o LinkedIn:** o vídeo começa direto no teaser, sem fade nem quadro preto
+(antes do primeiro quadro, a página desenha sem mostrar 12 s simulados, para o
+mapa de calor já estar formado); nenhum texto nos 8% de baixo nem a menos de 5%
+das laterais e 3% do topo (testado no desenho de um quadro a cada 15, nos dois
+formatos); o cartão final traz a chamada e fica 1,5 s parado; a taxa de bits é de
+25 Mbps (o site recomprime o vídeo, e uma fonte melhor sobrevive melhor); a capa
+é a tela dividida no instante do teaser, 146 × 10, com a frase em destaque.
+
+**Números** (Ryzen 7 5700X, RTX 5060 Ti, no Chromium do Playwright):
+
+| Medida                                   | Feed                                                                                   | Versão longa                                                           |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Arquivo gravado (lido nas caixas do MP4) | 6.345 quadros em 105,750 s (60,000 FPS), maior intervalo 16,67 ms, 313,1 MB, 23,7 Mbps | 7.425 quadros em 123,750 s (60,000 FPS), 16,67 ms, 355,6 MB, 23,0 Mbps |
+| Tempo para gravar                        | 88,6 s                                                                                 | 122,1 s                                                                |
+| Câmera do passeio                        | giro de 4 a 13°/s acompanhando o pacote; a volta à Esteira 8 com pico de 35°/s         | —                                                                      |
+
+Memória: na página (12 execuções do feed, `scripts/cinema_memoria.py`), depois de
+cada execução a GPU volta a 104 geometrias, 61 texturas e 28 programas (193, 95 e
+35 com as duas cenas), e o heap do V8, depois de uma coleta completa, sobe até
+11,0 MB na 7ª execução e fica entre 10,5 e 10,9 MB até a 12ª (sem crescimento
+contínuo). No worker (`npm run bench:cinema-memoria -- 6 galpao`), 6 execuções no
+mesmo host terminam 0,67 MB abaixo da 1ª; os 120 quadros guardados para a
+rebobinada somam 1,9 MB e saem conforme são tocados.
+
+Para reproduzir (com o build servido):
+
+```bash
+python scripts/cinema_frames.py http://localhost:4173/ quadros galpao galpao-completa
+python scripts/cinema_gravar.py http://localhost:4173/ videos galpao galpao-completa
+python scripts/cinema_memoria.py http://localhost:4173/ 12 galpao
+npm run bench:cinema-memoria -- 6 galpao
+npm run mutate -- mutations/cinema-galpao.json
 ```
 
 ## Decisões técnicas e trade-offs
